@@ -1,0 +1,130 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Request Batch{% endblock %}
+{% block page_title %}Request Batch{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<div class="mb-4">
+    <h2 class="h4 fw-bold mb-1">Request New Batch</h2>
+    <p class="text-secondary mb-0">Submit a request for additional device licenses</p>
+</div>
+
+{% if existing_pending %}
+<!-- Existing Pending Request Alert -->
+<div class="alert alert-warning border-0 shadow-sm rounded-3 d-flex align-items-center mb-4" role="alert">
+    <i class="fas fa-clock me-3 fa-lg"></i>
+    <div>
+        <strong>Pending Request</strong>
+        <p class="mb-0 small">You already have a pending batch request. Please wait for admin approval before submitting
+            a new request.</p>
+    </div>
+</div>
+{% endif %}
+
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card border-0 shadow-sm rounded-4">
+            <div class="card-body p-4">
+                <form method="post" action="{% url 'request_batch' %}">
+                    {% csrf_token %}
+
+                    <!-- Device Counts -->
+                    <h6 class="text-secondary fw-bold text-uppercase mb-3">
+                        <i class="fas fa-cubes me-2"></i>Device Quantities
+                    </h6>
+
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-6">
+                            <label class="form-label small text-muted">TVs</label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-light border-0"><i
+                                        class="fas fa-tv text-primary"></i></span>
+                                <input type="number" name="requested_tvs" class="form-control bg-light border-0 py-2"
+                                    value="0" min="0" {% if existing_pending %}disabled{% endif %}>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small text-muted">Token Dispensers</label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-light border-0"><i
+                                        class="fas fa-ticket-alt text-success"></i></span>
+                                <input type="number" name="requested_dispensers"
+                                    class="form-control bg-light border-0 py-2" value="0" min="0" {% if existing_pending %}disabled{% endif %}>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small text-muted">Keypads</label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-light border-0"><i
+                                        class="fas fa-keyboard text-info"></i></span>
+                                <input type="number" name="requested_keypads"
+                                    class="form-control bg-light border-0 py-2" value="0" min="0" {% if existing_pending %}disabled{% endif %}>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small text-muted">Brokers</label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-light border-0"><i
+                                        class="fas fa-server text-warning"></i></span>
+                                <input type="number" name="requested_brokers"
+                                    class="form-control bg-light border-0 py-2" value="0" min="0" {% if existing_pending %}disabled{% endif %}>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small text-muted">LED Displays</label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-light border-0"><i
+                                        class="fas fa-lightbulb text-danger"></i></span>
+                                <input type="number" name="requested_leds" class="form-control bg-light border-0 py-2"
+                                    value="0" min="0" {% if existing_pending %}disabled{% endif %}>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Reason -->
+                    <h6 class="text-secondary fw-bold text-uppercase mb-3">
+                        <i class="fas fa-comment-alt me-2"></i>Reason (Optional)
+                    </h6>
+                    <div class="mb-4">
+                        <textarea name="reason" class="form-control bg-light border-0" rows="3"
+                            placeholder="Provide any additional information about this batch request..." {% if existing_pending %}disabled{% endif %}></textarea>
+                    </div>
+
+                    <!-- Info Alert -->
+                    <div class="alert alert-info border-0 d-flex align-items-center mb-4 rounded-3" role="alert">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <div class="small">This request will be reviewed by an administrator. You will be notified once
+                            it's approved.</div>
+                    </div>
+
+                    <!-- Buttons -->
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary px-4 rounded-pill fw-bold" {% if existing_pending %}disabled{% endif %}>
+                            <i class="fas fa-paper-plane me-2"></i>Submit Request
+                        </button>
+                        <a href="{% url 'batch_list' %}" class="btn btn-outline-secondary px-4 rounded-pill">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sidebar Info -->
+    <div class="col-lg-4">
+        <div class="card border-0 shadow-sm rounded-4 bg-light">
+            <div class="card-body p-4">
+                <h6 class="fw-bold mb-3"><i class="fas fa-question-circle me-2 text-primary"></i>How it works</h6>
+                <ol class="ps-3 mb-0 small text-secondary">
+                    <li class="mb-2">Enter the number of devices you need for each type</li>
+                    <li class="mb-2">Submit your request with an optional reason</li>
+                    <li class="mb-2">An administrator will review your request</li>
+                    <li class="mb-2">Once approved, a new batch will be created</li>
+                    <li>The batch devices will be available for use</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,1685 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}System-Wide Mapping Configuration{% endblock %}
+{% block page_title %}System-Wide Mapping Configuration{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <style>
+        /* Fix for dropdown clipping inside cards */
+        .card,
+        .step-content,
+        .card-body {
+            overflow: visible !important;
+        }
+
+        /* Custom Dropdown Styling - Inline/Accordion Style */
+        .custom-dropdown-menu {
+            position: relative !important;
+            width: 100%;
+            z-index: 5 !important;
+
+            /* Animation State: Closed */
+            display: block !important;
+            max-height: 0;
+            opacity: 0;
+            overflow: hidden;
+            transform: translateY(-10px);
+            transition: all 0.35s cubic-bezier(0.25, 0.8, 0.25, 1);
+
+            /* Visuals */
+            border-radius: 12px !important;
+            box-shadow: none !important;
+            border: none !important;
+            margin-top: 0 !important;
+            padding: 0 !important;
+            background-color: #fff;
+        }
+
+        .custom-dropdown-menu.show {
+            max-height: 600px;
+            /* Large enough to fit content */
+            opacity: 1;
+            transform: translateY(0);
+            margin-top: 10px !important;
+            border: 1px solid #f0f0f0 !important;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.03) !important;
+        }
+
+        .device-item {
+            transition: all 0.2s ease;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .device-item:last-child {
+            border-bottom: none;
+        }
+
+        .device-item:hover {
+            background-color: #f8f9fa;
+            transform: padding-left 5px;
+            /* Subtle visual cue */
+        }
+
+        /* Custom Checkbox Style */
+        .md-checkbox {
+            cursor: pointer;
+            width: 1.1em;
+            height: 1.1em;
+            margin-top: 0.15em;
+        }
+
+        .dropdown-toggle::after {
+            transition: transform 0.2s ease;
+        }
+
+        .dropdown-toggle.show::after {
+            transform: rotate(180deg);
+        }
+    </style>
+
+    <!-- Stepper / Progress Bar -->
+    <div class="card border-0 shadow-sm rounded-4 mb-4">
+        <div class="card-body p-4">
+            <div class="position-relative m-4">
+                <div class="progress" style="height: 2px;">
+                    <div class="progress-bar" role="progressbar" style="width: 0%;" id="progressBar"></div>
+                </div>
+                <!-- Steps (6 steps: 0%, 20%, 40%, 60%, 80%, 100%) -->
+                <button type="button"
+                    class="position-absolute top-0 translate-middle btn btn-sm btn-primary rounded-pill"
+                    style="width: 2rem; height:2rem; left: 0%;">1</button>
+                <div class="position-absolute top-0 translate-middle mt-4 pt-1 small text-primary fw-bold"
+                    style="left: 0%;">Config</div>
+
+                <button type="button"
+                    class="position-absolute top-0 translate-middle btn btn-sm btn-secondary rounded-pill step-btn"
+                    style="width: 2rem; height:2rem; left: 20%;">2</button>
+                <div class="position-absolute top-0 translate-middle mt-4 pt-1 small text-secondary fw-bold"
+                    style="left: 20%;">Dispensers</div>
+
+                <button type="button"
+                    class="position-absolute top-0 translate-middle btn btn-sm btn-secondary rounded-pill step-btn"
+                    style="width: 2rem; height:2rem; left: 40%;">3</button>
+                <div class="position-absolute top-0 translate-middle mt-4 pt-1 small text-secondary fw-bold"
+                    style="left: 40%;">LEDs</div>
+
+                <button type="button"
+                    class="position-absolute top-0 translate-middle btn btn-sm btn-secondary rounded-pill step-btn"
+                    style="width: 2rem; height:2rem; left: 60%;">4</button>
+                <div class="position-absolute top-0 translate-middle mt-4 pt-1 small text-secondary fw-bold"
+                    style="left: 60%;">Brokers (In)</div>
+
+                <button type="button"
+                    class="position-absolute top-0 translate-middle btn btn-sm btn-secondary rounded-pill step-btn"
+                    style="width: 2rem; height:2rem; left: 80%;">5</button>
+                <div class="position-absolute top-0 translate-middle mt-4 pt-1 small text-secondary fw-bold"
+                    style="left: 80%;">Brokers (Out)</div>
+
+                <button type="button"
+                    class="position-absolute top-0 translate-middle btn btn-sm btn-secondary rounded-pill step-btn"
+                    style="width: 2rem; height:2rem; left: 100%;">6</button>
+                <div class="position-absolute top-0 translate-middle mt-4 pt-1 small text-secondary fw-bold"
+                    style="left: 100%;">Preview</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Wizard Steps Container -->
+    <div id="wizardSteps">
+
+        <!-- STEP 1: Device Configuration -->
+        <div id="step1" class="step-content">
+            <div class="card border-0 shadow-sm rounded-4 mb-4">
+                <div class="card-header bg-white border-0 pt-4 pb-0">
+                    <h5 class="fw-bold mb-0">Device Configuration</h5>
+                    <p class="text-secondary small">Select your branch to begin mapping.</p>
+                </div>
+                <div class="card-body p-4">
+                    <div class="row g-4 align-items-end">
+                        <div class="col-lg-4">
+                            <div class="mb-3">
+                                <label class="form-label text-secondary small fw-bold">Company <span
+                                        class="text-danger">*</span></label>
+                                <select id="company_id" class="form-select bg-light border-0 rounded-3" required>
+                                    {% for company in companies %}
+                                    <option value="{{ company.id }}">{{ company.company_name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+
+                            {% if is_dealer_view %}
+                            <div class="mb-3 bg-light-subtle p-3 rounded-3 border">
+                                <label class="form-label text-primary small fw-bold">Select Dealer Customer <span
+                                        class="text-danger">*</span></label>
+                                <select id="dealerCustomerSelect"
+                                    class="form-select border-primary shadow-sm rounded-3">
+                                    <option value="">-- Select Customer --</option>
+                                    {% for dc in dealer_customers %}
+                                    <option value="{{ dc.id }}">{{ dc.company_name }} ({{ dc.customer_id }})</option>
+                                    {% endfor %}
+                                </select>
+                                <div class="form-text x-small text-muted mt-1">Select a customer to map their devices.
+                                    Branch selection is disabled when mapping for customers.</div>
+                            </div>
+                            {% endif %}
+
+                            <div id="branchSelectContainer" {% if is_dealer_view %}style="display:none;" {% endif %}>
+                                <label class="form-label text-secondary small fw-bold">Select Branch <span
+                                        class="text-danger">*</span></label>
+                                <select id="branchSelect" class="form-select bg-light border-0 rounded-3">
+                                    {% for b in branches %}
+                                    <option value="{{ b.id }}" {% if forloop.first %}selected{% endif %}>
+                                        {{ b.branch_name }}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            
+                            <div class="mb-3 mt-3">
+                                <label class="form-label text-secondary small fw-bold">Group Name <span
+                                        class="text-danger">*</span></label>
+                                <input type="text" id="group_name" name="group_name"
+                                    class="form-control bg-light border-0 rounded-3" 
+                                    placeholder="e.g. Counter 1 Setup" required>
+                            </div>
+                        </div>
+
+                        <div class="col">
+                            <div class="row g-3">
+                                <div class="col">
+                                    <label class="form-label text-secondary small fw-bold">Token Dispensers</label>
+                                    <input type="number" id="qty_dispenser"
+                                        class="form-control bg-light border-0 rounded-3" value="1" min="0">
+                                </div>
+                                <div class="col">
+                                    <label class="form-label text-secondary small fw-bold">Keypads</label>
+                                    <input type="number" id="qty_keypad"
+                                        class="form-control bg-light border-0 rounded-3" value="1" min="0">
+                                </div>
+                                <div class="col">
+                                    <label class="form-label text-secondary small fw-bold">LEDs</label>
+                                    <input type="number" id="qty_led" class="form-control bg-light border-0 rounded-3"
+                                        value="0" min="0">
+                                </div>
+                                <div class="col">
+                                    <label class="form-label text-secondary small fw-bold">TVs</label>
+                                    <input type="number" id="qty_tv" class="form-control bg-light border-0 rounded-3"
+                                        value="1" min="0">
+                                </div>
+                                <div class="col">
+                                    <label class="form-label text-secondary small fw-bold">Brokers</label>
+                                    <input type="number" id="qty_broker"
+                                        class="form-control bg-light border-0 rounded-3" value="0" min="0">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Helper Alert Container -->
+                        <div class="col-12 mt-4" id="alertWrapper">
+                            <!-- Dynamic Alerts -->
+                        </div>
+
+                        <div class="col-12 mt-4 text-end">
+                            <button class="btn btn-primary rounded-pill px-5 py-2 fw-bold shadow-sm next-step"
+                                data-next="step2">
+                                Start Mapping <i class="fas fa-arrow-right ms-2"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- STEP 2: Dispenser Mapping -->
+        <div id="step2" class="step-content" style="display: none;">
+            <div class="card border-0 shadow-sm rounded-4 mb-4">
+                <div class="card-header bg-white border-0 pt-4 pb-0">
+                    <h5 class="fw-bold mb-0">Dispenser Mapping</h5>
+                    <p class="text-secondary small">Map Dispenser Buttons to Keypads.</p>
+                    <div id="dispenserSummary" class="badge bg-primary-subtle text-primary mb-2"></div>
+                </div>
+                <div class="card-body p-4">
+                    <div class="mb-4">
+                        <label class="form-label text-secondary small fw-bold">Select Dispenser(s) to Map</label>
+                        <div id="dispenserSelectorContainer"></div>
+                    </div>
+                    <div id="dispenserMappingContainer" class="row g-4" style="min-height: 100px;">
+                        <!-- Dynamic Dispenser Card will go here -->
+                    </div>
+                </div>
+                <div class="card-footer bg-white border-0 pt-2 pb-4 px-4 d-flex justify-content-between">
+                    <button class="btn btn-outline-secondary rounded-pill px-4 prev-step" data-prev="step1">
+                        <i class="fas fa-arrow-left me-2"></i> Back
+                    </button>
+                    <button class="btn btn-primary rounded-pill px-4 fw-bold shadow-sm next-step" data-next="step3">
+                        Next <i class="fas fa-arrow-right ms-2"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- STEP 3: Keypad Mapping (LEDs) -->
+        <div id="step3" class="step-content" style="display: none;">
+            <div class="card border-0 shadow-sm rounded-4 mb-4">
+                <div class="card-header bg-white border-0 pt-4 pb-0">
+                    <h5 class="fw-bold mb-0">Keypad → LED Mapping</h5>
+                    <p class="text-secondary small">Map Keypad Buttons to LEDs.</p>
+                </div>
+                <div class="card-body p-4">
+                    <div class="mb-4">
+                        <div id="keypadLEDSelectorContainer">
+                            <!-- Auto-loaded device badges or fallback -->
+                        </div>
+                    </div>
+                    <div id="keypadLEDMappingContainer" class="row g-4">
+                        <!-- Dynamic Keypad Card for LEDs will go here -->
+                    </div>
+                </div>
+                <div class="card-footer bg-white border-0 pt-2 pb-4 px-4 d-flex justify-content-between">
+                    <button class="btn btn-outline-secondary rounded-pill px-4 prev-step" data-prev="step2">
+                        <i class="fas fa-arrow-left me-2"></i> Back
+                    </button>
+                    <button class="btn btn-primary rounded-pill px-4 fw-bold shadow-sm next-step" data-next="step4">
+                        Next <i class="fas fa-arrow-right ms-2"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- STEP 4: Keypad Mapping (Brokers) -->
+        <div id="step4" class="step-content" style="display: none;">
+            <div class="card border-0 shadow-sm rounded-4 mb-4">
+                <div class="card-header bg-white border-0 pt-4 pb-0">
+                    <h5 class="fw-bold mb-0">Keypad → Broker Mapping</h5>
+                    <p class="text-secondary small">Map Keypad Buttons to Brokers.</p>
+                </div>
+                <div class="card-body p-4">
+                    <div class="mb-4">
+                        <div id="keypadBrokerSelectorContainer">
+                            <!-- Auto-loaded device badges or fallback -->
+                        </div>
+                    </div>
+                    <div id="keypadBrokerMappingContainer" class="row g-4">
+                        <!-- Dynamic Keypad Card for Brokers will go here -->
+                    </div>
+                </div>
+                <div class="card-footer bg-white border-0 pt-2 pb-4 px-4 d-flex justify-content-between">
+                    <button class="btn btn-outline-secondary rounded-pill px-4 prev-step" data-prev="step3">
+                        <i class="fas fa-arrow-left me-2"></i> Back
+                    </button>
+                    <button class="btn btn-primary rounded-pill px-4 fw-bold shadow-sm next-step" data-next="step5">
+                        Next <i class="fas fa-arrow-right ms-2"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- STEP 5: Broker Mapping -->
+        <div id="step5" class="step-content" style="display: none;">
+            <div class="card border-0 shadow-sm rounded-4 mb-4">
+                <div class="card-header bg-white border-0 pt-4 pb-0">
+                    <h5 class="fw-bold mb-0">Broker Mapping</h5>
+                    <p class="text-secondary small">Map Brokers to TVs.</p>
+                </div>
+                <div class="card-body p-4">
+                    <div class="mb-4">
+                        <div id="brokerSelectorContainer"></div>
+                    </div>
+                    <div id="brokerMappingContainer" class="row g-4">
+                        <!-- Dynamic Broker Card will go here -->
+                    </div>
+                </div>
+                <div class="card-footer bg-white border-0 pt-2 pb-4 px-4 d-flex justify-content-between">
+                    <button class="btn btn-outline-secondary rounded-pill px-4 prev-step" data-prev="step4">
+                        <i class="fas fa-arrow-left me-2"></i> Back
+                    </button>
+                    <button class="btn btn-primary rounded-pill px-4 fw-bold shadow-sm next-step" data-next="step6">
+                        Next <i class="fas fa-arrow-right ms-2"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- STEP 6: Mapping Preview -->
+        <div id="step6" class="step-content" style="display: none;">
+            <div class="card border-0 shadow-sm rounded-4 mb-4">
+                <div class="card-header bg-white border-0 pt-4 pb-0">
+                    <h5 class="fw-bold mb-0"><i class="fas fa-eye me-2 text-primary"></i>Mapping Preview</h5>
+                    <p class="text-secondary small">Review your device group mappings before finishing.</p>
+                </div>
+                <div class="card-body p-4">
+                    <div id="mappingPreviewContainer">
+                        <!-- Dynamic group preview will go here -->
+                    </div>
+                </div>
+                <div class="card-footer bg-white border-0 pt-2 pb-4 px-4 d-flex justify-content-between">
+                    <button class="btn btn-outline-secondary rounded-pill px-4 prev-step" data-prev="step5">
+                        <i class="fas fa-arrow-left me-2"></i> Back
+                    </button>
+                    <button class="btn btn-success rounded-pill px-5 fw-bold shadow-sm" onclick="createGroupMapping()">
+                        <i class="fas fa-check me-2"></i> Finish & Save
+                    </button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const userRole = "{{ request.user.role }}";
+        const isDealerView = "{{ is_dealer_view|yesno:'true,false' }}" === "true";
+        const userCompanyId = "{% firstof request.user.company_relation.id request.user.branch_relation.company.id %}";
+        const userBranchId = "{{ request.user.branch_relation.id|default:'' }}";
+
+        // --- Init State ---
+        let branchDevices = {};
+        let currentBranchId = null;
+        let currentDealerCustomerId = null;
+        let mappings = []; // All DB mappings (used for validation only)
+        let sessionMappings = []; // Only mappings created in the CURRENT wizard session (used for pre-population)
+
+        // Sets to track which devices are enabled for the next step (globally collected)
+        let activeKeypadIds = new Set();
+        let activeBrokerIds = new Set();
+
+        // Track ButtonMapping IDs saved during this wizard session so the
+        // backend can skip auto-generation on Finish & Save.
+        let sessionMappingIds = [];
+
+        // Device IDs pre-loaded from an existing GroupMapping (for auto-check in selectors)
+        let existingGroupDeviceIds = new Set();
+
+        // --- Stepper Logic ---
+        const steps = ['step1', 'step2', 'step3', 'step4', 'step5', 'step6'];
+
+        function updateStepper(stepIndex) {
+            // Update Progress Bar
+            const progress = (stepIndex / (steps.length - 1)) * 100;
+            document.getElementById('progressBar').style.width = `${progress}%`;
+
+            // Update Buttons
+            const indicators = document.querySelector('.card-body .position-relative').querySelectorAll('button');
+
+            indicators.forEach((btn, idx) => {
+                if (idx <= stepIndex) {
+                    btn.classList.remove('btn-secondary');
+                    btn.classList.add('btn-primary');
+                } else {
+                    btn.classList.remove('btn-primary');
+                    btn.classList.add('btn-secondary');
+                }
+            });
+        }
+
+        // --- Navigation Handlers ---
+        document.querySelectorAll('.next-step').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const currentStepId = btn.closest('.step-content').id;
+                const nextStepId = btn.dataset.next;
+
+                // --- Step Transition Logic ---
+
+                if (currentStepId === 'step1') {
+                    const success = await loadDeviceData();
+                    if (!success) return;
+                }
+
+                if (currentStepId === 'step2') {
+                    collectActiveKeypadsFromMappings();
+                }
+
+                // Transition from LED mapping to Broker mapping doesn't change active Keypads,
+                // but we should ensure data is fresh if needed.
+                if (currentStepId === 'step4') { // keypads (broker) -> brokers (out)
+                    collectActiveBrokersFromMappings();
+                }
+
+                showStep(nextStepId);
+            });
+        });
+
+        document.querySelectorAll('.prev-step').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const prevStepId = btn.dataset.prev;
+                showStep(prevStepId);
+            });
+        });
+
+        function showStep(stepId) {
+            // Hide all
+            steps.forEach(id => document.getElementById(id).style.display = 'none');
+            // Show target
+            document.getElementById(stepId).style.display = 'block';
+
+            // Trigger specific renders
+            if (stepId === 'step2') renderDispenserSelector();
+            if (stepId === 'step3') renderKeypadLEDSelector();
+            if (stepId === 'step4') renderKeypadBrokerSelector();
+            if (stepId === 'step5') renderBrokerSelector();
+            if (stepId === 'step6') renderMappingPreview();
+
+            // Update Stepper UI
+            updateStepper(steps.indexOf(stepId));
+        }
+
+        // Helper: Collect Active devices from global mappings array
+        function collectActiveKeypadsFromMappings() {
+            activeKeypadIds.clear();
+            const keypadType = 'KEYPAD';
+            // Only use sessionMappings (current wizard session) — not full DB history
+            sessionMappings.forEach(m => {
+                const targetDev = findDeviceById(m.target_device_id);
+                if (targetDev && targetDev.device_type === keypadType) {
+                    activeKeypadIds.add(targetDev.id);
+                }
+            });
+        }
+
+        function collectActiveBrokersFromMappings() {
+            activeBrokerIds.clear();
+            const brokerType = 'BROKER';
+            // Only use sessionMappings (current wizard session) — not full DB history
+            sessionMappings.forEach(m => {
+                const targetDev = findDeviceById(m.target_device_id);
+                if (targetDev && targetDev.device_type === brokerType) {
+                    activeBrokerIds.add(targetDev.id);
+                }
+            });
+        }
+
+        // --- Data Loading ---
+        async function loadDeviceData() {
+            const branchSelect = document.getElementById('branchSelect');
+            const dealerCustomerSelect = document.getElementById('dealerCustomerSelect'); // Might be null
+
+            currentBranchId = branchSelect ? branchSelect.value : null;
+            currentDealerCustomerId = dealerCustomerSelect ? dealerCustomerSelect.value : null;
+
+            if (isDealerView) {
+                if (!currentDealerCustomerId) {
+                    alert('Please select a Dealer Customer first.');
+                    return false;
+                }
+                currentBranchId = null; // Ensure branch ID is null if using DC
+            } else {
+                if (!currentBranchId) {
+                    alert('Please select a branch first.');
+                    return false;
+                }
+            }
+
+            try {
+                let apiUrl;
+                if (currentDealerCustomerId) {
+                    apiUrl = `/CallQ/config/api/dealer-customer/${currentDealerCustomerId}/devices/`;
+                } else {
+                    apiUrl = `/CallQ/config/api/branch/${currentBranchId}/devices/`;
+                }
+
+                let resp = await fetch(apiUrl);
+                if (!resp.ok) {
+                    // Fallback for relative paths if needed, though absolute is safer
+                    // Try constructing relative if failed? No, rely on absolute checks or user report.
+                    if (!currentDealerCustomerId) {
+                        apiUrl = `../api/branch/${currentBranchId}/devices/`;
+                        resp = await fetch(apiUrl);
+                    }
+                }
+                if (!resp.ok) throw new Error('Failed to fetch devices');
+
+                const data = await resp.json();
+
+                // Group devices
+                branchDevices = data.devices.reduce((acc, d) => {
+                    acc[d.device_type] = acc[d.device_type] || [];
+                    acc[d.device_type].push(d);
+                    return acc;
+                }, {});
+
+                // Checks for specific warning conditions
+                const alertWrapper = document.getElementById('alertWrapper');
+                alertWrapper.innerHTML = '';
+
+                const ledCount = (branchDevices['LED'] || []).length;
+                const brokerCount = (branchDevices['BROKER'] || []).length;
+
+                let warnings = [];
+                if (ledCount === 0) warnings.push("<b>0 LEDs available</b>");
+                if (brokerCount === 0) warnings.push("<b>0 Brokers available</b>");
+
+                if (warnings.length > 0) {
+                    alertWrapper.innerHTML = `
+                        <div class="alert alert-warning border-0 shadow-sm rounded-3">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            Warning: ${warnings.join(' and ')} in this list. Mapping options will be limited.
+                        </div>
+                    `;
+                }
+
+                await loadMappings();
+                // Auto-fetch existing GroupMapping to pre-populate wizard
+                if (currentBranchId) await loadGroupMappingData();
+
+                return true;
+            } catch (err) {
+                return false;
+            }
+        }
+
+        async function loadMappings() {
+            const ts = new Date().getTime();
+            let apiUrl;
+
+            if (currentDealerCustomerId) {
+                apiUrl = `/CallQ/config/api/dealer-customer/${currentDealerCustomerId}/mappings/?t=${ts}`;
+            } else {
+                apiUrl = `/CallQ/config/api/branch/${currentBranchId}/mappings/?t=${ts}`;
+            }
+
+            let resp = await fetch(apiUrl);
+            if (!resp.ok && !currentDealerCustomerId) {
+                apiUrl = `../api/branch/${currentBranchId}/mappings/?t=${ts}`;
+                resp = await fetch(apiUrl);
+            }
+            const data = await resp.json();
+            mappings = data.mappings || [];
+            // Reset session mappings whenever a new branch/customer is loaded
+            sessionMappings = [];
+            sessionMappingIds = [];
+            existingGroupDeviceIds = new Set();
+
+            // Initial collection
+            collectActiveKeypadsFromMappings();
+            collectActiveBrokersFromMappings();
+        }
+
+        // --- Auto-fetch existing GroupMapping for a branch ---
+        async function loadGroupMappingData() {
+            try {
+                const resp = await fetch(`/CallQ/config/api/branch/${currentBranchId}/group-mapping/`);
+                if (!resp.ok) return;
+                const data = await resp.json();
+                if (!data.exists) return;
+
+                // Pre-fill qty inputs from the existing group
+                document.getElementById('qty_dispenser').value = data.no_of_dispensers;
+                document.getElementById('qty_keypad').value    = data.no_of_keypads;
+                document.getElementById('qty_led').value       = data.no_of_leds;
+                document.getElementById('qty_broker').value    = data.no_of_brokers;
+                document.getElementById('qty_tv').value        = data.no_of_tvs;
+
+                // Pre-fill group name if blank
+                const gnInput = document.getElementById('group_name');
+                if (gnInput && !gnInput.value.trim()) gnInput.value = data.group_name;
+
+                // Collect device IDs so renderMultiSelect can auto-check them
+                existingGroupDeviceIds = new Set();
+                Object.values(data.devices_by_type).forEach(devList =>
+                    devList.forEach(d => existingGroupDeviceIds.add(String(d.id)))
+                );
+
+                // Add existing button mappings to sessionMappings for hydration
+                data.button_mappings.forEach(m => {
+                    if (!sessionMappings.find(s => s.source_device_id == m.source_device_id && s.source_button === m.source_button)) {
+                        sessionMappings.push({
+                            source_device_id: m.source_device_id,
+                            source_button:    m.source_button,
+                            target_device_id: m.target_device_id,
+                        });
+                    }
+                    if (!sessionMappingIds.includes(m.id)) sessionMappingIds.push(m.id);
+                });
+
+                collectActiveKeypadsFromMappings();
+                collectActiveBrokersFromMappings();
+
+                // Show info banner
+                const alertWrapper = document.getElementById('alertWrapper');
+                if (alertWrapper) {
+                    alertWrapper.innerHTML += `
+                        <div class="alert alert-info border-0 shadow-sm rounded-3 mt-2">
+                            <i class="fas fa-info-circle me-2"></i>
+                            <strong>Group "${data.group_name}" loaded.</strong>
+                            Devices and mappings pre-filled — review and re-save to update.
+                        </div>
+                    `;
+                }
+            } catch (err) {
+                console.warn('loadGroupMappingData failed:', err);
+            }
+        }
+
+        // --- Render Functions (Custom Multi-select with Search) ---
+
+        function renderMultiSelect(containerId, devices, onSelectionChange, placeholder = "Select Devices...", maxLimit = null) {
+            const container = document.getElementById(containerId);
+            container.innerHTML = '';
+            // container.style.position = 'relative'; // Removed to avoid layout issues
+
+            // Dropdown Main Button
+            const dropdown = document.createElement('div');
+            dropdown.className = 'dropdown w-100 position-relative'; // Add relative here for anchor
+
+            const btn = document.createElement('button');
+            btn.className = 'btn btn-light w-100 text-start d-flex justify-content-between align-items-center border shadow-sm rounded-3 py-2 dropdown-toggle';
+            btn.type = 'button';
+            btn.id = `${containerId}-btn`;
+            btn.setAttribute('aria-expanded', 'false');
+
+            btn.innerHTML = `<span class="text-truncate" id="${containerId}-label">${placeholder}</span>`;
+
+            // Dropdown Menu
+            // Dropdown Menu
+            const menu = document.createElement('div');
+            // Added custom-dropdown-menu class for animations
+            menu.className = 'dropdown-menu w-100 p-0 border-0 mt-2 custom-dropdown-menu';
+            menu.style.overflowY = 'auto'; // Keep overflow auto
+            menu.id = `${containerId}-menu`;
+
+            // Manual Toggle Logic (Robust Fallback)
+            btn.onclick = (e) => {
+                e.stopPropagation();
+                // Close all other open menus first
+                document.querySelectorAll('.dropdown-menu.show').forEach(m => {
+                    if (m.id !== menu.id) m.classList.remove('show');
+                });
+
+                menu.classList.toggle('show');
+                const isShown = menu.classList.contains('show');
+                btn.setAttribute('aria-expanded', isShown);
+                btn.classList.toggle('show', isShown);
+            };
+
+            // Close when clicking outside
+            document.addEventListener('click', (e) => {
+                if (!dropdown.contains(e.target)) {
+                    menu.classList.remove('show');
+                    btn.classList.remove('show');
+                    btn.setAttribute('aria-expanded', 'false');
+                }
+            });
+
+            if (devices.length === 0) {
+                menu.innerHTML = '<div class="text-muted small text-center py-3">No devices found</div>';
+                btn.classList.add('disabled');
+                btn.disabled = true;
+            } else {
+                // Search Header
+                const searchDiv = document.createElement('div');
+                searchDiv.className = 'p-3 sticky-top bg-white border-bottom'; // Increased padding
+                searchDiv.style.zIndex = '10'; // Ensure sticky works well
+                searchDiv.innerHTML = `
+                    <div class="input-group">
+                        <span class="input-group-text bg-light border-end-0"><i class="fas fa-search text-muted"></i></span>
+                        <input type="text" class="form-control bg-light border-start-0 ps-0" placeholder="Search devices..." id="${containerId}-search">
+                    </div>
+                `;
+                menu.appendChild(searchDiv);
+
+                searchDiv.onclick = (e) => e.stopPropagation();
+
+                // "Select All" Option
+                const selectAllDiv = document.createElement('div');
+                selectAllDiv.className = 'd-flex align-items-center px-3 py-2 hover-bg-light border-bottom cursor-pointer bg-light-subtle';
+                selectAllDiv.innerHTML = `
+                    <div class="form-check w-100 d-flex align-items-center m-0">
+                        <input class="form-check-input md-checkbox me-2" type="checkbox" id="${containerId}-all">
+                        <label class="form-check-label small fw-bold text-uppercase text-secondary flex-grow-1 cursor-pointer" style="font-size: 0.75rem; letter-spacing: 0.5px;" for="${containerId}-all">Select All</label>
+                    </div>
+                `;
+                menu.appendChild(selectAllDiv);
+
+                const listContainer = document.createElement('div');
+                listContainer.id = `${containerId}-list`;
+
+                devices.forEach(d => {
+                    const item = document.createElement('div');
+                    item.className = 'device-item d-flex align-items-center px-3 py-2 cursor-pointer'; // Added device-item and layout classes
+                    const displayLabel = d.get_display_identifier;
+                    const secondaryLabel = d.display_name ? d.serial_number : '';
+                    item.dataset.searchText = `${displayLabel} ${secondaryLabel} ${d.device_model || ''}`.toLowerCase();
+                    item.innerHTML = `
+                        <div class="form-check w-100 d-flex align-items-center m-0">
+                             <input class="form-check-input md-checkbox device-check me-3" type="checkbox" value="${d.id}" id="${containerId}-${d.id}">
+                             <div>
+                                 <label class="form-check-label small fw-semibold text-dark cursor-pointer d-block" for="${containerId}-${d.id}">${displayLabel}</label>
+                                 <small class="text-muted" style="font-size: 0.75rem;">
+                                    ${secondaryLabel ? secondaryLabel + ' • ' : ''}${d.device_model || 'Unknown Model'} ${d.token_type ? '• ' + d.token_type.replace('_BUTTON', ' B') : ''}
+                                 </small>
+                             </div>
+                        </div>
+                    `;
+                    listContainer.appendChild(item);
+                });
+                menu.appendChild(listContainer);
+
+                // --- Event Handlers ---
+
+                // Search Logic
+                const searchInput = searchDiv.querySelector(`#${containerId}-search`);
+                searchInput.addEventListener('input', (e) => {
+                    const term = e.target.value.toLowerCase();
+                    const items = listContainer.querySelectorAll('.device-item');
+                    items.forEach(item => {
+                        if (item.dataset.searchText.includes(term)) {
+                            // Reset display to allow CSS class (d-flex) to take over
+                            item.style.removeProperty('display');
+                        } else {
+                            item.style.display = 'none';
+                        }
+                    });
+                });
+
+
+                // Checkbox Logic
+                const checkboxes = listContainer.querySelectorAll('.device-check');
+                const selectAllCheck = selectAllDiv.querySelector(`#${containerId}-all`);
+                const labelSpan = btn.querySelector('span');
+
+                // Auto-check devices from an existing GroupMapping
+                checkboxes.forEach(cb => {
+                    if (existingGroupDeviceIds.has(String(cb.value))) cb.checked = true;
+                });
+
+                function updateLabel() {
+                    const checked = Array.from(checkboxes).filter(c => c.checked);
+                    if (checked.length === 0) {
+                        labelSpan.textContent = placeholder;
+                        labelSpan.classList.remove('fw-bold');
+                        btn.classList.remove('border-primary', 'bg-primary-subtle');
+                    } else if (checked.length === devices.length) {
+                        labelSpan.textContent = `All Selected (${checked.length})`;
+                        labelSpan.classList.add('fw-bold');
+                        btn.classList.add('border-primary', 'bg-primary-subtle');
+                    } else {
+                        labelSpan.textContent = `${checked.length} Selected`;
+                        labelSpan.classList.add('fw-bold');
+                        btn.classList.add('border-primary', 'bg-primary-subtle');
+                    }
+
+                    const selectedIds = checked.map(c => c.value);
+                    if (onSelectionChange) onSelectionChange(selectedIds);
+                }
+
+                // Trigger initial render for pre-checked items
+                updateLabel();
+
+                if (selectAllCheck) {
+                    selectAllDiv.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        // Prevent Select All if limit exists
+                        if (maxLimit !== null) {
+                            alert(`Cannot use 'Select All' because the limit is set to ${maxLimit} devices.`);
+                            return;
+                        }
+
+                        if (e.target !== selectAllCheck) {
+                            selectAllCheck.checked = !selectAllCheck.checked;
+                        }
+                        const isChecked = selectAllCheck.checked;
+                        const visibleItems = Array.from(listContainer.querySelectorAll('.device-item')).filter(i => i.style.display !== 'none');
+                        visibleItems.forEach(item => {
+                            const cb = item.querySelector('.device-check');
+                            cb.checked = isChecked;
+                        });
+                        updateLabel();
+                    });
+                }
+
+                const items = listContainer.querySelectorAll('.device-item');
+                items.forEach(item => {
+                    item.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        if (e.target.tagName !== 'INPUT') {
+                            const cb = item.querySelector('.device-check');
+                            // Pre-check limit
+                            if (!cb.checked && maxLimit !== null) {
+                                const currentChecked = Array.from(checkboxes).filter(c => c.checked).length;
+                                if (currentChecked >= maxLimit) {
+                                    alert(`You can only select up to ${maxLimit} devices as per Configuration.`);
+                                    return;
+                                }
+                            }
+
+                            cb.checked = !cb.checked;
+                            updateLabel();
+                        }
+                    });
+                    const cb = item.querySelector('.device-check');
+                    cb.addEventListener('click', (e) => {
+                        // Pre-check limit for direct clicks
+                        if (e.target.checked && maxLimit !== null) {
+                            const currentChecked = Array.from(checkboxes).filter(c => c.checked).length;
+                            // currentChecked includes the one just clicked? Yes.
+                            // Wait, if it's already checked, it passed the check?
+                            // No, click happens before change?
+                            // Let's safe-guard: count OTHER checked items.
+                            const otherChecked = Array.from(checkboxes).filter(c => c !== e.target && c.checked).length;
+                            if (otherChecked >= maxLimit) {
+                                e.preventDefault();
+                                alert(`You can only select up to ${maxLimit} devices as per Configuration.`);
+                                return;
+                            }
+                        }
+                        e.stopPropagation();
+                        updateLabel();
+                    });
+                    // Change event catches keyboard interactions too
+                    // cb.addEventListener('change', updateLabel); // Handled by click
+                });
+            }
+
+            dropdown.appendChild(btn);
+            dropdown.appendChild(menu);
+            container.appendChild(dropdown);
+        }
+
+        function renderDispenserSelector() {
+            const container = document.getElementById('dispenserMappingContainer');
+            const availableDispensers = branchDevices['TOKEN_DISPENSER'] || [];
+
+            const summary = document.getElementById('dispenserSummary');
+            summary.textContent = `Available: ${availableDispensers.length}`;
+
+            const qty = parseInt(document.getElementById('qty_dispenser').value) || 0;
+            renderMultiSelect('dispenserSelectorContainer', availableDispensers, (selectedIds) => {
+                // DEBUG: Trace selection
+                container.innerHTML = '';
+                selectedIds.forEach(id => {
+                    const device = availableDispensers.find(d => d.id == id);
+                    if (device) {
+                        try {
+                            const card = createDeviceCard(device, 'dispenser');
+                            if (card instanceof Node) {
+                                container.appendChild(card);
+                                // DEBUG: Check visibility
+                                // const style = window.getComputedStyle(card);
+                                // console.log('Card Display:', style.display, 'Visibility:', style.visibility);
+                            } else {
+                                console.error('Created card is not a valid DOM Node:', card);
+                            }
+                        } catch (e) {
+                            console.error('Error in card creation/append:', e);
+                            alert('Card Error: ' + e.message);
+                        }
+                    }
+                });
+
+                // Force show
+                container.classList.remove('d-none');
+                container.style.display = 'flex';
+
+
+
+            }, 'Select Dispensers...', qty);
+        }
+
+        function renderKeypadLEDSelector() {
+            const container = document.getElementById('keypadLEDMappingContainer');
+            const selectorContainer = document.getElementById('keypadLEDSelectorContainer');
+            container.innerHTML = '';
+
+            if (activeKeypadIds.size === 0) {
+                selectorContainer.innerHTML = '<div class="alert alert-light text-center border small text-muted"><i class="fas fa-info-circle me-2"></i>Please complete mapping in Step 2 to unlock Keypads</div>';
+                return;
+            }
+
+            const availableKeypads = (branchDevices['KEYPAD'] || []).filter(k => activeKeypadIds.has(k.id));
+
+            // Auto-load: show devices as badges and render cards automatically
+            selectorContainer.innerHTML = renderAutoLoadedBadges(availableKeypads, 'Keypads (from Step 2)');
+
+            // Auto-render all device cards
+            availableKeypads.forEach(device => {
+                container.appendChild(createDeviceCard(device, 'keypad_led'));
+            });
+        }
+
+        function renderKeypadBrokerSelector() {
+            const container = document.getElementById('keypadBrokerMappingContainer');
+            const selectorContainer = document.getElementById('keypadBrokerSelectorContainer');
+            container.innerHTML = '';
+
+            if (activeKeypadIds.size === 0) {
+                selectorContainer.innerHTML = '<div class="alert alert-light text-center border small text-muted"><i class="fas fa-info-circle me-2"></i>Please select Keypads in previous steps</div>';
+                return;
+            }
+
+            const availableKeypads = (branchDevices['KEYPAD'] || []).filter(k => activeKeypadIds.has(k.id));
+
+            // Auto-load: show devices as badges and render cards automatically
+            selectorContainer.innerHTML = renderAutoLoadedBadges(availableKeypads, 'Keypads (from Step 2)');
+
+            // Auto-render all device cards
+            availableKeypads.forEach(device => {
+                container.appendChild(createDeviceCard(device, 'keypad_broker'));
+            });
+        }
+
+        function renderBrokerSelector() {
+            const container = document.getElementById('brokerMappingContainer');
+            const selectorContainer = document.getElementById('brokerSelectorContainer');
+            container.innerHTML = '';
+
+            if (activeBrokerIds.size === 0) {
+                selectorContainer.innerHTML = '<div class="alert alert-light text-center border small text-muted"><i class="fas fa-info-circle me-2"></i>Please complete mapping in Step 4 to unlock Brokers</div>';
+                return;
+            }
+
+            const availableBrokers = (branchDevices['BROKER'] || []).filter(b => activeBrokerIds.has(b.id));
+
+            // Auto-load: show devices as badges and render cards automatically
+            selectorContainer.innerHTML = renderAutoLoadedBadges(availableBrokers, 'Brokers (from Step 4)');
+
+            // Auto-render all device cards
+            availableBrokers.forEach(device => {
+                container.appendChild(createDeviceCard(device, 'broker'));
+            });
+        }
+
+        // --- Auto-load badge renderer ---
+        function renderAutoLoadedBadges(devices, label) {
+            if (devices.length === 0) return '';
+            let badges = devices.map(d =>
+                `<span class="badge bg-primary-subtle text-primary rounded-pill px-3 py-2 me-2 mb-2 d-inline-flex align-items-center">
+                    <i class="fas fa-microchip me-1"></i> ${d.get_display_identifier}
+                </span>`
+            ).join('');
+            return `
+                <div class="mb-3">
+                    <div class="d-flex align-items-center mb-2">
+                        <span class="badge bg-success-subtle text-success rounded-pill me-2"><i class="fas fa-check"></i></span>
+                        <span class="small fw-bold text-secondary">${label} — Auto-loaded ${devices.length} device(s)</span>
+                    </div>
+                    <div class="d-flex flex-wrap">${badges}</div>
+                </div>
+            `;
+        }
+
+        // --- Mapping Preview Renderer ---
+        function renderMappingPreview() {
+            const container = document.getElementById('mappingPreviewContainer');
+            container.innerHTML = '';
+
+            if (mappings.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center py-5">
+                        <i class="fas fa-unlink fa-3x text-muted mb-3"></i>
+                        <h6 class="text-muted">No Mappings Found</h6>
+                        <p class="text-muted small">Go back and create some device mappings.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            // Group mappings into families using connected-component logic
+            const visited = new Set();
+            const families = [];
+
+            function getFamilyDeviceIds(startId) {
+                const family = new Set([String(startId)]);
+                const queue = [String(startId)];
+                const vis = new Set();
+                while (queue.length > 0) {
+                    const cur = queue.shift();
+                    if (vis.has(cur)) continue;
+                    vis.add(cur);
+                    mappings.forEach(m => {
+                        const src = String(m.source_device_id);
+                        const tgt = String(m.target_device_id);
+                        if (src === cur && !family.has(tgt)) { family.add(tgt); queue.push(tgt); }
+                        if (tgt === cur && !family.has(src)) { family.add(src); queue.push(src); }
+                    });
+                }
+                return family;
+            }
+
+            // Collect all device IDs involved in mappings
+            const allDeviceIds = new Set();
+            mappings.forEach(m => {
+                allDeviceIds.add(String(m.source_device_id));
+                allDeviceIds.add(String(m.target_device_id));
+            });
+
+            allDeviceIds.forEach(id => {
+                if (visited.has(id)) return;
+                const familyIds = getFamilyDeviceIds(id);
+                familyIds.forEach(fid => visited.add(fid));
+                families.push(familyIds);
+            });
+
+            // Device type icons and colors
+            const typeConfig = {
+                'TOKEN_DISPENSER': { icon: 'fas fa-ticket-alt', color: '#0d6efd', bg: '#cfe2ff', label: 'Dispenser' },
+                'KEYPAD': { icon: 'fas fa-keyboard', color: '#198754', bg: '#d1e7dd', label: 'Keypad' },
+                'LED': { icon: 'fas fa-lightbulb', color: '#fd7e14', bg: '#ffe5d0', label: 'LED' },
+                'BROKER': { icon: 'fas fa-server', color: '#6610f2', bg: '#e2d9f3', label: 'Broker' },
+                'TV': { icon: 'fas fa-tv', color: '#dc3545', bg: '#f8d7da', label: 'TV' }
+            };
+
+            families.forEach((familyIds, idx) => {
+                // Group devices in this family by type
+                const devicesByType = {};
+                familyIds.forEach(id => {
+                    const dev = findDeviceById(id);
+                    if (dev) {
+                        if (!devicesByType[dev.device_type]) devicesByType[dev.device_type] = [];
+                        devicesByType[dev.device_type].push(dev);
+                    }
+                });
+
+                // Order: Dispenser → Keypad → LED → Broker → TV
+                const typeOrder = ['TOKEN_DISPENSER', 'KEYPAD', 'LED', 'BROKER', 'TV'];
+                const orderedTypes = typeOrder.filter(t => devicesByType[t] && devicesByType[t].length > 0);
+
+                let chainHTML = '<div class="d-flex flex-wrap align-items-center gap-2">';
+
+                orderedTypes.forEach((type, tIdx) => {
+                    const cfg = typeConfig[type] || { icon: 'fas fa-question', color: '#6c757d', bg: '#f8f9fa', label: type };
+                    const devices = devicesByType[type];
+
+                    chainHTML += `<div class="d-flex flex-column align-items-center">`;
+                    chainHTML += `<div class="text-center mb-1"><span class="badge rounded-pill" style="background:${cfg.bg}; color:${cfg.color}; font-size: 0.7rem;">${cfg.label}</span></div>`;
+                    chainHTML += `<div class="d-flex flex-wrap gap-1 justify-content-center">`;
+                    devices.forEach(dev => {
+                        chainHTML += `
+                            <div class="d-flex flex-column align-items-center px-3 py-2 rounded-3" style="background:${cfg.bg}; min-width: 80px;">
+                                <i class="${cfg.icon} mb-1" style="color:${cfg.color}; font-size: 1.2rem;"></i>
+                                <span class="small fw-bold text-truncate" style="color:${cfg.color}; max-width:120px; font-size:0.75rem;">${dev.get_display_identifier}</span>
+                            </div>
+                        `;
+                    });
+                    chainHTML += `</div></div>`;
+
+                    // Arrow between types
+                    if (tIdx < orderedTypes.length - 1) {
+                        chainHTML += `<div class="d-flex align-items-center"><i class="fas fa-long-arrow-alt-right fa-lg text-muted"></i></div>`;
+                    }
+                });
+
+                chainHTML += '</div>';
+
+                const familyCard = `
+                    <div class="card border rounded-4 mb-3 shadow-sm">
+                        <div class="card-body p-4">
+                            <div class="d-flex align-items-center mb-3">
+                                <span class="badge bg-dark rounded-pill me-2 px-3 py-2">
+                                    <i class="fas fa-link me-1"></i> Group ${idx + 1}
+                                </span>
+                                <span class="text-muted small">${familyIds.size} device(s) connected</span>
+                            </div>
+                            ${chainHTML}
+                        </div>
+                    </div>
+                `;
+                container.innerHTML += familyCard;
+            });
+        }
+
+        function hydrateCardSelects(col) {
+            const selects = col.querySelectorAll('select');
+            selects.forEach(sel => {
+                const sDev = sel.dataset.source;
+                const sBtn = sel.dataset.btn;
+                const tType = sel.dataset.targetType;
+
+                // Only pre-populate from the CURRENT SESSION's mappings,
+                // not from all historical DB mappings (which would load previous sessions).
+                const m = sessionMappings.find(mapObj => {
+                    if (mapObj.source_device_id == sDev && mapObj.source_button == sBtn) {
+                        const targetDev = findDeviceById(mapObj.target_device_id);
+                        return targetDev && targetDev.device_type === tType;
+                    }
+                    return false;
+                });
+
+                if (m) {
+                    sel.value = m.target_device_id;
+                }
+            });
+        }
+
+        function findDeviceById(id) {
+            for (const type in branchDevices) {
+                const found = branchDevices[type].find(d => d.id == id);
+                if (found) return found;
+            }
+            return null;
+        }
+
+        function createDeviceCard(device, typeContext) {
+            const col = document.createElement('div');
+            col.className = 'col-md-6 col-lg-4'; // Removed fade-in-up to prevent visibility issues
+
+            const card = document.createElement('div');
+            card.className = 'card h-100 border-0 shadow-sm rounded-4';
+
+            // Header Color based on type
+            let headerClass = 'bg-primary text-white';
+            if (typeContext === 'keypad_led') headerClass = 'bg-secondary text-white';
+            if (typeContext === 'keypad_broker') headerClass = 'bg-info text-dark';
+            if (typeContext === 'broker') headerClass = 'bg-dark text-white';
+
+            card.innerHTML = `
+                <div class="card-header ${headerClass} border-0 rounded-top-4 py-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h6 class="mb-0 fw-bold text-truncate">${device.get_display_identifier}</h6>
+                        <span class="badge bg-white bg-opacity-25 small">${device.device_model || 'Device'}</span>
+                    </div>
+                </div>
+                <div class="card-body p-3">
+                    <div class="dynamic-rows"></div>
+                </div>
+            `;
+
+            const rowsContainer = card.querySelector('.dynamic-rows');
+            const buttons = getButtonsForDevice(device);
+
+            buttons.forEach(btnName => {
+                let targetType  = 'KEYPAD';
+                let targetLabel = 'Keypad';
+
+                if (typeContext === 'keypad_led') {
+                    // Keypad -> LED: single linear mapping, button label = "LED"
+                    rowsContainer.insertAdjacentHTML('beforeend',
+                        createMappingRow(device.id, 'LED', 'LED', 'LED', 'KEYPAD', '\u2192 LED'));
+                    return;
+                }
+
+                if (typeContext === 'keypad_broker') {
+                    // Keypad -> Broker: single linear mapping, button label = "Main"
+                    rowsContainer.insertAdjacentHTML('beforeend',
+                        createMappingRow(device.id, 'Main', 'BROKER', 'Broker', 'KEYPAD', '\u2192 Broker'));
+                    return;
+                }
+
+                if (typeContext === 'broker') {
+                    targetType  = 'TV';
+                    targetLabel = 'TV';
+                    btnName = 'Main'; // Broker is always "Main"
+                }
+
+                rowsContainer.insertAdjacentHTML('beforeend',
+                    createMappingRow(device.id, btnName, targetType, targetLabel, device.device_type));
+            });
+
+            // Hydrate values
+            hydrateCardSelects(card);
+
+            col.appendChild(card);
+            return col;
+        }
+
+        // Helper to get limit based on target type
+        function getLimitForTargetType(targetType) {
+            if (targetType === 'KEYPAD') return parseInt(document.getElementById('qty_keypad').value) || 0;
+            if (targetType === 'LED') return parseInt(document.getElementById('qty_led').value) || 0;
+            if (targetType === 'BROKER') return parseInt(document.getElementById('qty_broker').value) || 0;
+            if (targetType === 'TV') return parseInt(document.getElementById('qty_tv').value) || 0;
+            return 999; // Unlimited if unknown
+        }
+
+        function createMappingRow(sourceId, buttonName, targetType, targetLabel, sourceType, displayName = null) {
+            const label   = displayName || buttonName;
+            const targets = branchDevices[targetType] || [];
+            let options   = `<option value="">Select ${targetLabel}...</option>`;
+            targets.forEach(t => {
+                options += `<option value="${t.id}">${t.get_display_identifier}</option>`;
+            });
+
+            return `
+                <div class="mb-2 d-flex align-items-center justify-content-between p-2 rounded bg-light-subtle row-hover">
+                    <span class="small fw-bold text-secondary me-2" style="width: 30%;">${label}</span>
+                    <i class="fas fa-arrow-right text-muted small mx-2"></i>
+                    <select class="form-select form-select-sm border-0 shadow-sm target-select" style="width: 60%;"
+                        data-source="${sourceId}" data-btn="${buttonName}" data-target-type="${targetType}"
+                        onchange="handleMappingChange(this)">
+                        ${options}
+                    </select>
+                </div>
+             `;
+        }
+
+        function getButtonsForDevice(device) {
+            if (device.device_type === 'TOKEN_DISPENSER') {
+                // One button slot per physical button — "Button 1", "Button 2", …
+                let count = 1;
+                if (device.token_type) {
+                    count = parseInt(device.token_type.split('_')[0]) || 1;
+                }
+                return Array.from({ length: count }, (_, i) => `Button ${i + 1}`);
+            }
+            // Keypad, Broker — all map as a single linear device ("Main")
+            return ['Main'];
+        }
+
+        // --- Global Handler for Change ---
+        // --- Global Handler for Change ---
+        window.handleMappingChange = async (select) => {
+            const sourceId = select.dataset.source;
+            const button = select.dataset.btn;
+            const targetId = select.value;
+            // Retrieve target type from dataset to check limits
+            const targetType = select.dataset.targetType;
+
+            select.classList.add('bg-success-subtle');
+
+            if (!targetId) {
+                select.classList.remove('bg-success-subtle');
+                // Allow clearing mapping without check
+                try {
+                } catch (e) { }
+                return;
+            }
+
+            // --- VALIDATION LOGIC (Family-Aware) ---
+            const limit = getLimitForTargetType(targetType);
+            if (limit > 0) {
+                // Helper to normalize strings (remove spaces, case-insensitive)
+                const normalize = (val) => String(val).replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
+
+                const sIdStr = normalize(sourceId);
+                const btnStr = normalize(button);
+
+                // Function to find all devices in the same family as the given device
+                // A family is a connected graph of devices through mappings
+                function getFamilyDevices(deviceId) {
+                    const familyDevices = new Set([String(deviceId)]);
+                    const visited = new Set();
+                    const queue = [String(deviceId)];
+
+                    while (queue.length > 0) {
+                        const currentId = queue.shift();
+                        if (visited.has(currentId)) continue;
+                        visited.add(currentId);
+
+                        // Find all mappings where this device is source or target
+                        mappings.forEach(m => {
+                            const mSourceId = String(m.source_device_id);
+                            const mTargetId = String(m.target_device_id);
+
+                            if (mSourceId === currentId && !familyDevices.has(mTargetId)) {
+                                familyDevices.add(mTargetId);
+                                queue.push(mTargetId);
+                            }
+                            if (mTargetId === currentId && !familyDevices.has(mSourceId)) {
+                                familyDevices.add(mSourceId);
+                                queue.push(mSourceId);
+                            }
+                        });
+                    }
+
+                    return familyDevices;
+                }
+
+                // Get all devices in the current family (connected to source device)
+                const familyDeviceIds = getFamilyDevices(sourceId);
+
+                // Also include the new target device in the family
+                familyDeviceIds.add(String(targetId));
+
+                // 1. Get ALL current mappings for this target type in the current session
+                // Count unique target devices of this type that are already mapped
+                const sourceDev = findDeviceById(sourceId);
+                const validButtons = sourceDev ? getButtonsForDevice(sourceDev) : [];
+
+                // Use sessionMappings (current wizard session only) — NOT the full DB mappings array.
+                // This prevents historical DB entries from blocking new mappings in a fresh session.
+                const existingMappingsForType = sessionMappings.filter(m => {
+                    const tDev = findDeviceById(m.target_device_id);
+                    if (!tDev || tDev.device_type !== targetType) return false;
+
+                    const mSourceId = String(m.source_device_id);
+                    const mTargetId = String(m.target_device_id);
+                    
+                    // Check if this mapping is part of the current family being built
+                    // Include mappings where either source or target is in the family
+                    if (!familyDeviceIds.has(mSourceId) && !familyDeviceIds.has(mTargetId)) {
+                        return false;
+                    }
+
+                    const mSourceDev = findDeviceById(m.source_device_id);
+                    if (!mSourceDev) return false;
+
+                    const mValidButtons = getButtonsForDevice(mSourceDev);
+                    if (!mValidButtons.includes(m.source_button)) return false;
+
+                    // Exclude the currently edited row (same source device and button)
+                    const mSrcStr = normalize(m.source_device_id);
+                    const mBtnStr = normalize(m.source_button);
+                    if (mSrcStr === sIdStr && mBtnStr === btnStr) return false;
+
+                    return true;
+                });
+
+                // 2. Get set of unique target device IDs of this type within this family
+                const usedTargetIds = new Set();
+                existingMappingsForType.forEach(m => {
+                    usedTargetIds.add(String(m.target_device_id));
+                });
+
+                // 3. Check if the new target ID would exceed the limit
+                const newTargetIdStr = String(targetId);
+                const wouldExceedLimit = usedTargetIds.has(newTargetIdStr) 
+                    ? usedTargetIds.size > limit 
+                    : usedTargetIds.size >= limit;
+
+                // DEBUG LOGGING
+                console.log('Device Count Validation Check:', {
+                    targetType,
+                    limit,
+                    currentUniqueTargets: usedTargetIds.size,
+                    usedTargetIds: Array.from(usedTargetIds),
+                    newTargetId: newTargetIdStr,
+                    isNewTarget: !usedTargetIds.has(newTargetIdStr),
+                    wouldExceedLimit: wouldExceedLimit
+                });
+
+                // 4. Enforce the limit - prevent mapping to more unique devices than specified
+                if (wouldExceedLimit) {
+                    const currentCount = usedTargetIds.size;
+                    const message = usedTargetIds.has(newTargetIdStr)
+                        ? `You have already mapped to ${currentCount} unique ${targetType}(s). The limit is ${limit}.`
+                        : `Configuration Limit Reached: You have mapped to ${currentCount} unique ${targetType}(s), which is the maximum allowed (${limit}). You cannot map to more than ${limit} unique ${targetType}s.`;
+                    
+                    alert(message);
+                    select.value = ""; // Reset selection
+                    select.classList.remove('bg-success-subtle');
+                    return;
+                }
+            }
+
+            try {
+                const apiUrl = '/CallQ/config/api/mapping/button/save/';
+                const resp = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCookie('csrftoken')
+                    },
+                    body: JSON.stringify({
+                        branch_id: currentBranchId, // Can be null if using DC
+                        dealer_customer_id: currentDealerCustomerId, // Can be null if using Branch
+                        source_device_id: sourceId,
+                        source_button: button,
+                        target_device_id: targetId
+                    })
+                });
+
+                const res = await resp.json();
+                if (res.status === 'success') {
+                    // Track this ButtonMapping ID so Finish & Save can skip auto-generation
+                    if (res.mapping_id && !sessionMappingIds.includes(res.mapping_id)) {
+                        sessionMappingIds.push(res.mapping_id);
+                    }
+
+                    setTimeout(() => select.classList.remove('bg-success-subtle'), 1000);
+                    updateLocalMappings(sourceId, button, targetId);
+
+                    // Update Active sets immediately if we just mapped a Keypad or Broker
+                    const targetDev = findDeviceById(targetId);
+                    if (targetDev) {
+                        // If we mapped [Dispenser -> Keypad], Keypad becomes active for Step 3
+                        if (targetDev.device_type === 'KEYPAD') {
+                            activeKeypadIds.add(targetDev.id);
+                        }
+                        // If we mapped [Keypad -> Broker], Broker becomes active for Step 4
+                        if (targetDev.device_type === 'BROKER') {
+                            activeBrokerIds.add(targetDev.id);
+                        }
+                    }
+
+                } else {
+                    alert('Error saving mapping: ' + res.message);
+                    select.classList.remove('bg-success-subtle');
+                    select.classList.add('bg-danger-subtle');
+                }
+            } catch (err) {
+                console.error(err);
+                select.classList.remove('bg-success-subtle');
+                select.classList.add('bg-danger-subtle');
+            }
+        };
+
+        function updateLocalMappings(sId, btn, tId) {
+            // Update the full mappings array (used for validation)
+            const existingIdx = mappings.findIndex(m =>
+                m.source_device_id == sId && m.source_button == btn &&
+                findDeviceById(m.target_device_id) &&
+                findDeviceById(tId) &&
+                findDeviceById(m.target_device_id).device_type === findDeviceById(tId).device_type
+            );
+            if (existingIdx > -1) {
+                mappings[existingIdx].target_device_id = tId;
+            } else {
+                mappings.push({ source_device_id: sId, source_button: btn, target_device_id: tId });
+            }
+
+            // Also update sessionMappings (used for pre-population in the current wizard session)
+            const sessionIdx = sessionMappings.findIndex(m =>
+                m.source_device_id == sId && m.source_button == btn &&
+                findDeviceById(m.target_device_id) &&
+                findDeviceById(tId) &&
+                findDeviceById(m.target_device_id).device_type === findDeviceById(tId).device_type
+            );
+            if (sessionIdx > -1) {
+                sessionMappings[sessionIdx].target_device_id = tId;
+            } else {
+                sessionMappings.push({ source_device_id: sId, source_button: btn, target_device_id: tId });
+            }
+        }
+
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+
+        // Function to create GroupMapping from wizard data
+        window.createGroupMapping = async function() {
+            const groupNameInput = document.getElementById('group_name');
+            if (!groupNameInput || !groupNameInput.value || groupNameInput.value.trim() === '') {
+                alert('Please enter a group name in Step 1 (Config).');
+                // Go back to step 1
+                showStep('step1');
+                groupNameInput.focus();
+                return;
+            }
+
+            const groupName = groupNameInput.value.trim();
+
+            // Collect all devices from mappings created in this wizard session
+            const deviceIds = {
+                dispensers: new Set(),
+                keypads: new Set(),
+                leds: new Set(),
+                brokers: new Set(),
+                tvs: new Set()
+            };
+
+            // Collect devices from sessionMappings (mappings created in this wizard)
+            sessionMappings.forEach(m => {
+                const sourceDev = findDeviceById(m.source_device_id);
+                const targetDev = findDeviceById(m.target_device_id);
+                
+                if (sourceDev) {
+                    if (sourceDev.device_type === 'TOKEN_DISPENSER') deviceIds.dispensers.add(sourceDev.id);
+                    else if (sourceDev.device_type === 'KEYPAD') deviceIds.keypads.add(sourceDev.id);
+                    else if (sourceDev.device_type === 'LED') deviceIds.leds.add(sourceDev.id);
+                    else if (sourceDev.device_type === 'BROKER') deviceIds.brokers.add(sourceDev.id);
+                    else if (sourceDev.device_type === 'TV') deviceIds.tvs.add(sourceDev.id);
+                }
+                
+                if (targetDev) {
+                    if (targetDev.device_type === 'TOKEN_DISPENSER') deviceIds.dispensers.add(targetDev.id);
+                    else if (targetDev.device_type === 'KEYPAD') deviceIds.keypads.add(targetDev.id);
+                    else if (targetDev.device_type === 'LED') deviceIds.leds.add(targetDev.id);
+                    else if (targetDev.device_type === 'BROKER') deviceIds.brokers.add(targetDev.id);
+                    else if (targetDev.device_type === 'TV') deviceIds.tvs.add(targetDev.id);
+                }
+            });
+
+            // Also collect from device selector checkboxes if they exist
+            const allCheckboxes = document.querySelectorAll('input[type="checkbox"][id*="SelectorContainer"]:checked');
+            allCheckboxes.forEach(cb => {
+                const deviceId = parseInt(cb.value);
+                const device = findDeviceById(deviceId);
+                if (device) {
+                    if (device.device_type === 'TOKEN_DISPENSER') deviceIds.dispensers.add(deviceId);
+                    else if (device.device_type === 'KEYPAD') deviceIds.keypads.add(deviceId);
+                    else if (device.device_type === 'LED') deviceIds.leds.add(deviceId);
+                    else if (device.device_type === 'BROKER') deviceIds.brokers.add(deviceId);
+                    else if (device.device_type === 'TV') deviceIds.tvs.add(deviceId);
+                }
+            });
+
+            // Get quantities from Step 1
+            const qty_dispenser = parseInt(document.getElementById('qty_dispenser').value) || 0;
+            const qty_keypad = parseInt(document.getElementById('qty_keypad').value) || 0;
+            const qty_led = parseInt(document.getElementById('qty_led').value) || 0;
+            const qty_broker = parseInt(document.getElementById('qty_broker').value) || 0;
+            const qty_tv = parseInt(document.getElementById('qty_tv').value) || 0;
+
+            // Validate device counts match quantities
+            const validationErrors = [];
+            
+            if (deviceIds.dispensers.size !== qty_dispenser) {
+                validationErrors.push(`Token Dispenser count mismatch: Expected ${qty_dispenser}, but ${deviceIds.dispensers.size} device(s) selected.`);
+            }
+            
+            if (deviceIds.keypads.size !== qty_keypad) {
+                validationErrors.push(`Keypad count mismatch: Expected ${qty_keypad}, but ${deviceIds.keypads.size} device(s) selected.`);
+            }
+            
+            if (qty_led > 0 && deviceIds.leds.size !== qty_led) {
+                validationErrors.push(`LED count mismatch: Expected ${qty_led}, but ${deviceIds.leds.size} device(s) selected.`);
+            } else if (qty_led === 0 && deviceIds.leds.size > 0) {
+                validationErrors.push(`LED count mismatch: Expected 0, but ${deviceIds.leds.size} device(s) selected.`);
+            }
+            
+            if (qty_broker > 0 && deviceIds.brokers.size !== qty_broker) {
+                validationErrors.push(`Broker count mismatch: Expected ${qty_broker}, but ${deviceIds.brokers.size} device(s) selected.`);
+            } else if (qty_broker === 0 && deviceIds.brokers.size > 0) {
+                validationErrors.push(`Broker count mismatch: Expected 0, but ${deviceIds.brokers.size} device(s) selected.`);
+            }
+            
+            if (deviceIds.tvs.size !== qty_tv) {
+                validationErrors.push(`TV count mismatch: Expected ${qty_tv}, but ${deviceIds.tvs.size} device(s) selected.`);
+            }
+            
+            if (validationErrors.length > 0) {
+                alert('Validation Errors:\n\n' + validationErrors.join('\n') + '\n\nPlease ensure the number of selected devices matches the quantities specified in Step 1 (Config).');
+                return;
+            }
+
+            // Validate that we have at least some devices
+            const totalDevices = deviceIds.dispensers.size + deviceIds.keypads.size + deviceIds.leds.size + 
+                                deviceIds.brokers.size + deviceIds.tvs.size;
+            if (totalDevices === 0) {
+                alert('Please map at least one device before creating the group.');
+                return;
+            }
+
+            // Get company and branch
+            const companyId = document.getElementById('company_id').value;
+            const branchId = currentBranchId;
+            const dealerCustomerId = currentDealerCustomerId;
+
+            if (!companyId) {
+                alert('Please select a company.');
+                showStep('step1');
+                return;
+            }
+
+            // Create form data
+            const formData = new FormData();
+            formData.append('action', 'create');
+            formData.append('group_name', groupName);
+            if (branchId) formData.append('branch_id', branchId);
+            if (dealerCustomerId) formData.append('dealer_customer_id', dealerCustomerId);
+            formData.append('qty_dispenser', qty_dispenser);
+            formData.append('qty_keypad', qty_keypad);
+            formData.append('qty_led', qty_led);
+            formData.append('qty_broker', qty_broker);
+            formData.append('qty_tv', qty_tv);
+
+            // Add device IDs
+            Array.from(deviceIds.dispensers).forEach(id => formData.append('dispensers[]', id));
+            Array.from(deviceIds.keypads).forEach(id => formData.append('keypads[]', id));
+            Array.from(deviceIds.leds).forEach(id => formData.append('leds[]', id));
+            Array.from(deviceIds.brokers).forEach(id => formData.append('brokers[]', id));
+            Array.from(deviceIds.tvs).forEach(id => formData.append('tvs[]', id));
+
+            // Send wizard-saved mapping IDs so the backend can skip auto-generation
+            sessionMappingIds.forEach(id => formData.append('session_mapping_ids[]', id));
+
+
+            try {
+                const response = await fetch('{% url "mapping_view" %}', {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': getCookie('csrftoken')
+                    },
+                    body: formData
+                });
+
+                if (response.ok) {
+                    window.location.href = '{% url "mapping_list" %}';
+                } else {
+                    const text = await response.text();
+                    alert('Error creating group mapping. Please try again.');
+                    console.error('Error:', text);
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error creating group mapping. Please try again.');
+            }
+        };
+
+    });
+</script>
+
+<style>
+    .step-content {
+        animation: fadeIn 0.3s ease-in-out;
+    }
+
+    @keyframes fadeIn {
+        from {
+            opacity: 0;
+            transform: translateY(10px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .row-hover:hover {
+        background-color: #f8f9fa;
+    }
+
+    .bg-success-subtle {
+        background-color: #d1e7dd !important;
+    }
+
+    .bg-danger-subtle {
+        background-color: #f8d7da !important;
+    }
+</style>
+
+{% endblock %}

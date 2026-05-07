@@ -1,0 +1,148 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Allocate Profile: {{ profile.name }}{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="mb-1">Allocate Profile to Devices</h2>
+            <p class="text-muted fs-5">
+                Profile: <span class="fw-bold">{{ profile.name }}</span>
+                <span class="badge bg-primary ms-2">{{ profile.get_device_type_display }}</span>
+            </p>
+        </div>
+        <a href="{% url 'embedded_profile_list' %}" class="btn btn-outline-secondary">
+            <i class="fas fa-arrow-left me-1"></i> Back to List
+        </a>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-8">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0">Available {{ profile.get_device_type_display }} Devices</h5>
+                </div>
+                <div class="card-body p-0">
+                    <form method="POST" id="allocateForm">
+                        {% csrf_token %}
+                        <div class="table-responsive">
+                            <table class="table table-hover align-middle mb-0">
+                                <thead class="bg-light">
+                                    <tr>
+                                        <th class="ps-4" style="width: 50px;">
+                                            <input type="checkbox" class="form-check-input" id="selectAll"
+                                                onclick="toggleAll()">
+                                        </th>
+                                        <th>Serial Number</th>
+                                        <th>Branch</th>
+                                        <th>Current Profile</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for device in devices %}
+                                    <tr>
+                                        <td class="ps-4">
+                                            <input type="checkbox" class="form-check-input device-checkbox"
+                                                name="device_ids" value="{{ device.id }}">
+                                        </td>
+                                        <td>
+                                            <span class="fw-semibold">{{ device.get_display_identifier }}</span>
+                                            {% if device.display_name %}
+                                            <small class="text-muted font-monospace d-block">{{ device.serial_number }}</small>
+                                            {% endif %}
+                                        </td>
+                                        <td>{{ device.branch.branch_name|default:"-" }}</td>
+                                        <td>
+                                            {% if device.embedded_profile %}
+                                            {% if device.embedded_profile.id == profile.id %}
+                                            <span class="badge bg-success">
+                                                <i class="fas fa-check me-1"></i>{{ device.embedded_profile.name }}
+                                            </span>
+                                            {% else %}
+                                            <span class="badge bg-secondary">{{ device.embedded_profile.name }}</span>
+                                            {% endif %}
+                                            {% else %}
+                                            <span class="text-muted">No profile</span>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% empty %}
+                                    <tr>
+                                        <td colspan="4" class="text-center py-4 text-muted">
+                                            <i class="fas fa-inbox fa-2x mb-2"></i>
+                                            <p class="mb-0">No devices of this type found</p>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        {% if devices %}
+                        <div class="card-footer bg-light d-flex justify-content-between">
+                            <div>
+                                <span class="text-muted" id="selectedCount">0 selected</span>
+                            </div>
+                            <div class="d-flex gap-2">
+                                <button type="submit" name="action" value="deallocate" class="btn btn-outline-danger">
+                                    <i class="fas fa-unlink me-1"></i> Remove Profile
+                                </button>
+                                <button type="submit" name="action" value="allocate" class="btn btn-primary">
+                                    <i class="fas fa-link me-1"></i> Allocate Profile
+                                </button>
+                            </div>
+                        </div>
+                        {% endif %}
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0">Profile Summary</h5>
+                </div>
+                <div class="card-body">
+                    <dl class="mb-0">
+                        <dt>Name</dt>
+                        <dd>{{ profile.name }}</dd>
+
+                        <dt>Device Type</dt>
+                        <dd><span class="badge bg-primary">{{ profile.get_device_type_display }}</span></dd>
+
+                        <dt>Devices Using</dt>
+                        <dd><span class="badge bg-info">{{ profile.devices.count }}</span></dd>
+
+                        <dt>Created</dt>
+                        <dd>{{ profile.created_at|date:"M d, Y" }}</dd>
+
+                        <dt>Last Updated</dt>
+                        <dd>{{ profile.updated_at|date:"M d, Y H:i" }}</dd>
+                    </dl>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function toggleAll() {
+        const selectAll = document.getElementById('selectAll');
+        const checkboxes = document.querySelectorAll('.device-checkbox');
+        checkboxes.forEach(cb => cb.checked = selectAll.checked);
+        updateSelectedCount();
+    }
+
+    document.querySelectorAll('.device-checkbox').forEach(cb => {
+        cb.addEventListener('change', updateSelectedCount);
+    });
+
+    function updateSelectedCount() {
+        const count = document.querySelectorAll('.device-checkbox:checked').length;
+        document.getElementById('selectedCount').textContent = count + ' selected';
+    }
+</script>
+{% endblock %}

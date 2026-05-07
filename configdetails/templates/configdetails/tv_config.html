@@ -1,0 +1,303 @@
+{% extends 'base.html' %}
+
+{% block title %}TV Config{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>TV Configuration</h2>
+        <span class="badge bg-secondary">SN: {{ tv.serial_number }}</span>
+    </div>
+
+    <form method="POST" enctype="multipart/form-data">
+        {% csrf_token %}
+        <div class="row">
+            <!-- Container 1: Display Settings -->
+            <div class="col-lg-4 mb-4">
+                <div class="card h-100 shadow-sm border-0">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0"><i class="fas fa-desktop me-2"></i>Display Settings</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label class="form-label">Orientation</label>
+                            <select name="orientation" class="form-select">
+                                <option value="landscape" {% if config.orientation == 'landscape' %}selected{% endif %}>
+                                    Landscape</option>
+                                <option value="portrait" {% if config.orientation == 'portrait' %}selected{% endif %}>
+                                    Portrait</option>
+                            </select>
+                        </div>
+                        {% comment %}
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" name="show_ads" id="show_ads" {% if
+                                config.show_ads %}checked{% endif %}>
+                            <label class="form-check-label" for="show_ads">Show Advertisements</label>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Ad Interval (minutes)</label>
+                            <input type="number" name="ad_interval" class="form-control"
+                                value="{{ config.ad_interval }}">
+                        </div>
+                        {% endcomment %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Container 2: Audio Settings -->
+            <div class="col-lg-4 mb-4">
+                <div class="card h-100 shadow-sm border-0">
+                    <div class="card-header bg-success text-white">
+                        <h5 class="mb-0"><i class="fas fa-volume-up me-2"></i>Audio Settings</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label class="form-label d-block text-muted small">Current Token Audio</label>
+                            {% if config.token_audio_file %}
+                            <div class="d-flex align-items-center bg-light p-2 rounded">
+                                <i class="fas fa-file-audio me-2 text-success"></i>
+                                <a href="{{ config.token_audio_file.url }}" target="_blank"
+                                    class="text-decoration-none">Listen/Download</a>
+                            </div>
+                            {% else %}
+                            <span class="text-muted">No audio file uploaded</span>
+                            {% endif %}
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Upload New Audio File</label>
+                            <input type="file" name="token_audio_file" class="form-control">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Voice Language</label>
+                            <select name="audio_language" class="form-select">
+                                <option value="en" {% if config.audio_language == 'en' %}selected{% endif %}>English
+                                </option>
+                                <option value="hi" {% if config.audio_language == 'hi' %}selected{% endif %}>Hindi
+                                </option>
+                                <option value="ml" {% if config.audio_language == 'ml' %}selected{% endif %}>Malayalam
+                                </option>
+                                <option value="ta" {% if config.audio_language == 'ta' %}selected{% endif %}>Tamil
+                                </option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Container 3: Counter Settings -->
+            <div class="col-lg-4 mb-4">
+                <div class="card h-100 shadow-sm border-0">
+                    <div class="card-header bg-info text-white">
+                        <h5 class="mb-0"><i class="fas fa-id-badge me-2"></i>Counter Settings</h5>
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted small">Configure how counters are displayed on this TV.</p>
+                        <div class="mb-3">
+                            <label class="form-label">Counter Layout</label>
+                            <select name="counter_layout" class="form-select">
+                                <option value="grid">Grid View</option>
+                                <option value="list">List View</option>
+                                <option value="highlight">Single Highlight</option>
+                            </select>
+                        </div>
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" name="show_counter_names" checked>
+                            <label class="form-check-label">Show Counter Names</label>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Refresh Rate (seconds)</label>
+                            <input type="number" class="form-control" value="5">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="row">
+                <!-- Container 4: Scrolling Text Settings -->
+                <div class="col-12 mb-4">
+                    <div class="card h-100 shadow-sm border-0">
+                        <div class="card-header bg-warning text-dark">
+                            <h5 class="mb-0"><i class="fas fa-scroll me-2"></i>Scrolling Text Settings</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="form-check form-switch mb-3">
+                                <input class="form-check-input" type="checkbox" name="scroll_enabled"
+                                    id="scroll_enabled" {% if device_config.config_json.scroll_enabled == 'on' %}checked{% endif %}>
+                                <label class="form-check-label fw-bold" for="scroll_enabled">Enable Scrolling
+                                    Text</label>
+                            </div>
+
+                            <div class="scroll-config-section" style="display: none;">
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label fw-bold">Number of Text Lines</label>
+                                        <input type="number" id="no_of_text_fields" name="no_of_text_fields"
+                                            class="form-control"
+                                            value="{{ device_config.config_json.scroll_text_lines|length|default:1 }}"
+                                            min="1" max="10">
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label fw-bold">Scroll Text Color</label>
+                                        <input type="color" name="scroll_text_color" class="form-control form-control-color w-100"
+                                            value="{{ tv_config.scroll_text_color|default:'#000000' }}">
+                                    </div>
+                                </div>
+
+                                <div id="scrollTextContainer" class="row g-3">
+                                    <!-- Dynamic Text Fields will be inserted here -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="d-grid gap-2 d-md-flex justify-content-md-end mb-5">
+                <button type="submit" class="btn btn-primary btn-lg px-5">
+                    <i class="fas fa-save me-2"></i> Save TV Configuration
+                </button>
+            </div>
+    </form>
+    {{ device_config.config_json.scroll_text_lines|default:"[]"|json_script:"scroll-text-data" }}
+</div>
+{% endblock %}
+
+
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        // --- Scrolling Text Logic for TV ---
+        const scrollEnabledCheck = document.getElementById('scroll_enabled');
+        const scrollConfigSections = document.querySelectorAll('.scroll-config-section');
+        const noOfTextFieldsInput = document.getElementById('no_of_text_fields');
+        const scrollTextContainer = document.getElementById('scrollTextContainer');
+
+        if (scrollEnabledCheck && noOfTextFieldsInput && scrollTextContainer) {
+            // Existing values from Django template (parsed safely via json_script)
+            const scriptTag = document.getElementById('scroll-text-data');
+            let existingScrollLines = [];
+
+            if (scriptTag) {
+                try {
+                    existingScrollLines = JSON.parse(scriptTag.textContent);
+                    if (typeof existingScrollLines === 'string') {
+                        existingScrollLines = JSON.parse(existingScrollLines);
+                    }
+                } catch (e) {
+                    console.error("Error parsing scroll-text-data:", e);
+                    existingScrollLines = [];
+                }
+            }
+
+            if (!Array.isArray(existingScrollLines)) existingScrollLines = [];
+
+            function toggleScrollConfig() {
+                const isEnabled = scrollEnabledCheck.checked;
+                scrollConfigSections.forEach(el => {
+                    el.style.display = isEnabled ? 'block' : 'none';
+                });
+                if (isEnabled) renderScrollTextFields();
+            }
+
+            function validateScrollInput(input) {
+                const val = input.value;
+                const nonSpaceChars = val.replace(/\s/g, '').length;
+                const charCount = val.length;
+                let errorEl = input.parentNode.querySelector('.scroll-error');
+                let counterEl = input.parentNode.querySelector('.scroll-counter');
+
+                // Enforce 150 char max
+                if (charCount > 150) {
+                    input.value = val.substring(0, 150);
+                }
+
+                // Update character counter
+                if (!counterEl) {
+                    counterEl = document.createElement('small');
+                    counterEl.className = 'scroll-counter text-muted d-block mt-1';
+                    input.parentNode.appendChild(counterEl);
+                }
+                counterEl.textContent = `${Math.min(charCount, 150)}/150 characters`;
+
+                // Validate min 3 non-space chars
+                if (val.length > 0 && nonSpaceChars < 3) {
+                    input.classList.add('is-invalid');
+                    if (!errorEl) {
+                        errorEl = document.createElement('small');
+                        errorEl.className = 'scroll-error text-danger d-block mt-1';
+                        input.parentNode.insertBefore(errorEl, counterEl);
+                    }
+                    errorEl.textContent = 'Minimum 3 characters (excluding spaces) required.';
+                } else {
+                    input.classList.remove('is-invalid');
+                    if (errorEl) errorEl.remove();
+                }
+            }
+
+            function renderScrollTextFields() {
+                let count = parseInt(noOfTextFieldsInput.value) || 1;
+                if (count < 1) { count = 1; noOfTextFieldsInput.value = 1; }
+                if (count > 8) { count = 8; noOfTextFieldsInput.value = 8; }
+
+                scrollTextContainer.innerHTML = '';
+
+                for (let i = 1; i <= count; i++) {
+                    const colDiv = document.createElement('div');
+                    colDiv.className = 'col-md-6 mb-3';
+
+                    const label = document.createElement('label');
+                    label.className = 'form-label fw-bold';
+                    label.innerText = `Scroll Text Line ${i}`;
+
+                    const input = document.createElement('input');
+                    input.type = 'text';
+                    input.name = `text_content_${i}`;
+                    input.className = 'form-control';
+                    input.maxLength = 150;
+                    input.placeholder = `Enter text for line ${i} (max 150 chars, min 3 non-space)`;
+
+                    // Pre-fill existing value
+                    if (existingScrollLines.length >= i) {
+                        input.value = existingScrollLines[i - 1];
+                    }
+
+                    input.addEventListener('input', function () { validateScrollInput(this); });
+
+                    // Counter element
+                    const counterEl = document.createElement('small');
+                    counterEl.className = 'scroll-counter text-muted d-block mt-1';
+                    counterEl.textContent = `${input.value.length}/150 characters`;
+
+                    colDiv.appendChild(label);
+                    colDiv.appendChild(input);
+                    colDiv.appendChild(counterEl);
+                    scrollTextContainer.appendChild(colDiv);
+                }
+            }
+
+            // Form submit validation
+            const configForm = scrollEnabledCheck.closest('form');
+            if (configForm) {
+                configForm.addEventListener('submit', function (e) {
+                    if (!scrollEnabledCheck.checked) return;
+                    const inputs = scrollTextContainer.querySelectorAll('input[type="text"]');
+                    let hasError = false;
+                    inputs.forEach(function (inp) {
+                        validateScrollInput(inp);
+                        if (inp.classList.contains('is-invalid')) hasError = true;
+                    });
+                    if (hasError) {
+                        e.preventDefault();
+                        scrollTextContainer.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                });
+            }
+
+            scrollEnabledCheck.addEventListener('change', toggleScrollConfig);
+            noOfTextFieldsInput.addEventListener('input', renderScrollTextFields);
+            // Initial render
+            toggleScrollConfig();
+        }
+    });
+</script>
+{% endblock %}

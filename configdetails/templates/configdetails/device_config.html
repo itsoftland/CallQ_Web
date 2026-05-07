@@ -1,0 +1,1470 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}Device Configuration{% endblock %}
+{% block content %}
+<div class="container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="h4 fw-bold mb-1">Device Configuration</h2>
+            <div class="d-flex align-items-center gap-3 mt-1">
+                <span class="text-muted small">
+                    <i class="fas fa-microchip me-1"></i>
+                    {% if device.display_name %}
+                    {{ device.display_name }}
+                    <span class="font-monospace">({{ device.serial_number }})</span>
+                    {% else %}
+                    Serial:
+                    <span class="fw-bold text-dark">
+                        {{ device.serial_number }}
+                    </span>
+                    {% endif %}
+                </span>
+                <span class="badge bg-primary fs-6 px-3 py-2 shadow-sm">
+                    {{ device.get_device_type_display }}
+                </span>
+            </div>
+        </div>
+        <a href="{% url 'device_list' %}" class="btn btn-outline-secondary btn-sm">
+            <i class="fas fa-arrow-left me-1"></i> Back to List
+        </a>
+    </div>
+
+    <div class="card">
+        <div class="card-body p-4">
+            <form method="POST" enctype="multipart/form-data">
+                {% csrf_token %}
+
+                {% if device.device_type == 'BROKER' %}
+                <h5 class="text-dark fw-bold mb-4 border-bottom pb-2">Network Settings</h5>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label text-secondary small fw-bold">WiFi SSID</label>
+                        <div class="input-group">
+                            <span class="input-group-text bg-light border-end-0">
+                                <i class="fas fa-wifi text-muted"></i>
+                            </span>
+                            <input type="text" name="ssid" class="form-control border-start-0 ps-0"
+                                value="{{  config.config_json.ssid|default:''  }}" placeholder="Enter network name">
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Password</label>
+                        <input type="text" name="password" class="form-control"
+                            value="{{  config.config_json.password|default:''  }}" placeholder="WiFi Password">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Host</label>
+                        <input type="text" name="host" class="form-control"
+                            value="{{  config.config_json.host|default:''  }}" placeholder="Server Host IP/URL">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Port</label>
+                        <input type="number" name="port" class="form-control"
+                            value="{{  config.config_json.port|default:'8000'  }}">
+                    </div>
+                </div>
+
+                {% elif device.device_type == 'TOKEN_DISPENSER' %}
+                <div class="row g-3">
+                    <div class="col-12">
+                        <h5 class="text-muted mb-3"><i class="fas fa-sliders-h me-2"></i>Dispenser Settings</h5>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="form-check form-switch mt-2">
+                            {% if config.config_json.day_wise_reset == '1' %}
+                            <input class="form-check-input" type="checkbox" name="day_wise_reset" id="day_wise_reset"
+                                checked>
+                            {% else %}
+                            <input class="form-check-input" type="checkbox" name="day_wise_reset" id="day_wise_reset">
+                            {% endif %}
+                            <label class="form-check-label fw-bold" for="day_wise_reset">Day Wise Reset</label>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold">Reset Token Number</label>
+                        <input type="number" name="reset_token_number" id="reset_token_number" class="form-control"
+                            value="{{  config.config_json.reset_token_number|default:''  }}" placeholder="Enter">
+                        <small class="text-muted">Used when Day Wise Reset is enabled.</small>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="form-check form-switch mt-2">
+                            {% if config.config_json.common_pool == '1' %}
+                            <input class="form-check-input" type="checkbox" name="common_pool" id="common_pool" checked>
+                            {% else %}
+                            <input class="form-check-input" type="checkbox" name="common_pool" id="common_pool">
+                            {% endif %}
+                            <label class="form-check-label fw-bold" for="common_pool">Common Pool</label>
+                        </div>
+                        <div class="form-check form-switch mt-2">
+                            {% if config.config_json.duplicate_print == '1' %}
+                            <input class="form-check-input" type="checkbox" name="duplicate_print" id="duplicate_print"
+                                checked>
+                            {% else %}
+                            <input class="form-check-input" type="checkbox" name="duplicate_print" id="duplicate_print">
+                            {% endif %}
+                            <label class="form-check-label fw-bold" for="duplicate_print">Duplicate Print</label>
+                        </div>
+                        <div class="form-check form-switch mt-2">
+                            {% if config.config_json.standalone == '1' %}
+                            <input class="form-check-input" type="checkbox" name="standalone" id="standalone" checked>
+                            {% else %}
+                            <input class="form-check-input" type="checkbox" name="standalone" id="standalone">
+                            {% endif %}
+                            <label class="form-check-label fw-bold" for="standalone">Standalone</label>
+                        </div>
+                        <div class="form-check form-switch mt-2">
+                            {% if config.config_json.initial_print == '1' %}
+                            <input class="form-check-input" type="checkbox" name="initial_print" id="initial_print"
+                                checked>
+                            {% else %}
+                            <input class="form-check-input" type="checkbox" name="initial_print" id="initial_print">
+                            {% endif %}
+                            <label class="form-check-label fw-bold" for="initial_print">Initial Print</label>
+                        </div>
+                    </div>
+
+                    <div class="col-12 mt-3">
+                        <h6 class="text-dark fw-bold mb-2">Token Cut</h6>
+                        <div class="btn-group" role="group">
+                            {% if config.config_json.token_cut|default:'full' == 'full' %}
+                            <input type="radio" class="btn-check" name="token_cut" id="token_cut_full" value="full"
+                                checked>
+                            {% else %}
+                            <input type="radio" class="btn-check" name="token_cut" id="token_cut_full" value="full">
+                            {% endif %}
+                            <label class="btn btn-outline-primary btn-sm" for="token_cut_full">Full</label>
+
+                            {% if config.config_json.token_cut == 'half' %}
+                            <input type="radio" class="btn-check" name="token_cut" id="token_cut_half" value="half"
+                                checked>
+                            {% else %}
+                            <input type="radio" class="btn-check" name="token_cut" id="token_cut_half" value="half">
+                            {% endif %}
+                            <label class="btn btn-outline-primary btn-sm" for="token_cut_half">Half</label>
+                        </div>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold">Header 1</label>
+                        <input type="text" name="header1" class="form-control"
+                            value="{{  config.config_json.header1|default:default_company_name|default:''  }}"
+                            placeholder="Enter Header 1">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold">Header 2</label>
+                        <input type="text" name="header2" class="form-control"
+                            value="{{  config.config_json.header2|default:default_location|default:''  }}"
+                            placeholder="Enter Header 2">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold">Header 3</label>
+                        <input type="text" name="header3" class="form-control"
+                            value="{{  config.config_json.header3|default:'System'  }}" placeholder="Enter Header 3">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Footer 1</label>
+                        <input type="text" name="footer1" class="form-control"
+                            value="{{  config.config_json.footer1|default:'Thank you'  }}">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Footer 2</label>
+                        <input type="text" name="footer2" class="form-control"
+                            value="{{  config.config_json.footer2|default:'Visit Again'  }}">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Token Dispenser ID</label>
+                        <input type="number" name="dispenser_id" class="form-control"
+                            value="{{  config.config_json.dispenser_id|default:'1'  }}">
+                    </div>
+
+                    <div class="col-12 mt-3">
+                        <h6 class="text-dark fw-bold mb-2">Button Details</h6>
+                        <div class="btn-group w-100" role="group">
+                            {% if config.config_json.button_mode|default:'counterwise' == 'counterwise' %}
+                            <input type="radio" class="btn-check" name="button_mode" id="button_mode_counterwise"
+                                value="counterwise" checked>
+                            {% else %}
+                            <input type="radio" class="btn-check" name="button_mode" id="button_mode_counterwise"
+                                value="counterwise">
+                            {% endif %}
+                            <label class="btn btn-outline-secondary" for="button_mode_counterwise">Counterwise</label>
+
+                            {% if config.config_json.button_mode == 'continuous' %}
+                            <input type="radio" class="btn-check" name="button_mode" id="button_mode_continuous"
+                                value="continuous" checked>
+                            {% else %}
+                            <input type="radio" class="btn-check" name="button_mode" id="button_mode_continuous"
+                                value="continuous">
+                            {% endif %}
+                            <label class="btn btn-outline-secondary" for="button_mode_continuous">Continuous</label>
+                        </div>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Token Label</label>
+                        <input type="text" name="token_label" class="form-control"
+                            value="{{  config.config_json.token_label|default:''  }}" placeholder="Enter">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Start Counter</label>
+                        <input type="number" name="start_counter" class="form-control"
+                            value="{{  config.config_json.start_counter|default:''  }}" placeholder="Enter">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">End Counter</label>
+                        <input type="number" name="end_counter" class="form-control"
+                            value="{{  config.config_json.end_counter|default:''  }}" placeholder="Enter">
+                    </div>
+
+                    <div class="col-12 mt-4">
+                        <h5 class="text-muted mb-3"><i class="fas fa-star me-2"></i>VIP Settings</h5>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="form-check form-switch">
+                            {% if config.config_json.vip_enable == '1' %}
+                            <input class="form-check-input" type="checkbox" name="vip_enable" id="vip_enable" checked>
+                            {% else %}
+                            <input class="form-check-input" type="checkbox" name="vip_enable" id="vip_enable">
+                            {% endif %}
+                            <label class="form-check-label fw-bold" for="vip_enable">VIP Enable</label>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold">VIP Count From</label>
+                        <input type="number" name="vip_count_from" id="vip_count_from" class="form-control"
+                            value="{{  config.config_json.vip_count_from|default:''  }}">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold">VIP Count To</label>
+                        <input type="number" name="vip_count_to" id="vip_count_to" class="form-control"
+                            value="{{  config.config_json.vip_count_to|default:''  }}">
+                    </div>
+                </div>
+
+                <div class="col-12 mt-4">
+                    <h5 class="text-muted mb-3">
+                        <i class="fas fa-list-check me-2"></i>Counter Mapping
+                        <small class="text-muted">(Select one counter per button)</small>
+                    </h5>
+                    {% if all_counters %}
+
+                    <div id="dispenser-counter-dropdowns-container">
+                        {% if device.token_type == '1_BUTTON' %}
+                        <div class="counter-dropdown-wrapper mb-3">
+                            <label class="form-label fw-bold">Button 1</label>
+                            <select name="dispenser_counter_selection_1"
+                                class="form-select dispenser-counter-selection-dropdown">
+                                <option value="">-- Select Counter --</option>
+                                {% for counter in all_counters %}
+                                <option value="{{ counter.id }}" {% if mapped_counter_by_button.1 == counter.id %}selected{% endif %}>
+                                    {{ counter.counter_display_name }} ({{ counter.counter_name }} - {{ counter.counter_prefix_code }})
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        {% elif device.token_type == '2_BUTTON' %}
+                        <div class="counter-dropdown-wrapper mb-3">
+                            <label class="form-label fw-bold">Button 1</label>
+                            <select name="dispenser_counter_selection_1"
+                                class="form-select dispenser-counter-selection-dropdown">
+                                <option value="">-- Select Counter --</option>
+                                {% for counter in all_counters %}
+                                <option value="{{ counter.id }}" {% if mapped_counter_by_button.1 == counter.id %}selected{% endif %}>
+                                    {{ counter.counter_display_name }} ({{ counter.counter_name }} - {{ counter.counter_prefix_code }})
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="counter-dropdown-wrapper mb-3">
+                            <label class="form-label fw-bold">Button 2</label>
+                            <select name="dispenser_counter_selection_2"
+                                class="form-select dispenser-counter-selection-dropdown">
+                                <option value="">-- Select Counter --</option>
+                                {% for counter in all_counters %}
+                                <option value="{{ counter.id }}" {% if mapped_counter_by_button.2 == counter.id %}selected{% endif %}>
+                                    {{ counter.counter_display_name }} ({{ counter.counter_name }} - {{ counter.counter_prefix_code }})
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        {% elif device.token_type == '3_BUTTON' %}
+                        <div class="counter-dropdown-wrapper mb-3">
+                            <label class="form-label fw-bold">Button 1</label>
+                            <select name="dispenser_counter_selection_1"
+                                class="form-select dispenser-counter-selection-dropdown">
+                                <option value="">-- Select Counter --</option>
+                                {% for counter in all_counters %}
+                                <option value="{{ counter.id }}" {% if mapped_counter_by_button.1 == counter.id %}selected{% endif %}>
+                                    {{ counter.counter_display_name }} ({{ counter.counter_name }} - {{ counter.counter_prefix_code }})
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="counter-dropdown-wrapper mb-3">
+                            <label class="form-label fw-bold">Button 2</label>
+                            <select name="dispenser_counter_selection_2"
+                                class="form-select dispenser-counter-selection-dropdown">
+                                <option value="">-- Select Counter --</option>
+                                {% for counter in all_counters %}
+                                <option value="{{ counter.id }}" {% if mapped_counter_by_button.2 == counter.id %}selected{% endif %}>
+                                    {{ counter.counter_display_name }} ({{ counter.counter_name }} - {{ counter.counter_prefix_code }})
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="counter-dropdown-wrapper mb-3">
+                            <label class="form-label fw-bold">Button 3</label>
+                            <select name="dispenser_counter_selection_3"
+                                class="form-select dispenser-counter-selection-dropdown">
+                                <option value="">-- Select Counter --</option>
+                                {% for counter in all_counters %}
+                                <option value="{{ counter.id }}" {% if mapped_counter_by_button.3 == counter.id %}selected{% endif %}>
+                                    {{ counter.counter_display_name }} ({{ counter.counter_name }} - {{ counter.counter_prefix_code }})
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        {% elif device.token_type == '4_BUTTON' %}
+                        <div class="counter-dropdown-wrapper mb-3">
+                            <label class="form-label fw-bold">Button 1</label>
+                            <select name="dispenser_counter_selection_1"
+                                class="form-select dispenser-counter-selection-dropdown">
+                                <option value="">-- Select Counter --</option>
+                                {% for counter in all_counters %}
+                                <option value="{{ counter.id }}" {% if mapped_counter_by_button.1 == counter.id %}selected{% endif %}>
+                                    {{ counter.counter_display_name }} ({{ counter.counter_name }} - {{ counter.counter_prefix_code }})
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="counter-dropdown-wrapper mb-3">
+                            <label class="form-label fw-bold">Button 2</label>
+                            <select name="dispenser_counter_selection_2"
+                                class="form-select dispenser-counter-selection-dropdown">
+                                <option value="">-- Select Counter --</option>
+                                {% for counter in all_counters %}
+                                <option value="{{ counter.id }}" {% if mapped_counter_by_button.2 == counter.id %}selected{% endif %}>
+                                    {{ counter.counter_display_name }} ({{ counter.counter_name }} - {{ counter.counter_prefix_code }})
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="counter-dropdown-wrapper mb-3">
+                            <label class="form-label fw-bold">Button 3</label>
+                            <select name="dispenser_counter_selection_3"
+                                class="form-select dispenser-counter-selection-dropdown">
+                                <option value="">-- Select Counter --</option>
+                                {% for counter in all_counters %}
+                                <option value="{{ counter.id }}" {% if mapped_counter_by_button.3 == counter.id %}selected{% endif %}>
+                                    {{ counter.counter_display_name }} ({{ counter.counter_name }} - {{ counter.counter_prefix_code }})
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="counter-dropdown-wrapper mb-3">
+                            <label class="form-label fw-bold">Button 4</label>
+                            <select name="dispenser_counter_selection_4"
+                                class="form-select dispenser-counter-selection-dropdown">
+                                <option value="">-- Select Counter --</option>
+                                {% for counter in all_counters %}
+                                <option value="{{ counter.id }}" {% if mapped_counter_by_button.4 == counter.id %}selected{% endif %}>
+                                    {{ counter.counter_display_name }} ({{ counter.counter_name }} - {{ counter.counter_prefix_code }})
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        {% else %}
+                        {# Default to 1 button if token_type is not set #}
+                        <div class="counter-dropdown-wrapper mb-3">
+                            <label class="form-label fw-bold">Button 1</label>
+                            <select name="dispenser_counter_selection_1"
+                                class="form-select dispenser-counter-selection-dropdown">
+                                <option value="">-- Select Counter --</option>
+                                {% for counter in all_counters %}
+                                <option value="{{ counter.id }}" {% if mapped_counter_by_button.1 == counter.id %}selected{% endif %}>
+                                    {{ counter.counter_display_name }} ({{ counter.counter_name }} - {{ counter.counter_prefix_code }})
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        {% endif %}
+                    </div>
+                    <small class="text-muted d-block mt-2">
+                        <i class="fas fa-info-circle me-1"></i>
+                        Select one counter per button. Each counter can only be selected once.
+                        <a href="{% url 'counter_list' %}" class="alert-link">Manage counters</a>
+                    </small>
+                    {% else %}
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>
+                        No counters found.
+                        <a href="{% url 'counter_list' %}" class="alert-link">Create counters</a>
+                        to map them to this token dispenser.
+                    </div>
+                    {% endif %}
+                </div>
+
+                {% elif device.device_type == 'KEYPAD' %}
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Keypad Device Text</label>
+                        <input type="text" name="keypad_device_text" class="form-control"
+                            value="{{  config.config_json.keypad_device_text|default:''  }}">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Counter No</label>
+                        <input type="number" name="counter_no" class="form-control"
+                            value="{{  config.config_json.counter_no|default:''  }}">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Keypad Serial Number</label>
+                        <div id="keypad_container">
+                            {% for i in "12345"|make_list %}
+                            {% if forloop.first %}
+                            <div class="mb-2 keypad-group" id="keypad_group_{{  i  }}">
+                                {% else %}
+                                <div class="mb-2 keypad-group" id="keypad_group_{{  i  }}" style="display:none;">
+                                    {% endif %}
+                                    <label class="form-label small text-muted">Keypad {{ i }}</label>
+                                    <select name="keypad_sl_no_{{  i  }}" class="form-select">
+                                        <option value="">Select Keypad</option>
+                                        {% for k in available_keypads %}
+                                        {% with k_sn=k.serial_number %}
+                                        {% if i == '1' %}
+                                        {% with c=config.config_json.keypad_sl_no_1 m=mapped_keypads.0 %}
+                                        {% if c == k_sn or not c and m == k_sn %}
+                                        <option value="{{  k_sn  }}" selected>{{ k.display_name|default:k_sn }}</option>
+                                        {% else %}
+                                        <option value="{{  k_sn  }}">{{ k.display_name|default:k_sn }}</option>
+                                        {% endif %}
+                                        {% endwith %}
+                                        {% elif i == '2' %}
+                                        {% with c=config.config_json.keypad_sl_no_2 m=mapped_keypads.1 %}
+                                        {% if c == k_sn or not c and m == k_sn %}
+                                        <option value="{{  k_sn  }}" selected>{{ k.display_name|default:k_sn }}</option>
+                                        {% else %}
+                                        <option value="{{  k_sn  }}">{{ k.display_name|default:k_sn }}</option>
+                                        {% endif %}
+                                        {% endwith %}
+                                        {% elif i == '3' %}
+                                        {% with c=config.config_json.keypad_sl_no_3 m=mapped_keypads.2 %}
+                                        {% if c == k_sn or not c and m == k_sn %}
+                                        <option value="{{  k_sn  }}" selected>{{ k.display_name|default:k_sn }}</option>
+                                        {% else %}
+                                        <option value="{{  k_sn  }}">{{ k.display_name|default:k_sn }}</option>
+                                        {% endif %}
+                                        {% endwith %}
+                                        {% elif i == '4' %}
+                                        {% with c=config.config_json.keypad_sl_no_4 m=mapped_keypads.3 %}
+                                        {% if c == k_sn or not c and m == k_sn %}
+                                        <option value="{{  k_sn  }}" selected>{{ k.display_name|default:k_sn }}</option>
+                                        {% else %}
+                                        <option value="{{  k_sn  }}">{{ k.display_name|default:k_sn }}</option>
+                                        {% endif %}
+                                        {% endwith %}
+                                        {% elif i == '5' %}
+                                        {% with c=config.config_json.keypad_sl_no_5 m=mapped_keypads.4 %}
+                                        {% if c == k_sn or not c and m == k_sn %}
+                                        <option value="{{  k_sn  }}" selected>{{ k.display_name|default:k_sn }}</option>
+                                        {% else %}
+                                        <option value="{{  k_sn  }}">{{ k.display_name|default:k_sn }}</option>
+                                        {% endif %}
+                                        {% endwith %}
+                                        {% endif %}
+                                        {% endwith %}
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            <div id="mapped_keypads_data" data-keypads="{{  mapped_keypads|safe  }}"></div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Dispenser Serial Number</label>
+                            <input type="text" name="dispenser_sl_no" class="form-control"
+                                value="{{  config.config_json.dispenser_sl_no|default:mapped_dispenser_sl_no|default:''  }}">
+                        </div>
+                        <div class="col-12 mt-3">
+                            <h5 class="text-muted mb-3"><i class="fas fa-keyboard me-2"></i>Button String IDs <small class="text-muted fs-6">(Buttons B, C, D)</small></h5>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">
+                                <span class="badge bg-primary me-1">B</span> Button String ID
+                            </label>
+                            <input type="text" name="button_b_string_id" id="btn_b_str" class="form-control btn-str-input"
+                                placeholder="e.g. service_b" maxlength="16"
+                                value="{{ config.config_json.button_b_string_id|default:''|slice:':16' }}">
+                            <div class="d-flex justify-content-between mt-1">
+                                <small class="text-muted">Custom string ID for Button B actions</small>
+                                <small class="btn-str-counter text-muted"><span class="btn-str-used">{{ config.config_json.button_b_string_id|default:''|slice:':16'|length }}</span>/16</small>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">
+                                <span class="badge bg-warning text-dark me-1">C</span> Button String ID
+                            </label>
+                            <input type="text" name="button_c_string_id" id="btn_c_str" class="form-control btn-str-input"
+                                placeholder="e.g. service_c" maxlength="16"
+                                value="{{ config.config_json.button_c_string_id|default:''|slice:':16' }}">
+                            <div class="d-flex justify-content-between mt-1">
+                                <small class="text-muted">Custom string ID for Button C actions</small>
+                                <small class="btn-str-counter text-muted"><span class="btn-str-used">{{ config.config_json.button_c_string_id|default:''|slice:':16'|length }}</span>/16</small>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">
+                                <span class="badge bg-danger me-1">D</span> Button String ID
+                            </label>
+                            <input type="text" name="button_d_string_id" id="btn_d_str" class="form-control btn-str-input"
+                                placeholder="e.g. service_d" maxlength="16"
+                                value="{{ config.config_json.button_d_string_id|default:''|slice:':16' }}">
+                            <div class="d-flex justify-content-between mt-1">
+                                <small class="text-muted">Custom string ID for Button D actions</small>
+                                <small class="btn-str-counter text-muted"><span class="btn-str-used">{{ config.config_json.button_d_string_id|default:''|slice:':16'|length }}</span>/16</small>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">No. of Keypad Dev</label>
+                            <input type="number" name="no_of_keypad_dev" id="no_of_keypad_dev" class="form-control"
+                                value="{{  config.config_json.no_of_keypad_dev|default:'1'  }}" min="1" max="5">
+                        </div>
+                        <div id="available_keypads_data"
+                            data-keypads='[{% for k in available_keypads %}{"serial_number": "{{  k.serial_number  }}", "display_name": "{{  k.display_name|default:k.serial_number  }}"}{% if not forloop.last %},{% endif %}{% endfor %}]'>
+                        </div>
+                        <div class="col-12 mt-4">
+                            <h5 class="text-muted mb-3"><i class="fas fa-sliders-h me-2"></i>Advanced Settings</h5>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">Keypad Pool Mode</label>
+                            <select name="keypad_pool_mode" class="form-select">
+                                {% if config.config_json.keypad_pool_mode == '0' %}
+                                <option value="0" selected>Normal</option>
+                                <option value="1">Pool</option>
+                                {% else %}
+                                <option value="0">Normal</option>
+                                <option value="1" selected>Pool</option>
+                                {% endif %}
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">Serving Mode</label>
+                            <select name="single_multiple" class="form-select">
+                                {% if config.config_json.single_multiple == '1' %}
+                                <option value="1" selected>Single Service</option>
+                                <option value="2">Multiple Service</option>
+                                {% elif config.config_json.single_multiple == '2' %}
+                                <option value="1">Single Service</option>
+                                <option value="2" selected>Multiple Service</option>
+                                {% else %}
+                                <option value="1" selected>Single Service</option>
+                                <option value="2">Multiple Service</option>
+                                {% endif %}
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-check form-switch mt-4">
+                                {% if config.config_json.logo_enable == '1' %}
+                                <input class="form-check-input" type="checkbox" name="logo_enable" id="logo_enable"
+                                    checked>
+                                {% else %}
+                                <input class="form-check-input" type="checkbox" name="logo_enable" id="logo_enable">
+                                {% endif %}
+                                <label class="form-check-label fw-bold" for="logo_enable">Logo Enable</label>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-check form-switch mt-4">
+                                {% if config.config_json.skip_enable == '1' %}
+                                <input class="form-check-input" type="checkbox" name="skip_enable" id="skip_enable"
+                                    checked>
+                                {% else %}
+                                <input class="form-check-input" type="checkbox" name="skip_enable" id="skip_enable">
+                                {% endif %}
+                                <label class="form-check-label fw-bold" for="skip_enable">Skip Enable</label>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-check form-switch mt-4">
+                                {% if config.config_json.transfer_enable == '1' %}
+                                <input class="form-check-input" type="checkbox" name="transfer_enable"
+                                    id="transfer_enable" checked>
+                                {% else %}
+                                <input class="form-check-input" type="checkbox" name="transfer_enable"
+                                    id="transfer_enable">
+                                {% endif %}
+                                <label class="form-check-label fw-bold" for="transfer_enable">Transfer Enable</label>
+                            </div>
+                        </div>
+                        <div class="col-12 mt-4">
+                            <h5 class="text-muted mb-3"><i class="fas fa-star me-2"></i>VIP Settings</h5>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-check form-switch">
+                                {% if config.config_json.vip_enable == '1' %}
+                                <input class="form-check-input" type="checkbox" name="vip_enable" id="kp_vip_enable"
+                                    checked>
+                                {% else %}
+                                <input class="form-check-input" type="checkbox" name="vip_enable" id="kp_vip_enable">
+                                {% endif %}
+                                <label class="form-check-label fw-bold" for="kp_vip_enable">VIP Enable</label>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">VIP From</label>
+                            <input type="number" name="vip_from" id="kp_vip_from" class="form-control"
+                                value="{{  config.config_json.vip_from|default:''  }}">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">VIP To</label>
+                            <input type="number" name="vip_to" id="kp_vip_to" class="form-control"
+                                value="{{  config.config_json.vip_to|default:''  }}">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">Remaining Bit Flag</label>
+                            <input type="text" name="remaining_bit_flag" class="form-control"
+                                value="{{  config.config_json.remaining_bit_flag|default:'1'  }}">
+                        </div>
+                    </div>
+
+                    {% elif device.device_type == 'TV' %}
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <h5 class="text-muted mb-3"><i class="fas fa-tv me-2"></i>Display Settings</h5>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold">Orientation</label>
+                            <select name="orientation" class="form-select">
+                                {% if tv_config.orientation == 'landscape' %}
+                                <option value="landscape" selected>Landscape</option>
+                                <option value="portrait">Portrait</option>
+                                {% else %}
+                                <option value="landscape">Landscape</option>
+                                <option value="portrait" selected>Portrait</option>
+                                {% endif %}
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold">Layout Type</label>
+                            <select name="layout_type" class="form-select">
+                                <option value="default" {% if tv_config.layout_type == "default" %}selected{% endif %}>
+                                    Default</option>
+                                <option value="compact" {% if tv_config.layout_type == "compact" %}selected{% endif %}>
+                                    Compact</option>
+                                <option value="grid" {% if tv_config.layout_type == "grid" %}selected{% endif %}>Grid
+                                </option>
+                                <option value="full" {% if tv_config.layout_type == "full" %}selected{% endif %}>Full
+                                    Screen</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold">Display Rows</label>
+                            <input type="number" name="display_rows" class="form-control"
+                                value="{{  tv_config.display_rows|default:'3'  }}" min="1" max="20">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold">Display Columns</label>
+                            <input type="number" name="display_columns" class="form-control"
+                                value="{{  tv_config.display_columns|default:'4'  }}" min="1" max="20">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold">No. of Keypads</label>
+                            <select name="no_of_keypads" class="form-select" id="no_of_keypads_select">
+                                {% with current_nok=tv_config.no_of_dispensers|stringformat:"s" %}
+                                {% for i in "12345678"|make_list %}
+                                {% if i == current_nok %}
+                                <option value="{{ i }}" selected>{{ i }}</option>
+                                {% else %}
+                                <option value="{{ i }}">{{ i }}</option>
+                                {% endif %}
+                                {% endfor %}
+                                {% endwith %}
+                            </select>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label fw-bold mb-3">
+                                <i class="fas fa-keyboard me-1"></i>Select Keypads &amp; Configure Button Strings
+                                <small class="text-muted">(Button A = Calling — auto handled)</small>
+                            </label>
+                            {% if all_keypads_for_tv %}
+                            <div id="keypad-slots-container">
+                                {% for slot_num in "12345678"|make_list %}
+                                {% with fc=forloop.counter %}
+                                <div class="keypad-slot-wrapper border rounded-3 p-3 mb-3"
+                                     data-keypad-slot="{{ fc }}"
+                                     style="display: {% if fc <= tv_config.no_of_dispensers %}block{% else %}none{% endif %};">
+
+                                    <div class="d-flex align-items-center gap-2 mb-3">
+                                        <span class="badge bg-primary fw-semibold px-3 py-2">Slot {{ slot_num }}</span>
+                                    </div>
+
+                                    {# Row 1: Keypad + Dispenser selectors #}
+                                    <div class="row g-3 mb-3">
+                                        <div class="col-md-6">
+                                            <label class="form-label small fw-bold">
+                                                <i class="fas fa-keyboard me-1 text-primary"></i>Select Keypad
+                                            </label>
+                                            <select name="keypad_selection_{{ slot_num }}" class="form-select form-select-sm keypad-selection-dropdown">
+                                                <option value="">-- Select Keypad --</option>
+                                                {% for kp in all_keypads_for_tv %}
+                                                <option value="{{ kp.id }}"
+                                                    {% if slot_num == '1' and mapped_keypad_by_position.1 == kp.id %}selected
+                                                    {% elif slot_num == '2' and mapped_keypad_by_position.2 == kp.id %}selected
+                                                    {% elif slot_num == '3' and mapped_keypad_by_position.3 == kp.id %}selected
+                                                    {% elif slot_num == '4' and mapped_keypad_by_position.4 == kp.id %}selected
+                                                    {% elif slot_num == '5' and mapped_keypad_by_position.5 == kp.id %}selected
+                                                    {% elif slot_num == '6' and mapped_keypad_by_position.6 == kp.id %}selected
+                                                    {% elif slot_num == '7' and mapped_keypad_by_position.7 == kp.id %}selected
+                                                    {% elif slot_num == '8' and mapped_keypad_by_position.8 == kp.id %}selected
+                                                    {% endif %}>
+                                                    {{ kp.serial_number }}{% if kp.display_name %} — {{ kp.display_name }}{% endif %}
+                                                </option>
+                                                {% endfor %}
+                                            </select>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label small fw-bold">
+                                                <i class="fas fa-ticket-alt me-1 text-success"></i>Dispenser for Button A
+                                            </label>
+                                            <select name="dispenser_for_keypad_{{ slot_num }}" class="form-select form-select-sm">
+                                                <option value="">-- No Dispenser --</option>
+                                                {% for disp in all_dispensers_for_tv %}
+                                                <option value="{{ disp.id }}"
+                                                    {% if slot_num == '1' and mapped_dispenser_by_kp_position.1 == disp.id %}selected
+                                                    {% elif slot_num == '2' and mapped_dispenser_by_kp_position.2 == disp.id %}selected
+                                                    {% elif slot_num == '3' and mapped_dispenser_by_kp_position.3 == disp.id %}selected
+                                                    {% elif slot_num == '4' and mapped_dispenser_by_kp_position.4 == disp.id %}selected
+                                                    {% elif slot_num == '5' and mapped_dispenser_by_kp_position.5 == disp.id %}selected
+                                                    {% elif slot_num == '6' and mapped_dispenser_by_kp_position.6 == disp.id %}selected
+                                                    {% elif slot_num == '7' and mapped_dispenser_by_kp_position.7 == disp.id %}selected
+                                                    {% elif slot_num == '8' and mapped_dispenser_by_kp_position.8 == disp.id %}selected
+                                                    {% endif %}>
+                                                    {{ disp.serial_number }}{% if disp.display_name %} — {{ disp.display_name }}{% endif %}
+                                                </option>
+                                                {% endfor %}
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    {# Row 2: Button role summary #}
+                                    <div class="row g-2 ps-2 border-start border-3 border-secondary-subtle">
+                                        <div class="col-6 col-md-3">
+                                            <div class="d-flex align-items-center gap-2 p-2 rounded bg-success-subtle">
+                                                <span class="badge bg-success">A</span>
+                                                <small class="fw-semibold text-success-emphasis">Calling Button<br><em>→ via Dispenser</em></small>
+                                            </div>
+                                        </div>
+                                        <div class="col-6 col-md-3">
+                                            <div class="d-flex align-items-center gap-2 p-2 rounded bg-primary-subtle">
+                                                <span class="badge bg-primary">B</span>
+                                                <small class="fw-semibold text-primary-emphasis">Custom Action<br><em>→ Keypad config</em></small>
+                                            </div>
+                                        </div>
+                                        <div class="col-6 col-md-3">
+                                            <div class="d-flex align-items-center gap-2 p-2 rounded bg-warning-subtle">
+                                                <span class="badge bg-warning text-dark">C</span>
+                                                <small class="fw-semibold text-warning-emphasis">Custom Action<br><em>→ Keypad config</em></small>
+                                            </div>
+                                        </div>
+                                        <div class="col-6 col-md-3">
+                                            <div class="d-flex align-items-center gap-2 p-2 rounded bg-danger-subtle">
+                                                <span class="badge bg-danger">D</span>
+                                                <small class="fw-semibold text-danger-emphasis">Custom Action<br><em>→ Keypad config</em></small>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                </div>
+                                {% endwith %}
+                                {% endfor %}
+                            </div>
+                            <small class="text-muted d-block mt-2">
+                                <i class="fas fa-info-circle me-1"></i>
+                                Button A calls counters via the selected Dispenser. Button B/C/D string IDs are configured on the Keypad device config page.
+                            </small>
+                            {% else %}
+                            <div class="alert alert-info">
+                                <i class="fas fa-info-circle me-2"></i>
+                                No keypad devices found.
+                                <a href="{% url 'device_list' %}" class="alert-link">Create keypad devices</a>
+                                to map them to this TV.
+                            </div>
+                            {% endif %}
+                        </div>
+
+
+
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold">Counter Text Color</label>
+                            <input type="color" name="counter_text_color" class="form-control form-control-color w-100"
+                                value="{{  tv_config.counter_text_color|default:'#000000'  }}">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold">Token Text Color</label>
+                            <input type="color" name="token_text_color" class="form-control form-control-color w-100"
+                                value="{{  tv_config.token_text_color|default:'#000000'  }}">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold">Current Token Color</label>
+                            <input type="color" name="current_token_color" class="form-control form-control-color w-100"
+                                value="{{  tv_config.current_token_color|default:'#000000'  }}">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold">Previous Token Color</label>
+                            <input type="color" name="previous_token_color"
+                                class="form-control form-control-color w-100"
+                                value="{{  tv_config.previous_token_color|default:'#888888'  }}">
+                        </div>
+                        <div class="col-12 mt-3">
+                            <h6 class="text-dark fw-bold mb-2">Font Settings</h6>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">Token Font Size (px)</label>
+                            <input type="number" name="token_font_size" class="form-control"
+                                value="{{  tv_config.token_font_size|default:'24'  }}">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">Counter Font Size (px)</label>
+                            <input type="number" name="counter_font_size" class="form-control"
+                                value="{{  tv_config.counter_font_size|default:'24'  }}">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">Tokens Per Counter</label>
+                            <input type="number" name="tokens_per_counter" class="form-control"
+                                value="{{  tv_config.tokens_per_counter|default:'5'  }}">
+                        </div>
+
+                        <div class="col-12 mt-3">
+                            <h6 class="text-dark fw-bold mb-2">Audio Settings</h6>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold">Audio Language</label>
+                            <select name="audio_language" class="form-select">
+                                <option value="en" {% if tv_config.audio_language == "en" %}selected{% endif %}>English
+                                </option>
+                                <option value="ml" {% if tv_config.audio_language == "ml" %}selected{% endif %}>Malayalam
+                                </option>
+                                <option value="hi" {% if tv_config.audio_language == "hi" %}selected{% endif %}>Hindi
+                                </option>
+                                <option value="ta" {% if tv_config.audio_language == "ta" %}selected{% endif %}>Tamil
+                                </option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="form-check form-switch mt-4">
+                                {% if tv_config.save_audio_external %}
+                                <input class="form-check-input" type="checkbox" name="save_audio_external"
+                                    id="save_audio_external" checked>
+                                {% else %}
+                                <input class="form-check-input" type="checkbox" name="save_audio_external"
+                                    id="save_audio_external">
+                                {% endif %}
+                                <label class="form-check-label fw-bold" for="save_audio_external">External Audio</label>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="form-check form-switch mt-4">
+                                {% if tv_config.enable_counter_announcement %}
+                                <input class="form-check-input" type="checkbox" name="enable_counter_announcement"
+                                    id="enable_counter_announcement" checked>
+                                {% else %}
+                                <input class="form-check-input" type="checkbox" name="enable_counter_announcement"
+                                    id="enable_counter_announcement">
+                                {% endif %}
+                                <label class="form-check-label fw-bold" for="enable_counter_announcement">Counter
+                                    Announcement</label>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="form-check form-switch mt-4">
+                                {% if tv_config.enable_token_announcement %}
+                                <input class="form-check-input" type="checkbox" name="enable_token_announcement"
+                                    id="enable_token_announcement" checked>
+                                {% else %}
+                                <input class="form-check-input" type="checkbox" name="enable_token_announcement"
+                                    id="enable_token_announcement">
+                                {% endif %}
+                                <label class="form-check-label fw-bold" for="enable_token_announcement">Token
+                                    Announcement</label>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="form-check form-switch mt-4">
+                                {% if tv_config.enable_counter_prifix %}
+                                <input class="form-check-input" type="checkbox" name="enable_counter_prifix"
+                                    id="enable_counter_prifix" checked>
+                                {% else %}
+                                <input class="form-check-input" type="checkbox" name="enable_counter_prifix"
+                                    id="enable_counter_prifix">
+                                {% endif %}
+                                <label class="form-check-label fw-bold" for="enable_counter_prifix">Counter Prefix</label>
+                            </div>
+                        </div>
+
+                        <div class="col-12 mt-3">
+                            <h6 class="text-dark fw-bold mb-2">Display Mode</h6>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-check form-switch mt-4">
+                                {% if tv_config.blink_current_token %}
+                                <input class="form-check-input" type="checkbox" name="blink_current_token"
+                                    id="blink_current_token" checked>
+                                {% else %}
+                                <input class="form-check-input" type="checkbox" name="blink_current_token"
+                                    id="blink_current_token">
+                                {% endif %}
+                                <label class="form-check-label fw-bold" for="blink_current_token">Blink Current
+                                    Token</label>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Blink Seconds</label>
+                            <input type="number" name="blink_seconds" class="form-control"
+                                value="{{ tv_config.blink_seconds|default:'1' }}" min="1" max="60"
+                                placeholder="Seconds to blink (e.g. 1)">
+                            <small class="text-muted">Duration in seconds for token blink effect.</small>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Token Format</label>
+                            <select name="token_format" class="form-select">
+                                <option value="T1" {% if tv_config.token_format == "T1" %}selected{% endif %}>T1</option>
+                                <option value="T2" {% if tv_config.token_format == "T2" %}selected{% endif %}>T2</option>
+                                <option value="T3" {% if tv_config.token_format == "T3" %}selected{% endif %}>T3</option>
+                            </select>
+                        </div>
+                        {% if ads_enabled %}
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Ad Placement</label>
+                            <select name="ad_placement" class="form-select">
+                                <option value="right" {% if tv_config.ad_placement == 'right' %}selected{% endif %}>Right
+                                </option>
+                                <option value="left" {% if tv_config.ad_placement == 'left' %}selected{% endif %}>Left
+                                </option>
+                                <option value="top" {% if tv_config.ad_placement == 'top' %}selected{% endif %}>Top
+                                </option>
+                                <option value="bottom" {% if tv_config.ad_placement == 'bottom' %}selected{% endif %}>
+                                    Bottom</option>
+                            </select>
+                        </div>
+                        {% endif %}
+                        {% if ads_enabled %}
+                        <div class="col-md-6">
+                            <div class="form-check form-switch mt-4">
+                                {% if tv_config.show_ads %}
+                                <input class="form-check-input" type="checkbox" name="show_ads" id="show_ads" checked>
+                                {% else %}
+                                <input class="form-check-input" type="checkbox" name="show_ads" id="show_ads">
+                                {% endif %}
+                                <label class="form-check-label fw-bold" for="show_ads">Show Ads</label>
+                            </div>
+                        </div>
+                        <div class="col-12 mt-3">
+                            <label class="form-label fw-bold">Advertisement URLs</label>
+                            <div id="ad-url-container">
+                                <div class="input-group mb-2 ad-url-row">
+                                    <input type="url" name="ad_urls[]" class="form-control" placeholder="https://example.com/video.mp4">
+                                    <button type="button" class="btn btn-outline-secondary add-url-btn"><i class="fas fa-plus"></i></button>
+                                </div>
+                            </div>
+                            <small class="text-muted">You can provide external links for ads instead of uploading files.</small>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label fw-bold mt-3">Advertisement Files</label>
+                            <input type="file" name="ad_files" id="ad_files" class="form-control" multiple
+                                accept="image/*,video/*">
+                            {% if ads %}
+                            <div class="mt-4">
+                                <h6 class="text-success small fw-bold mb-2">Uploaded Ads</h6>
+                                <div class="table-responsive">
+                                    <table class="table table-sm">
+                                        <tbody>
+                                            {% for ad in ads %}
+                                            <tr>
+                                                <td>
+                                                    {% if ad.file %}
+                                                        {{ ad.file.name|slice:"-30:" }}
+                                                    {% elif ad.ad_url %}
+                                                        <a href="{{ ad.ad_url }}" target="_blank" class="text-decoration-none">{{ ad.ad_url|slice:":50" }}{% if ad.ad_url|length > 50 %}...{% endif %}</a>
+                                                    {% endif %}
+                                                </td>
+                                                <td class="text-end">
+                                                    {% if ad.file %}
+                                                    <button type="button" class="btn btn-sm view-ad-btn"
+                                                        data-url="{{  ad.file.url  }}"
+                                                        data-name="{{  ad.file.name  }}"><i
+                                                            class="fas fa-eye"></i></button>
+                                                    {% elif ad.ad_url %}
+                                                    <a href="{{ ad.ad_url }}" target="_blank" class="btn btn-sm text-primary">
+                                                        <i class="fas fa-external-link-alt"></i>
+                                                    </a>
+                                                    {% endif %}
+                                                    <a href="{% url 'delete_ad' ad.id %}"
+                                                        class="btn btn-sm text-danger"><i class="fas fa-trash"></i></a>
+                                                </td>
+                                            </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+                        <div class="col-12 mt-4">
+                            <h5 class="text-muted mb-3"><i class="fas fa-scroll me-2"></i>Scrolling Text Settings</h5>
+                        </div>
+                        <div class="col-12">
+                            <div class="card bg-light border">
+                                <div class="card-body">
+                                    <div class="form-check form-switch mb-3">
+                                        <input class="form-check-input" type="checkbox" name="scroll_enabled"
+                                            id="scroll_enabled" {% if config.config_json.scroll_enabled == "on" %}checked{% endif %}>
+                                        <label class="form-check-label fw-bold" for="scroll_enabled">Enable Scrolling
+                                            Text</label>
+                                    </div>
+
+                                    <div class="scroll-config-section" style="display: none;">
+                                        <div class="row">
+                                            <div class="col-md-6 mb-3">
+                                                <label class="form-label fw-bold">Number of Text Lines</label>
+                                                <input type="number" id="no_of_text_fields" name="no_of_text_fields"
+                                                    class="form-control"
+                                                    value="{{  config.config_json.scroll_text_lines|length|default:1  }}"
+                                                    min="1" max="8">
+                                                <small class="text-muted">Maximum 8 lines allowed</small>
+                                            </div>
+                                            <div class="col-md-6 mb-3">
+                                                <label class="form-label fw-bold">Scroll Text Color</label>
+                                                <input type="color" name="scroll_text_color" class="form-control form-control-color w-100"
+                                                    value="{{  tv_config.scroll_text_color|default:'#000000'  }}">
+                                            </div>
+                                        </div>
+
+                                        <div id="scrollTextContainer" class="row g-3">
+                                            <!-- Dynamic Text Fields will be inserted here -->
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+
+                        {% elif device.device_type == 'LED' %}
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">Sound Mode (S/B)</label>
+                                <select name="sound_mode" class="form-select">
+                                    <option value="0" {% if config.config_json.sound_mode == "0" %}selected{% endif %}>0 -
+                                        Bell</option>
+                                    <option value="1" {% if config.config_json.sound_mode == "1" %}selected{% endif %}>1 -
+                                        MY sound module</option>
+                                    <option value="2" {% if config.config_json.sound_mode == "2" %}selected{% endif %}>2 -
+                                        New Sil audio module</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">Display Type (DT)</label>
+                                <select name="display_type" class="form-select">
+                                    <option value="1" {% if config.config_json.display_type == "1" %}selected{% endif %}>1
+                                        - Single counter</option>
+                                    <option value="2" {% if config.config_json.display_type == "2" %}selected{% endif %}>2
+                                        - Double counter</option>
+                                    <option value="4" {% if config.config_json.display_type == "4" %}selected{% endif %}>4
+                                        - Four counter</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">Number of Digits (ND)</label>
+                                <select name="no_of_digits" class="form-select">
+                                    <option value="3" {% if config.config_json.no_of_digits == "3" %}selected{% endif %}>3
+                                        Digits</option>
+                                    <option value="4" {% if config.config_json.no_of_digits == "4" %}selected{% endif %}>4
+                                        Digits</option>
+                                </select>
+                            </div>
+                        </div>
+                        {% endif %}
+
+                        <hr class="my-4">
+                        <input type="hidden" name="next" value="{{  next|default:''  }}">
+                        <div class="d-flex justify-content-end gap-2">
+                            <a href="{{  next|default:'/config/devices/'  }}" class="btn btn-light border">Cancel</a>
+                            <button type="submit" class="btn btn-primary px-4 fw-medium">
+                                <i class="fas fa-save me-2"></i>Save Configuration
+                            </button>
+                        </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="adPreviewModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-light border-0 pb-2">
+                <h6 class="modal-title fw-bold"><i class="fas fa-image me-2 text-primary"></i>Ad Preview</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body text-center p-4">
+                <div id="modal_preview_container"
+                    class="bg-dark rounded overflow-hidden d-flex align-items-center justify-content-center"
+                    style="min-height: 400px; max-height: 80vh;">
+                    <div class="spinner-border text-primary"></div>
+                </div>
+                <div class="mt-3 p-2 bg-light rounded text-start">
+                    <span id="modal_ad_name" class="text-dark small d-block"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+    {{ config.config_json.scroll_text_lines|default:"[]"|json_script:"scroll-text-data" }}
+</div>
+{% endblock %}
+
+
+
+{% block extra_js %}
+<script src="{% static 'root/js/pages/device_config.js' %}"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+
+        // --- Keypad Slot Show/Hide Logic (TV config) ---
+        const noOfKeypadsSelect = document.getElementById('no_of_keypads_select');
+        const keypadSlots = document.querySelectorAll('.keypad-slot-wrapper');
+
+        function updateKeypadSlotVisibility() {
+            if (!noOfKeypadsSelect || keypadSlots.length === 0) return;
+            const count = parseInt(noOfKeypadsSelect.value) || 1;
+            keypadSlots.forEach(function (slot) {
+                const slotIndex = parseInt(slot.dataset.keypadSlot) || 0;
+                slot.style.display = slotIndex <= count ? 'block' : 'none';
+            });
+        }
+
+        if (noOfKeypadsSelect) {
+            noOfKeypadsSelect.addEventListener('change', updateKeypadSlotVisibility);
+            updateKeypadSlotVisibility(); // sync on load
+        }
+
+        // --- Scrolling Text Logic for TV and other devices ---
+
+        const scrollEnabledCheck = document.getElementById('scroll_enabled');
+        const scrollConfigSections = document.querySelectorAll('.scroll-config-section');
+        const noOfTextFieldsInput = document.getElementById('no_of_text_fields');
+        const scrollTextContainer = document.getElementById('scrollTextContainer');
+
+        if (scrollEnabledCheck && noOfTextFieldsInput && scrollTextContainer) {
+            // Existing values from Django template (parsed safely via json_script)
+            const scriptTag = document.getElementById('scroll-text-data');
+            let existingScrollLines = [];
+
+            if (scriptTag) {
+                try {
+                    existingScrollLines = JSON.parse(scriptTag.textContent);
+                    if (typeof existingScrollLines === 'string') {
+                        existingScrollLines = JSON.parse(existingScrollLines);
+                    }
+                } catch (e) {
+                    console.error("Error parsing scroll-text-data:", e);
+                    existingScrollLines = [];
+                }
+            }
+
+            if (!Array.isArray(existingScrollLines)) existingScrollLines = [];
+
+            function toggleScrollConfig() {
+                const isEnabled = scrollEnabledCheck.checked;
+                scrollConfigSections.forEach(el => {
+                    el.style.display = isEnabled ? 'block' : 'none';
+                });
+                if (isEnabled) {
+                    renderScrollTextFields();
+                }
+            }
+
+            function validateScrollInput(input) {
+                const val = input.value;
+                const charCount = val.length;
+                let counterEl = input.parentNode.querySelector('.scroll-counter');
+
+                // Enforce 150 char max
+                if (charCount > 150) {
+                    input.value = val.substring(0, 150);
+                }
+
+                // Update character counter
+                if (!counterEl) {
+                    counterEl = document.createElement('small');
+                    counterEl.className = 'scroll-counter text-muted d-block mt-1';
+                    input.parentNode.appendChild(counterEl);
+                }
+                const currentLen = input.value.length;
+                counterEl.textContent = `${currentLen}/150 characters`;
+            }
+
+            function renderScrollTextFields() {
+                let count = parseInt(noOfTextFieldsInput.value) || 1;
+                if (count < 1) { count = 1; noOfTextFieldsInput.value = 1; }
+                if (count > 8) { count = 8; noOfTextFieldsInput.value = 8; }
+
+                scrollTextContainer.innerHTML = '';
+
+                for (let i = 1; i <= count; i++) {
+                    const colDiv = document.createElement('div');
+                    colDiv.className = 'col-md-6 mb-3';
+
+                    const label = document.createElement('label');
+                    label.className = 'form-label fw-bold';
+                    label.innerText = `Scroll Text Line ${i}`;
+
+                    const input = document.createElement('input');
+                    input.type = 'text';
+                    input.name = `text_content_${i}`;
+                    input.className = 'form-control';
+                    input.maxLength = 150;
+                    input.placeholder = `Enter text for line ${i} (max 150 chars)`;
+
+                    // Pre-fill existing value
+                    if (existingScrollLines && existingScrollLines.length >= i) {
+                        input.value = existingScrollLines[i - 1];
+                    }
+
+                    input.addEventListener('input', function () {
+                        validateScrollInput(this);
+                    });
+
+                    // Initialize counter element
+                    const counterEl = document.createElement('small');
+                    counterEl.className = 'scroll-counter text-muted d-block mt-1';
+                    counterEl.textContent = `${input.value.length}/150 characters`;
+
+                    colDiv.appendChild(label);
+                    colDiv.appendChild(input);
+                    colDiv.appendChild(counterEl);
+                    scrollTextContainer.appendChild(colDiv);
+                }
+            }
+
+            // Form submit validation
+            const configForm = scrollEnabledCheck.closest('form');
+            if (configForm) {
+                configForm.addEventListener('submit', function (e) {
+                    if (!scrollEnabledCheck.checked) return;
+                    const inputs = scrollTextContainer.querySelectorAll('input[type="text"]');
+                    inputs.forEach(function (inp) {
+                        validateScrollInput(inp);
+                    });
+                });
+            }
+
+            // Event listeners
+            scrollEnabledCheck.addEventListener('change', toggleScrollConfig);
+            noOfTextFieldsInput.addEventListener('input', renderScrollTextFields);
+
+            // Initial render on page load
+            if (scrollEnabledCheck.checked) {
+                toggleScrollConfig();
+            }
+        }
+    });
+
+    // ─── TV Counter Dropdown Management ──────────────────────────────────────
+    const noOfCountersSelect = document.querySelector('select[name="no_of_counters"]');
+
+    if (noOfCountersSelect) {
+        // Show/hide counter slot wrappers based on selected count.
+        // Also clear hidden slots so they don't submit stale values.
+        function updateCounterDropdownsVisibility() {
+            const selectedCount = parseInt(noOfCountersSelect.value) || 1;
+            const wrappers = document.querySelectorAll('#counter-dropdowns-container .counter-dropdown-wrapper');
+            wrappers.forEach(function (wrapper) {
+                const counterIndex = parseInt(wrapper.getAttribute('data-counter-index'));
+                if (counterIndex <= selectedCount) {
+                    wrapper.style.display = 'block';
+                } else {
+                    wrapper.style.display = 'none';
+                    // Clear hidden selection to avoid ghost submissions
+                    const dropdown = wrapper.querySelector('.counter-selection-dropdown');
+                    if (dropdown) dropdown.value = '';
+                }
+            });
+            updateCounterDropdownOptions();
+        }
+
+        // Disable already-selected counters in other visible dropdowns.
+        function updateCounterDropdownOptions() {
+            const activeDropdowns = Array.from(
+                document.querySelectorAll('#counter-dropdowns-container .counter-dropdown-wrapper')
+            )
+                .filter(function (w) { return w.style.display !== 'none'; })
+                .map(function (w) { return w.querySelector('.counter-selection-dropdown'); })
+                .filter(function (d) { return d !== null; });
+
+            const selectedValues = activeDropdowns
+                .map(function (d) { return d.value; })
+                .filter(function (v) { return v !== ''; });
+
+            activeDropdowns.forEach(function (currentDropdown) {
+                const currentValue = currentDropdown.value;
+                Array.from(currentDropdown.options).forEach(function (option) {
+                    if (option.value === '' || option.value === currentValue) {
+                        option.disabled = false;
+                    } else {
+                        option.disabled = selectedValues.includes(option.value);
+                    }
+                });
+            });
+        }
+
+        // Listen for No. of Counters select changes
+        noOfCountersSelect.addEventListener('change', updateCounterDropdownsVisibility);
+
+        // Listen for individual counter selection changes
+        document.querySelectorAll('.counter-selection-dropdown').forEach(function (dropdown) {
+            dropdown.addEventListener('change', updateCounterDropdownOptions);
+        });
+
+        // Initialize on page load
+        updateCounterDropdownsVisibility();
+    }
+
+    // ─── Token Dispenser Counter Dropdown Management ──────────────────────────
+    const dispenserCounterDropdowns = document.querySelectorAll('.dispenser-counter-selection-dropdown');
+
+    if (dispenserCounterDropdowns.length > 0) {
+        // Disable already-selected counters in other dispenser dropdowns.
+        function updateDispenserDropdownOptions() {
+            const allDropdowns = Array.from(dispenserCounterDropdowns);
+            const selectedValues = allDropdowns
+                .map(function (d) { return d.value; })
+                .filter(function (v) { return v !== ''; });
+
+            allDropdowns.forEach(function (currentDropdown) {
+                const currentValue = currentDropdown.value;
+                Array.from(currentDropdown.options).forEach(function (option) {
+                    if (option.value === '' || option.value === currentValue) {
+                        option.disabled = false;
+                    } else {
+                        option.disabled = selectedValues.includes(option.value);
+                    }
+                });
+            });
+        }
+
+        dispenserCounterDropdowns.forEach(function (dropdown) {
+            dropdown.addEventListener('change', updateDispenserDropdownOptions);
+        });
+
+        // Initialize on page load
+        updateDispenserDropdownOptions();
+    }
+
+    // --- Dynamic Ad URL Fields Logic ---
+    const adUrlContainer = document.getElementById('ad-url-container');
+    if (adUrlContainer) {
+        adUrlContainer.addEventListener('click', function(e) {
+            // Add new row when clicking the Plus button
+            if (e.target.closest('.add-url-btn')) {
+                const rowCount = adUrlContainer.querySelectorAll('.ad-url-row').length;
+                if (rowCount >= 10) {
+                    alert('Maximum 10 URLs allowed.');
+                    return;
+                }
+                
+                const newRow = document.createElement('div');
+                newRow.className = 'input-group mb-2 ad-url-row';
+                newRow.innerHTML = `
+                    <input type="url" name="ad_urls[]" class="form-control" placeholder="https://example.com/video.mp4">
+                    <button type="button" class="btn btn-outline-danger remove-url-btn"><i class="fas fa-minus"></i></button>
+                `;
+                adUrlContainer.appendChild(newRow);
+            }
+            
+            // Remove row when clicking the Minus button
+            if (e.target.closest('.remove-url-btn')) {
+                const row = e.target.closest('.ad-url-row');
+                if (row) {
+                    row.remove();
+                }
+            }
+        });
+    }
+
+    // ── Live character counter for Button String ID fields (max 16) ──
+    document.querySelectorAll('.btn-str-input').forEach(function(input) {
+        var counter = input.closest('.col-md-4').querySelector('.btn-str-used');
+        if (!counter) return;
+        function updateCount() {
+            var len = input.value.length;
+            counter.textContent = len;
+            var badge = counter.parentElement;
+            if (len >= 16) {
+                badge.classList.remove('text-muted', 'text-warning');
+                badge.classList.add('text-danger', 'fw-bold');
+            } else if (len >= 12) {
+                badge.classList.remove('text-muted', 'text-danger', 'fw-bold');
+                badge.classList.add('text-warning');
+            } else {
+                badge.classList.remove('text-danger', 'text-warning', 'fw-bold');
+                badge.classList.add('text-muted');
+            }
+        }
+        input.addEventListener('input', updateCount);
+        updateCount();
+    });
+
+</script>
+
+<style>
+    /* Counter Selection Card Styling */
+    .counter-selection-card {
+        transition: all 0.2s ease-in-out;
+        border-width: 2px;
+    }
+
+    .counter-selection-card:hover {
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        transform: translateY(-2px);
+    }
+
+    .counter-selection-card.border-primary {
+        border-color: #0d6efd !important;
+        background-color: #f0f7ff !important;
+        box-shadow: 0 2px 4px rgba(13, 110, 253, 0.2);
+    }
+
+    .counter-selection-card .form-check-input {
+        margin-top: 0.25rem;
+        width: 1.25rem;
+        height: 1.25rem;
+        cursor: pointer;
+    }
+
+    .counter-selection-card .form-check-label {
+        cursor: pointer;
+        user-select: none;
+    }
+
+    .counter-selection-card .form-check-label strong {
+        font-size: 1.1rem;
+        color: #212529;
+    }
+
+    .counter-selection-card .form-check-label code {
+        background-color: #f8f9fa;
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-size: 0.85rem;
+    }
+
+    .counter-selection-card.border-primary .form-check-label code {
+        background-color: #e7f1ff;
+    }
+
+    /* Responsive adjustments */
+    @media (max-width: 768px) {
+        .counter-selection-card {
+            margin-bottom: 1rem;
+        }
+    }
+</style>
+{% endblock %}

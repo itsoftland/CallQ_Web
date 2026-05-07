@@ -1,0 +1,161 @@
+<!-- Modern Pagination Component -->
+{% if items.has_other_pages %}
+<style>
+    .modern-pagination {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 1rem;
+        padding: 1rem;
+        background: var(--content-bg, #f8f9fa);
+        border-radius: 50px;
+        margin-top: 1.5rem;
+    }
+
+    .modern-pagination .results-info {
+        color: var(--text-secondary, #6c757d);
+        font-size: 0.875rem;
+        white-space: nowrap;
+    }
+
+    .modern-pagination .page-nav {
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+    }
+
+    .modern-pagination .page-btn {
+        width: 36px;
+        height: 36px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        border: none;
+        background: transparent;
+        color: var(--text-primary, #495057);
+        font-size: 0.875rem;
+        font-weight: 500;
+        text-decoration: none;
+        transition: all 0.2s;
+        cursor: pointer;
+    }
+
+    .modern-pagination .page-btn:hover {
+        background: var(--border-color, #e9ecef);
+        color: var(--text-primary, #212529);
+    }
+
+    .modern-pagination .page-btn.active {
+        background: var(--primary-color, #2563EB);
+        color: white;
+    }
+
+    .modern-pagination .page-btn.nav-arrow {
+        color: var(--primary-color, #2563EB);
+        font-size: 1rem;
+    }
+
+    .modern-pagination .page-btn.nav-arrow:hover {
+        background: var(--primary-light, #EFF6FF);
+    }
+
+    .modern-pagination .page-btn.disabled {
+        color: var(--text-muted, #ced4da);
+        pointer-events: none;
+    }
+
+    .modern-pagination .goto-section {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .modern-pagination .goto-section label {
+        color: var(--text-secondary, #6c757d);
+        font-size: 0.875rem;
+        margin: 0;
+    }
+
+    .modern-pagination .goto-input {
+        width: 70px;
+        height: 32px;
+        border: 1px solid var(--border-color, #dee2e6);
+        border-radius: 6px;
+        padding: 0 0.5rem;
+        font-size: 0.875rem;
+        text-align: center;
+    }
+
+    .modern-pagination .goto-input:focus {
+        outline: none;
+        border-color: var(--primary-color, #2563EB);
+        box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1);
+    }
+</style>
+
+<script>
+    /* Build a URL that keeps all current GET params but replaces `page`. */
+    function paginateTo(pageNum) {
+        var params = new URLSearchParams(window.location.search);
+        params.set('page', pageNum);
+        window.location.href = '?' + params.toString();
+    }
+</script>
+
+<div class="modern-pagination">
+    <span class="results-info">
+        Results {{ items.start_index }} - {{ items.end_index }} of {{ items.paginator.count }}
+    </span>
+
+    <div class="page-nav">
+        <!-- Previous Arrow -->
+        {% if items.has_previous %}
+        <button type="button" onclick="paginateTo({{ items.previous_page_number }})" class="page-btn nav-arrow" title="Previous">
+            <i class="fas fa-chevron-left"></i>
+        </button>
+        {% else %}
+        <span class="page-btn nav-arrow disabled">
+            <i class="fas fa-chevron-left"></i>
+        </span>
+        {% endif %}
+
+        <!-- Page Numbers -->
+        {% for num in items.paginator.page_range %}
+            {% if num == 1 or num == items.paginator.num_pages %}
+                {% if items.number == num %}
+                <span class="page-btn active">{{ num }}</span>
+                {% else %}
+                <button type="button" onclick="paginateTo({{ num }})" class="page-btn">{{ num }}</button>
+                {% endif %}
+            {% elif num >= items.number|add:'-2' and num <= items.number|add:'2' %}
+                {% if items.number == num %}
+                <span class="page-btn active">{{ num }}</span>
+                {% else %}
+                <button type="button" onclick="paginateTo({{ num }})" class="page-btn">{{ num }}</button>
+                {% endif %}
+            {% elif num == items.number|add:'-3' or num == items.number|add:'3' %}
+                <span class="page-btn disabled">...</span>
+            {% endif %}
+        {% endfor %}
+
+        <!-- Next Arrow -->
+        {% if items.has_next %}
+        <button type="button" onclick="paginateTo({{ items.next_page_number }})" class="page-btn nav-arrow" title="Next">
+            <i class="fas fa-chevron-right"></i>
+        </button>
+        {% else %}
+        <span class="page-btn nav-arrow disabled">
+            <i class="fas fa-chevron-right"></i>
+        </span>
+        {% endif %}
+    </div>
+
+    <div class="goto-section">
+        <label>Go to:</label>
+        <input type="number" class="goto-input" min="1" max="{{ items.paginator.num_pages }}"
+            placeholder="e.g. {{ items.paginator.num_pages }}"
+            onkeypress="if(event.key==='Enter'){paginateTo(this.value);}">
+    </div>
+</div>
+{% endif %}

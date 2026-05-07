@@ -1,0 +1,99 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}Dealers{% endblock %}
+{% block page_title %}Dealers{% endblock %}
+{% block content %}
+<div class="mb-4">
+    <h2 class="h3 fw-bold mb-1">Dealers</h2>
+    <p class="text-secondary mb-0">Manage dealer accounts and licenses</p>
+</div>
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div class="position-relative" style="width: 300px;">
+        <span class="position-absolute ms-3 translate-middle-y top-50 text-muted"><i class="fas fa-search"></i></span>
+        <input type="text" id="searchInput" class="form-control ps-5 bg-light border-0 rounded-3"
+            placeholder="Search dealers..." value="{{ search_query }}">
+    </div>
+    <div class="d-flex gap-2">
+        {% if user.role == 'DEALER_ADMIN' %}
+        <a href="{% url 'request_batch' %}" class="btn btn-outline-primary rounded-3">
+            <i class="fas fa-plus-circle me-2"></i>Request Batch
+        </a>
+        {% endif %}
+        <a href="{% url 'customer_register' %}" class="btn btn-primary rounded-3"><i class="fas fa-plus me-2"></i>Add
+            Dealer</a>
+    </div>
+</div>
+<div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0" id="dealerTable">
+            <thead class="bg-white border-bottom">
+                <tr>
+                    <th class="ps-4 py-3 text-secondary fw-medium">Company Name</th>
+                    <th class="py-3 text-secondary fw-medium">Contact</th>
+                    <th class="py-3 text-secondary fw-medium">Customers</th>
+                    <th class="py-3 text-secondary fw-medium">License</th>
+                    <th class="py-3 text-secondary fw-medium">Status</th>
+                    <th class="pe-4 py-3 text-end text-secondary fw-medium">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for dealer in dealers %}
+                <tr class="border-bottom" data-status="{{ dealer.status_text }}">
+                    <td class="ps-4 py-3">
+                        <div class="fw-medium text-dark">{{ dealer.company_name }}</div>
+                        <small class="text-muted">{{ dealer.company_email }}</small>
+                    </td>
+                    <td class="py-3">
+                        <div>{{ dealer.contact_person }}</div>
+                        <small class="text-muted">{{ dealer.contact_number }}</small>
+                    </td>
+                    <td class="py-3"><span class="badge bg-info text-white">{{ dealer.customer_count }} Customers</span>
+                    </td>
+                    <td class="py-3">
+                        <div>{{ dealer.number_of_licence }} licenses</div>
+                        {% if dealer.product_to_date %}
+                        <small class="text-muted">Expires: {{ dealer.product_to_date|date:"M d, Y" }}</small>
+                        {% endif %}
+                    </td>
+                    <td class="py-3"><span class="badge {{ dealer.status_class }}">{{ dealer.status_text }}</span></td>
+                    <td class="pe-4 py-3 text-end">
+                        <button class="btn btn-sm btn-link text-secondary p-1" title="View"><i
+                                class="fas fa-eye"></i></button>
+                        <button class="btn btn-sm btn-link text-secondary p-1" title="Edit"><i
+                                class="fas fa-pen"></i></button>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="6" class="text-center py-5">
+                        <div class="text-muted opacity-50 mb-3"><i class="fas fa-handshake fa-3x"></i></div>
+                        <p class="h6 text-secondary">No dealers found</p>
+                        <a href="{% url 'customer_register' %}" class="btn btn-primary mt-3">Add First Dealer</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <!-- Pagination -->
+    {% with items=dealers %}
+    {% include 'companydetails/partials/pagination.html' %}
+    {% endwith %}
+</div>
+<script>
+    // Server-side search: update URL on input (debounced)
+    (function() {
+        var searchInput = document.getElementById('searchInput');
+        var debounce;
+        searchInput.addEventListener('input', function() {
+            clearTimeout(debounce);
+            debounce = setTimeout(function() {
+                var params = new URLSearchParams(window.location.search);
+                params.set('search', searchInput.value);
+                params.set('page', '1');
+                window.location.href = '?' + params.toString();
+            }, 500);
+        });
+    })();
+</script>
+{% endblock %}

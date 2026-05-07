@@ -1,0 +1,141 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Profile List{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <!-- Page Header -->
+    <div class="mb-4">
+        <h2 class="h4 fw-bold mb-1">Profile List</h2>
+        <p class="text-secondary mb-0">View and manage device configuration profiles.</p>
+    </div>
+
+    <!-- Action Bar with Search and Filters -->
+    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+        <div class="d-flex gap-3 align-items-center flex-wrap">
+            <div class="search-wrapper" style="width: 260px;">
+                <i class="fas fa-search text-muted"></i>
+                <input type="text" id="searchInput" class="form-control bg-light border-0 rounded-3"
+                    placeholder="Search profiles..." onkeyup="filterProfileTable()">
+            </div>
+            <select id="deviceTypeFilter" class="form-select bg-light border-0 rounded-3 w-auto"
+                onchange="filterProfileTable()">
+                <option value="">All Device Types</option>
+                {% for value, label in device_types %}
+                <option value="{{ value }}" {% if device_type_filter==value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="d-flex gap-2">
+            <button class="btn btn-outline-secondary rounded-3" onclick="clearProfileFilters()" title="Clear Filters">
+                <i class="fas fa-times me-1"></i>Clear
+            </button>
+        </div>
+    </div>
+
+    <!-- Profiles Table -->
+    <div class="card">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0" id="profileTable">
+                    <thead class="bg-light">
+                        <tr>
+                            <th class="ps-4">Profile Name</th>
+                            <th>Device</th>
+                            <th>Device Type</th>
+                            <th>Schedule</th>
+                            <th>Status</th>
+                            <th>Last Updated</th>
+                            <th class="text-end pe-4">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for profile in profiles %}
+                        <tr data-name="{{ profile.name|lower }}" data-type="{{ profile.device.device_type }}">
+                            <td class="ps-4">
+                                <span class="fw-semibold text-dark">{{ profile.name }}</span>
+                            </td>
+                            <td>
+                                <span class="text-muted">{{ profile.device.serial_number }}</span>
+                            </td>
+                            <td>
+                                <span class="badge bg-primary">{{ profile.device.get_device_type_display }}</span>
+                            </td>
+                            <td>
+                                <small class="text-muted">
+                                    {{ profile.get_day_display }} | {{ profile.start_time|time:"H:i" }} - {{
+                                    profile.end_time|time:"H:i" }}
+                                </small>
+                            </td>
+                            <td>
+                                {% if profile.is_active %}
+                                <span class="badge bg-success">Active</span>
+                                {% else %}
+                                <span class="badge bg-secondary">Inactive</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <small class="text-muted">{{ profile.updated_at|date:"M d, Y H:i" }}</small>
+                            </td>
+                            <td class="text-end pe-4">
+                                <div class="btn-group btn-group-sm">
+                                    <a href="{% url 'config_profile_edit' profile.pk %}"
+                                        class="btn btn-sm btn-outline-primary" title="Edit Profile">
+                                        <i class="fas fa-edit"></i>
+                                    </a>
+                                    <form method="post" action="{% url 'config_profile_delete' profile.pk %}"
+                                        class="d-inline"
+                                        onsubmit="return confirm('Are you sure you want to delete this profile?');">
+                                        {% csrf_token %}
+                                        <button type="submit" class="btn btn-sm btn-outline-danger"
+                                            title="Delete Profile">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr class="no-results">
+                            <td colspan="7" class="text-center py-4 text-muted">
+                                <i class="fas fa-inbox fa-2x mb-2"></i>
+                                <p class="mb-0">No profiles found</p>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function filterProfileTable() {
+        const searchInput = document.getElementById('searchInput').value.toLowerCase();
+        const typeFilter = document.getElementById('deviceTypeFilter').value;
+        const rows = document.querySelectorAll('#profileTable tbody tr:not(.no-results)');
+
+        rows.forEach(row => {
+            const name = row.getAttribute('data-name') || '';
+            const type = row.getAttribute('data-type') || '';
+
+            const matchesSearch = name.includes(searchInput);
+            const matchesType = !typeFilter || type === typeFilter;
+
+            if (matchesSearch && matchesType) {
+                row.style.display = '';
+            } else {
+                row.style.display = 'none';
+            }
+        });
+    }
+
+    function clearProfileFilters() {
+        document.getElementById('searchInput').value = '';
+        document.getElementById('deviceTypeFilter').value = '';
+        filterProfileTable();
+    }
+</script>
+{% endblock %}

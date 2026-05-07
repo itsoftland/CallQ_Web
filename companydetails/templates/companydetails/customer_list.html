@@ -1,0 +1,339 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}
+{% if is_dealer_view %}My Users{% else %}Customers{% endif %}
+{% endblock %}
+{% block page_title %}
+{% if is_dealer_view %}My Users{% else %}Customers{% endif %}
+{% endblock %}
+{% block content %}
+<div id="app-config" data-version="{{ APP_VERSION }}" data-project="{{ PROJECT_NAME }}" style="display:none;"></div>
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+        <h2 class="h4 fw-bold mb-1">{% if is_dealer_view %}My Users{% else %}Customers{% endif %}</h2>
+        <p class="text-secondary mb-0">
+            {% if is_dealer_view %}
+            Manage user accounts created for your child companies.
+            {% else %}
+            Manage customer accounts and license allocations.
+            {% endif %}
+        </p>
+    </div>
+    <div class="d-flex gap-3 align-items-center">
+        <div class="search-wrapper" style="width: 260px;">
+            <i class="fas fa-search text-muted"></i>
+            <input type="text" id="searchInput" class="search-input form-control ps-5" placeholder="Search..."
+                value="{{ search_query }}">
+        </div>
+        {% if user.role == 'DEALER_ADMIN' %}
+        <a href="{% url 'user_create' %}" class="btn btn-primary"><i class="fas fa-user-plus me-2"></i>Create User</a>
+        {% endif %}
+        {% if user.role == 'SUPER_ADMIN' or user.role == 'ADMIN' %}
+        <a href="{% url 'customer_register' %}" class="btn btn-primary"><i class="fas fa-plus me-2"></i>Add Customer</a>
+        {% endif %}
+    </div>
+</div>
+<div class="card" style="overflow: visible;">
+    <div class="card-body p-0" style="overflow: visible;">
+        <div class="table-responsive" style="overflow: visible;">
+            {% if is_dealer_view %}
+            <!-- Users Table for Dealers -->
+            <table class="table table-hover align-middle mb-0" id="customerTable">
+                <thead class="bg-light">
+                    <tr>
+                        <th class="ps-4">User</th>
+                        <th>Email</th>
+                        <th>Role</th>
+                        <th>Company</th>
+                        <th>Status</th>
+                        <th class="text-end pe-4">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for u in users_list %}
+                    <tr>
+                        <td class="ps-4">
+                            <div class="d-flex align-items-center">
+                                <div
+                                    class="avatar-sm bg-light-success text-success rounded-circle me-3 d-flex align-items-center justify-content-center">
+                                    <i class="fas fa-user small"></i>
+                                </div>
+                                <div>
+                                    <div class="fw-semibold text-dark">
+                                        {{ u.username|default:u.email }}
+                                    </div>
+                                    <small class="text-muted">
+                                        ID: {{ u.id }}
+                                    </small>
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            <a href="mailto:{{ u.email }}" class="text-primary text-decoration-none">
+                                {{ u.email }}
+                            </a>
+                        </td>
+                        <td>
+                            <span class="badge bg-light text-dark border">
+                                {{ u.get_role_display }}
+                            </span>
+                        </td>
+                        <td>
+                            {% if u.company_relation %}
+                            {{ u.company_relation.company_name }}
+                            {% elif u.branch_relation %}
+                            {{ u.branch_relation.company.company_name }} - {{ u.branch_relation.branch_name }}
+                            {% else %}
+                            -
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if u.is_active %}
+                            <span class="badge bg-success">Active</span>
+                            {% else %}
+                            <span class="badge bg-danger">Inactive</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end pe-4">
+                            <div class="btn-group btn-group-sm">
+                                <a href="{% url 'user_edit' u.pk %}" class="btn btn-outline-primary btn-sm"
+                                    title="Edit">
+                                    <i class="fas fa-edit"></i>
+                                </a>
+                                <form method="post" action="{% url 'user_toggle_status' u.pk %}"
+                                    style="display: inline;">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn btn-outline-warning btn-sm"
+                                        title="{% if u.is_active %}Deactivate{% else %}Activate{% endif %}">
+                                        <i class="fas fa-{% if u.is_active %}ban{% else %}check{% endif %}"></i>
+                                    </button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="6" class="text-center py-5">
+                            <div class="text-muted opacity-50 mb-3">
+                                <i class="fas fa-users fa-3x"></i>
+                            </div>
+                            <p class="h6 text-secondary">No users found.</p>
+                            <a href="{% url 'user_create' %}" class="btn btn-primary mt-3">
+                                Create First User
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <!-- Companies Table for Admin/Super Admin -->
+            <table class="table table-hover align-middle mb-0" id="customerTable">
+                <thead class="bg-light">
+                    <tr>
+                        <th class="ps-4">Company</th>
+                        <th>Person</th>
+                        <th>Email</th>
+                        <th>Dealer</th>
+                        <th>Licenses</th>
+                        <th>Status</th>
+                        <th class="text-end pe-4">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for company in companies %}
+                    <tr data-status="{{ company.status_text }}">
+                        <td class="ps-4">
+                            <div class="d-flex align-items-center">
+                                <div
+                                    class="avatar-sm bg-light-primary text-primary rounded-circle me-3 d-flex align-items-center justify-content-center">
+                                    <i class="fas fa-building small"></i>
+                                </div>
+                                <div>
+                                    <div class="fw-semibold text-dark">
+                                        {{ company.company_name }}
+                                    </div>
+                                    <small class="text-muted">
+                                        ID: {{ company.company_id }}
+                                    </small>
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            {{ company.contact_person|default:"-" }}
+                        </td>
+                        <td>
+                            <a href="mailto:{{ company.company_email }}" class="text-primary text-decoration-none">
+                                {{ company.company_email|default:"-" }}
+                            </a>
+                        </td>
+                        <td>
+                            {% if company.parent_company %}
+                            {{ company.parent_company.company_name }}
+                            {% elif company.dealer %}
+                            {{ company.dealer.company_name }}
+                            {% else %}
+                            Direct
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span id="licenses-{{ company.id }}" class="badge bg-light text-dark border border-light">
+                                {{ company.used_licenses }}
+                                /
+                                {{ company.total_licenses }}
+                            </span>
+                        </td>
+                        <td>
+                            <span id="status-{{ company.id }}" class="badge {{ company.status_class }}">
+                                {{ company.status_text }}
+                            </span>
+                        </td>
+                        <td class="text-end pe-4">
+                            <div class="btn-group btn-group-sm">
+                                {% if company.status_text == 'Approved' %}
+                                <!-- Link Removed -->
+                                {% elif company.show_auth_button %}
+                                <button type="button" class="btn btn-outline-primary btn-sm authenticate-btn"
+                                    data-company-id="{{ company.id }}" data-external-id="{{ company.company_id }}"
+                                    onclick="authenticateAndPollSecure(this,'{{ company.id }}','{{ company.company_id }}')"
+                                    title="Authenticate">
+                                    <i class="fas fa-shield-alt"></i>
+                                </button>
+                                {% endif %}
+                                
+                                <button type="button" class="btn btn-outline-info btn-sm refresh-btn"
+                                    data-company-id="{{ company.id }}" data-external-id="{{ company.company_id }}"
+                                    onclick="refreshCustomerAuth(this,'{{ company.id }}','{{ company.company_id }}')"
+                                    title="Refresh Authentication">
+                                    <i class="fas fa-sync-alt"></i>
+                                </button>
+
+                                <div class="btn-group">
+                                    <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle"
+                                        data-bs-toggle="dropdown" aria-expanded="false" title="Actions">
+                                        <i class="fas fa-ellipsis-v"></i>
+                                    </button>
+                                    <ul class="dropdown-menu dropdown-menu-end">
+                                        <li>
+                                            <h6 class="dropdown-header">Export</h6>
+                                        </li>
+                                        <li><a class="dropdown-item"
+                                                href="{% url 'customer_export' company_id=company.id file_format='csv' %}"><i
+                                                    class="fas fa-file-csv me-2 text-success"></i>CSV</a></li>
+                                        <li><a class="dropdown-item"
+                                                href="{% url 'customer_export' company_id=company.id file_format='pdf' %}"><i
+                                                    class="fas fa-file-pdf me-2 text-danger"></i>PDF</a></li>
+                                        <li><a class="dropdown-item"
+                                                href="{% url 'customer_export' company_id=company.id file_format='docx' %}"><i
+                                                    class="fas fa-file-word me-2 text-primary"></i>DOCX</a></li>
+                                        {% if user.role == 'SUPER_ADMIN' or user.role == 'ADMIN' %}
+                                        <li>
+                                            <hr class="dropdown-divider">
+                                        </li>
+                                        {% if user.role == 'SUPER_ADMIN' %}
+                                        <li>
+                                            <form method="post" action="{% url 'customer_toggle_ads' company.id %}" style="display: inline;">
+                                                {% csrf_token %}
+                                                <button type="submit" class="dropdown-item {% if company.ads_enabled %}text-warning{% else %}text-info{% endif %}">
+                                                    <i class="fas fa-{% if company.ads_enabled %}ban{% else %}ad{% endif %} me-2"></i>
+                                                    {% if company.ads_enabled %}Disable Ads{% else %}Enable Ads{% endif %}
+                                                </button>
+                                            </form>
+                                        </li>
+                                        <li>
+                                            <hr class="dropdown-divider">
+                                        </li>
+                                        {% endif %}
+                                        <li><a class="dropdown-item text-danger" href="#" data-bs-toggle="modal"
+                                                data-bs-target="#deleteModal{{ company.id }}">
+                                                <i class="fas fa-trash me-2"></i>Delete Customer</a></li>
+                                        {% endif %}
+                                    </ul>
+                                </div>
+                                <!-- Link Removed -->
+                            </div>
+                        </td>
+                    </tr>
+                    {% if user.role == 'SUPER_ADMIN' or user.role == 'ADMIN' %}
+                    <!-- Delete Confirmation Modal -->
+                    <div class="modal fade" id="deleteModal{{ company.id }}" tabindex="-1"
+                        aria-labelledby="deleteModalLabel{{ company.id }}" aria-hidden="true">
+                        <div class="modal-dialog modal-dialog-centered">
+                            <div class="modal-content">
+                                <div class="modal-header bg-danger text-white">
+                                    <h5 class="modal-title" id="deleteModalLabel{{ company.id }}">
+                                        <i class="fas fa-exclamation-triangle me-2"></i>Confirm Delete
+                                    </h5>
+                                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
+                                        aria-label="Close"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <p>Are you sure you want to delete <strong>{{ company.company_name }}</strong>?</p>
+                                    <p class="text-danger mb-0">
+                                        <i class="fas fa-exclamation-circle me-1"></i>
+                                        This will also delete all associated devices, licenses, and branches. This
+                                        action cannot be undone.
+                                    </p>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary"
+                                        data-bs-dismiss="modal">Cancel</button>
+                                    <form method="post" action="{% url 'customer_delete' company.id %}"
+                                        class="d-inline">
+                                        {% csrf_token %}
+                                        <button type="submit" class="btn btn-danger">
+                                            <i class="fas fa-trash me-1"></i>Delete
+                                        </button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                    {% empty %}
+                    <tr>
+                        <td colspan="7" class="text-center py-5">No customers found.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% endif %}
+        </div>
+        <!-- Pagination -->
+        {% if is_dealer_view %}
+        {% with items=users_list %}
+        {% include 'companydetails/partials/pagination.html' %}
+        {% endwith %}
+        {% else %}
+        {% with items=companies %}
+        {% include 'companydetails/partials/pagination.html' %}
+        {% endwith %}
+        {% endif %}
+    </div>
+</div>
+{% block extra_js %}
+<script>
+    window.ajaxUrls = {
+        authenticateCustomer: "{% url 'ajax_authenticate_customer' 0 %}".replace('0/', ''),
+        checkCustomerStatus: "{% url 'ajax_check_customer_status' 0 %}".replace('0/', '')
+    };
+</script>
+<script src="{% static 'root/js/pages/customer_list.js' %}?v=1.6"></script>
+<script>
+    // Server-side search: update URL on input (debounced)
+    (function() {
+        var searchInput = document.getElementById('searchInput');
+        var debounce;
+        searchInput.addEventListener('input', function() {
+            clearTimeout(debounce);
+            debounce = setTimeout(function() {
+                var params = new URLSearchParams(window.location.search);
+                params.set('search', searchInput.value);
+                params.set('page', '1');
+                window.location.href = '?' + params.toString();
+            }, 500);
+        });
+    })();
+</script>
+{% endblock %}
+{% endblock %}

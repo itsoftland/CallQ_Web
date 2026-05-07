@@ -1,0 +1,340 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}License Batches{% endblock %}
+{% block page_title %}License Batches{% endblock %}
+
+{% block content %}
+<!-- Header Section -->
+<div class="d-flex justify-content-between align-items-start mb-4">
+    <div>
+        <h2 class="h4 fw-bold mb-1">License Batches</h2>
+        <p class="text-secondary mb-0">Generate and manage license batches for dealers</p>
+    </div>
+    <div class="d-flex gap-2">
+        {% if user.role == 'SUPER_ADMIN' or user.role == 'ADMIN' %}
+        <a href="{% url 'batch_requests_list' %}" class="btn btn-outline-warning rounded-pill">
+            <i class="fas fa-inbox me-2"></i>Batch Requests
+        </a>
+        {% endif %}
+        {% if user.role == 'COMPANY_ADMIN' or user.role == 'DEALER_ADMIN' %}
+        <a href="{% url 'request_batch' %}" class="btn btn-primary rounded-pill">
+            <i class="fas fa-plus-circle me-2"></i>Request Batch
+        </a>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Summary Cards -->
+<div class="row g-3 mb-4">
+    <div class="col-md-20-percent col-sm-6">
+        <div class="card h-100 border shadow-none">
+            <div class="card-body p-3">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                        <div class="text-secondary small fw-medium mb-1">Total Licenses</div>
+                        <div class="h3 fw-bold mb-0 text-dark">700</div>
+                    </div>
+                    <div class="p-2 bg-light rounded shadow-sm text-secondary">
+                        <i class="fas fa-cubes fa-lg"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-20-percent col-sm-6">
+        <div class="card h-100 border shadow-none">
+            <div class="card-body p-3">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                        <div class="text-secondary small fw-medium mb-1">Used</div>
+                        <div class="h3 fw-bold mb-0 text-primary">550</div>
+                    </div>
+                    <div class="text-primary fw-bold">79%</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-20-percent col-sm-6">
+        <div class="card h-100 border shadow-none">
+            <div class="card-body p-3">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                        <div class="text-secondary small fw-medium mb-1">Available</div>
+                        <div class="h3 fw-bold mb-0 text-success">150</div>
+                    </div>
+                    <div class="text-success fw-bold">21%</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-20-percent col-sm-6">
+        <div class="card h-100 border shadow-none">
+            <div class="card-body p-3">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                        <div class="text-secondary small fw-medium mb-1">Active Batches</div>
+                        <div class="h3 fw-bold mb-0 text-dark">1</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-20-percent col-sm-6">
+        <div class="card h-100 border shadow-none">
+            <div class="card-body p-3">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                        <div class="text-secondary small fw-medium mb-1">Expired Batches</div>
+                        <div class="h3 fw-bold mb-0 text-danger">1</div>
+                    </div>
+                    <div class="p-2 bg-soft-danger rounded text-danger">
+                        <i class="fas fa-exclamation-triangle"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    /* Custom Grid for 5 Columns */
+    @media (min-width: 992px) {
+        .col-md-20-percent {
+            flex: 0 0 20%;
+            max-width: 20%;
+        }
+    }
+</style>
+
+<!-- Filter and Search -->
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div class="position-relative" style="min-width: 300px;">
+        <span class="position-absolute ms-3 translate-middle-y top-50 text-secondary">
+            <i class="fas fa-search"></i>
+        </span>
+        <input type="text" id="searchInput" class="form-control ps-5 rounded-3 bg-white"
+            placeholder="Search batches..." value="{{ search_query }}">
+    </div>
+    <div class="d-flex gap-2">
+        <select id="statusFilter" class="form-select bg-white rounded-3 border-0 shadow-sm" style="min-width: 150px;">
+            <option value="">All Status</option>
+            <option value="Active">Active</option>
+            <option value="Expired">Expired</option>
+            <option value="Pending">Pending</option>
+        </select>
+    </div>
+</div>
+
+<!-- Batches Table -->
+<div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+    <div class="table-responsive">
+        <table class="table align-middle mb-0">
+            <thead class="bg-light border-bottom">
+                <tr>
+                    <th class="ps-4 py-3 text-secondary text-uppercase small fw-bold">Batch Number</th>
+                    <th class="py-3 text-secondary text-uppercase small fw-bold">Customer</th>
+                    <th class="py-3 text-secondary text-uppercase small fw-bold">Total Licenses</th>
+                    <th class="py-3 text-secondary text-uppercase small fw-bold">Used</th>
+                    <th class="py-3 text-secondary text-uppercase small fw-bold">Available</th>
+                    <th class="py-3 text-secondary text-uppercase small fw-bold" style="width: 20%;">Usage</th>
+                    <th class="py-3 text-secondary text-uppercase small fw-bold">Generated</th>
+                    <th class="py-3 text-secondary text-uppercase small fw-bold">Expires</th>
+                    <th class="py-3 text-secondary text-uppercase small fw-bold">Status</th>
+                    <th class="pe-4 py-3 text-end text-secondary text-uppercase small fw-bold">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for batch_data in batches_stats %}
+                <tr class="border-bottom-custom"
+                    data-status="{% if batch_data.batch.name == 'BATCH-2023-005' %}Expired{% else %}{{ batch_data.batch.status|title }}{% endif %}">
+                    <td class="ps-4 py-3">
+                        <div class="d-flex align-items-center gap-3">
+                            <div class="text-secondary opacity-50"><i class="fas fa-cube fa-lg"></i></div>
+                            <div>
+                                <div class="fw-bold text-dark">{{ batch_data.batch.name }}</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="py-3">
+                        <div class="d-flex align-items-center gap-2">
+                            <i class="fas fa-building text-muted small"></i>
+                            <div>
+                                {% if batch_data.batch.customer %}
+                                <div class="fw-medium text-dark">{{ batch_data.batch.customer.company_name }}</div>
+                                <small class="text-muted">{{ batch_data.batch.customer.company_id }}</small>
+                                {% elif batch_data.batch.dealer_customer %}
+                                <div class="fw-medium text-dark">{{ batch_data.batch.dealer_customer.company_name }}
+                                </div>
+                                <small class="text-muted">{{ batch_data.batch.dealer_customer.customer_id }}</small>
+                                {% else %}
+                                <div class="fw-medium text-secondary">No Owner</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </td>
+                    <td class="py-3 fw-medium text-dark">{{ batch_data.total_licenses }}</td>
+                    <td class="py-3 fw-bold text-primary">{{ batch_data.total_used }}</td>
+                    <td
+                        class="py-3 fw-bold {% if batch_data.is_over_allocated %}text-danger{% else %}text-success{% endif %}">
+                        {% if batch_data.is_over_allocated %}
+                        <i class="fas fa-exclamation-triangle me-1"
+                            title="Over-allocated: more devices assigned than allowed"></i>
+                        {% endif %}
+                        {{ batch_data.total_remaining }}
+                    </td>
+                    <td class="py-3">
+                        {% if batch_data.total_licenses > 0 %}
+                        <div class="d-flex align-items-center mb-1">
+                            {% if batch_data.is_over_allocated %}
+                            <span class="small fw-bold text-danger">{{ batch_data.raw_percentage }}%</span>
+                            <i class="fas fa-exclamation-circle text-danger ms-1" title="Over limit!"></i>
+                            {% else %}
+                            <span class="small fw-bold text-warning">{{ batch_data.usage_percentage }}%</span>
+                            {% endif %}
+                        </div>
+                        <div class="progress rounded-pill bg-light" style="height: 6px;">
+                            <div class="progress-bar rounded-pill {% if batch_data.is_over_allocated %}bg-danger{% else %}bg-primary{% endif %}"
+                                role="progressbar" style="width: {{ batch_data.usage_percentage }}%"
+                                aria-valuenow="{{ batch_data.usage_percentage }}" aria-valuemin="0" aria-valuemax="100">
+                            </div>
+                        </div>
+                        {% else %}
+                        <span class="small text-muted">N/A</span>
+                        {% endif %}
+                    </td>
+                    <td class="py-3 text-dark fw-medium">{{ batch_data.batch.created_at|date:"Y-m-d" }}</td>
+                    <td class="py-3 text-secondary fw-medium">
+                        {% if batch_data.batch.name == "BATCH-2023-005" %}
+                        <span class="text-danger"><i class="fas fa-exclamation-triangle me-1"></i> 2024-12-31</span>
+                        {% else %}
+                        2025-12-31
+                        {% endif %}
+                    </td>
+                    <td class="py-3">
+                        {% if batch_data.batch.status == 'PENDING' %}
+                        <span class="badge bg-warning text-dark px-3 py-2 rounded-pill fw-medium">Pending</span>
+                        {% elif batch_data.batch.name == "BATCH-2023-005" %}
+                        <span class="badge bg-danger text-white px-3 py-2 rounded-pill fw-medium">Expired</span>
+                        {% else %}
+                        <span class="badge bg-success text-white px-3 py-2 rounded-pill fw-medium">Active</span>
+                        {% endif %}
+                    </td>
+                    <td class="pe-4 py-3 text-end">
+                        <a href="{% url 'batch_download' batch_data.batch.id %}"
+                            class="btn btn-sm text-secondary hover-dark p-0" title="Download Batch Details">
+                            <i class="fas fa-download fa-lg"></i>
+                        </a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="10" class="text-center py-5">
+                        <div class="text-muted opacity-50 mb-3">
+                            <i class="fas fa-folder-open fa-3x"></i>
+                        </div>
+                        <p class="h6 text-secondary">No license batches found.</p>
+                        <button type="button" class="btn btn-primary mt-3" data-bs-toggle="modal"
+                            data-bs-target="#generateBatchModal">
+                            Generate First Batch
+                        </button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <!-- Pagination -->
+    {% with items=batches_stats %}
+    {% include 'companydetails/partials/pagination.html' %}
+    {% endwith %}
+</div>
+
+<!-- Floating Action Button for Mobile -->
+<div class="d-block d-md-none position-fixed bottom-0 end-0 p-3" style="z-index: 100;">
+    <button class="btn btn-primary rounded-circle shadow-lg p-3" data-bs-toggle="modal"
+        data-bs-target="#generateBatchModal">
+        <i class="fas fa-plus fa-lg"></i>
+    </button>
+</div>
+
+<!-- Generate Batch Modal -->
+<div class="modal fade" id="generateBatchModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg rounded-4">
+            <div class="modal-header border-bottom-0 pb-0">
+                <h5 class="modal-title fw-bold">Generate License Batch</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body pt-4">
+                <form action="{% url 'purchase_batch' %}" method="post" id="generateBatchForm">
+                    {% csrf_token %}
+                    <div class="mb-4">
+                        <label class="form-label text-secondary small fw-bold text-uppercase">Assign To</label>
+                        <select class="form-select bg-light border-0 py-2" name="customer">
+                            <option selected disabled>Choose a customer...</option>
+                            <!-- Placeholder -->
+                            <option value="1">Demo Dealer</option>
+                        </select>
+                    </div>
+                    <h6 class="text-secondary small fw-bold text-uppercase mb-3">License Allocation</h6>
+                    <div class="row g-3 mb-4">
+                        <div class="col-6">
+                            <label class="form-label small text-muted">TVs</label>
+                            <input type="number" name="max_tvs" class="form-control bg-light border-0 py-2" value="0"
+                                min="0">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small text-muted">Token Dispensers</label>
+                            <input type="number" name="max_dispensers" class="form-control bg-light border-0 py-2"
+                                value="0" min="0">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small text-muted">Keypads</label>
+                            <input type="number" name="max_keypads" class="form-control bg-light border-0 py-2"
+                                value="0" min="0">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small text-muted">Brokers</label>
+                            <input type="number" name="max_brokers" class="form-control bg-light border-0 py-2"
+                                value="0" min="0">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small text-muted">LEDs</label>
+                            <input type="number" name="max_leds" class="form-control bg-light border-0 py-2" value="0"
+                                min="0">
+                        </div>
+                    </div>
+                    <div class="alert alert-soft-info d-flex align-items-center mb-0 rounded-3" role="alert">
+                        <i class="fas fa-info-circle me-2 text-info"></i>
+                        <div class="small text-info">This batch will require approval before activation.</div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer border-top-0 pb-4 pe-4">
+                <button type="button" class="btn btn-link text-secondary text-decoration-none fw-medium"
+                    data-bs-dismiss="modal">Cancel</button>
+                <button type="submit" form="generateBatchForm"
+                    class="btn btn-primary px-4 rounded-pill fw-bold">Generate Batch</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Server-side search: update URL on input (debounced)
+    (function() {
+        var searchInput = document.getElementById('searchInput');
+        var debounce;
+        searchInput.addEventListener('input', function() {
+            clearTimeout(debounce);
+            debounce = setTimeout(function() {
+                var params = new URLSearchParams(window.location.search);
+                params.set('search', searchInput.value);
+                params.set('page', '1');
+                window.location.href = '?' + params.toString();
+            }, 500);
+        });
+    })();
+</script>
+{% endblock %}

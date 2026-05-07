@@ -1,0 +1,136 @@
+{% extends 'base.html' %}
+
+{% block title %}{% if branch %}Edit Branch{% else %}Create Branch{% endif %}{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">{% if branch %}Edit Branch{% else %}Create New Branch{% endif %}</div>
+                <div class="card-body">
+                    <form method="POST">
+                        {% csrf_token %}
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Branch Name</label>
+                            <input type="text" name="branch_name" class="form-control"
+                                value="{{ branch.branch_name|default:'' }}" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Address</label>
+                            <textarea name="address" class="form-control" rows="3"
+                                required>{{ branch.address|default:'' }}</textarea>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label fw-bold">City</label>
+                                <input type="text" name="city" class="form-control" value="{{ branch.city|default:'' }}"
+                                    required>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label fw-bold">State</label>
+                                <select name="state" id="state-selector" class="form-select" required>
+                                    <option value="">Select State</option>
+                                    {% if branch.state %}
+                                    <option value="{{ branch.state }}" selected>{{ branch.state }}</option>
+                                    {% endif %}
+                                </select>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label fw-bold">District</label>
+                                <select name="district" id="district-selector" class="form-select">
+                                    <option value="">Select District</option>
+                                    {% if branch.district %}
+                                    <option value="{{ branch.district }}" selected>{{ branch.district }}</option>
+                                    {% endif %}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Zip Code</label>
+                            <input type="text" name="zip_code" class="form-control"
+                                value="{{ branch.zip_code|default:'' }}" required>
+                        </div>
+
+                        <div class="d-flex justify-content-between">
+                            <a href="{% url 'branch_list' %}" class="btn btn-secondary">Cancel</a>
+                            <button type="submit" class="btn btn-primary">
+                                {% if branch %}Update Branch{% else %}Create Branch{% endif %}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const stateSelect = document.getElementById('state-selector');
+        const districtSelect = document.getElementById('district-selector');
+
+        // Initial values for Edit mode
+        const initialState = "{{ branch.state|default:'' }}";
+        const initialDistrict = "{{ branch.district|default:'' }}";
+
+        // Load States
+        fetch("{% url 'get_states' %}?country=India")
+            .then(response => response.json())
+            .then(data => {
+                // Keep default option
+                stateSelect.innerHTML = '<option value="">Select State</option>';
+
+                data.states.forEach(state => {
+                    const option = document.createElement('option');
+                    option.value = state.name; // Model uses name
+                    option.textContent = state.name;
+                    if (state.name === initialState) {
+                        option.selected = true;
+                    }
+                    stateSelect.appendChild(option);
+                });
+
+                if (initialState) {
+                    loadDistricts(initialState, initialDistrict);
+                }
+            })
+            .catch(error => console.error('Error loading states:', error));
+
+        // State Change Event
+        stateSelect.addEventListener('change', function () {
+            const selectedState = this.value;
+            districtSelect.innerHTML = '<option value="">Loading...</option>';
+
+            if (selectedState) {
+                loadDistricts(selectedState, null);
+            } else {
+                districtSelect.innerHTML = '<option value="">Select District</option>';
+            }
+        });
+
+        function loadDistricts(stateName, preSelectedDistrict) {
+            fetch(`{% url 'get_districts' %}?state_name=${encodeURIComponent(stateName)}`)
+                .then(response => response.json())
+                .then(data => {
+                    districtSelect.innerHTML = '<option value="">Select District</option>';
+                    data.districts.forEach(district => {
+                        const option = document.createElement('option');
+                        option.value = district.name; // Model uses name
+                        option.textContent = district.name;
+                        if (preSelectedDistrict && district.name === preSelectedDistrict) {
+                            option.selected = true;
+                        }
+                        districtSelect.appendChild(option);
+                    });
+                })
+                .catch(error => {
+                    console.error('Error loading districts:', error);
+                    districtSelect.innerHTML = '<option value="">Error loading</option>';
+                });
+        }
+    });
+</script>
+{% endblock %}

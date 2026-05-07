@@ -1,0 +1,400 @@
+{% extends 'base.html' %}
+
+{% block title %}Dashboard - CallQ{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block content %}
+<!-- Welcome Section -->
+<div class="mb-4">
+    <h2 class="h3 fw-bold mb-1">Welcome back, {{ user.get_full_name|default:user.username }}!</h2>
+    <p class="text-secondary mb-0">Here's what's happening with your system today.</p>
+</div>
+
+<!-- Summary Cards -->
+<div class="row g-4 mb-4">
+    {% if user.role == "PRODUCTION_ADMIN" %}
+    <!-- Production Admin View -->
+    <div class="col-sm-6 col-lg-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <div>
+                        <p class="text-secondary small mb-1">Total Batches</p>
+                        <h3 class="fw-bold mb-0">{{ batches_count|default:"0" }}</h3>
+                    </div>
+                    <div class="stat-icon bg-light rounded-3 p-2">
+                        <i class="fas fa-boxes text-secondary"></i>
+                    </div>
+                </div>
+                <p class="text-secondary small mb-0">Uploaded batches</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-lg-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <div>
+                        <p class="text-secondary small mb-1">Token Dispensers</p>
+                        <h3 class="fw-bold mb-0">{{ token_dispenser_count|default:"0" }}</h3>
+                    </div>
+                    <div class="stat-icon bg-light rounded-3 p-2">
+                        <i class="fas fa-print text-secondary"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-lg-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <div>
+                        <p class="text-secondary small mb-1">Keypads</p>
+                        <h3 class="fw-bold mb-0">{{ keypad_count|default:"0" }}</h3>
+                    </div>
+                    <div class="stat-icon bg-light rounded-3 p-2">
+                        <i class="fas fa-keyboard text-secondary"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-lg-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <div>
+                        <p class="text-secondary small mb-1">LED Displays</p>
+                        <h3 class="fw-bold mb-0">{{ led_count|default:"0" }}</h3>
+                    </div>
+                    <div class="stat-icon bg-light rounded-3 p-2">
+                        <i class="fas fa-tv text-secondary"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-lg-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <div>
+                        <p class="text-secondary small mb-1">Brokers</p>
+                        <h3 class="fw-bold mb-0">{{ broker_count|default:"0" }}</h3>
+                    </div>
+                    <div class="stat-icon bg-light rounded-3 p-2">
+                        <i class="fas fa-server text-secondary"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-lg-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <div>
+                        <p class="text-secondary small mb-1">Total Devices</p>
+                        <h3 class="fw-bold mb-0">{{ devices_count|default:"0" }}</h3>
+                    </div>
+                    <div class="stat-icon bg-light rounded-3 p-2">
+                        <i class="fas fa-desktop text-secondary"></i>
+                    </div>
+                </div>
+                <p class="text-secondary small mb-0">{{ active_devices|default:"0" }} online</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-lg-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <div>
+                        <p class="text-secondary small mb-1">Offline Devices</p>
+                        <h3 class="fw-bold mb-0">{{ offline_devices|default:"0" }}</h3>
+                    </div>
+                    <div class="stat-icon bg-light rounded-3 p-2">
+                        <i class="fas fa-wifi text-secondary"></i>
+                    </div>
+                </div>
+                <p class="text-secondary small mb-0">Require attention</p>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if user.role == 'SUPER_ADMIN' or user.role == 'ADMIN' or user.role == 'DEALER_ADMIN' %}
+    <!-- Admin / Dealer View -->
+    {% if user.role == 'SUPER_ADMIN' or user.role == 'ADMIN' %}
+    <div class="col-sm-6 col-lg-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <div>
+                        <p class="text-secondary small mb-1">Total Dealers</p>
+                        <h3 class="fw-bold mb-0">{{ dealers_count|default:"0" }}</h3>
+                    </div>
+                    <div class="stat-icon bg-light rounded-3 p-2">
+                        <i class="fas fa-handshake text-secondary"></i>
+                    </div>
+                </div>
+                <p class="text-secondary small mb-0">Active dealer accounts</p>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    <div class="col-sm-6 col-lg-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <div>
+                        <p class="text-secondary small mb-1">{% if user.role == "DEALER_ADMIN" %}My Customers{% else %}Total Customers{% endif %}</p>
+                        <h3 class="fw-bold mb-0">{{ customers_count|default:"0" }}</h3>
+                    </div>
+                    <div class="stat-icon bg-light rounded-3 p-2">
+                        <i class="fas fa-building text-secondary"></i>
+                    </div>
+                </div>
+                <p class="text-secondary small mb-0">{% if user.role == "DEALER_ADMIN" %}Managed accounts{% else %}Registered companies{% endif %}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-lg-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <div>
+                        <p class="text-secondary small mb-1">Total Devices</p>
+                        <h3 class="fw-bold mb-0">{{ devices_count|default:"0" }}</h3>
+                    </div>
+                    <div class="stat-icon bg-light rounded-3 p-2">
+                        <i class="fas fa-desktop text-secondary"></i>
+                    </div>
+                </div>
+                <p class="text-secondary small mb-0">
+                    <span>{{ active_devices|default:"0" }} active</span>
+                </p>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-lg-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <div>
+                        <p class="text-secondary small mb-1">{% if user.role == "DEALER_ADMIN" %}License Quota{% else %}License Usage{% endif %}</p>
+                        <h3 class="fw-bold mb-0">{% if user.role == "DEALER_ADMIN" %}{{ licenses_count|default:"0" }}{% else %}{{ used_licenses|default:"0" }}/{{ total_licenses|default:"0" }}{% endif %}</h3>
+                    </div>
+                    <div class="stat-icon bg-light rounded-3 p-2">
+                        <i class="fas fa-file-alt text-secondary"></i>
+                    </div>
+                </div>
+                <p class="text-secondary small mb-0">{% if user.role == "DEALER_ADMIN" %}Total licenses assigned{% else %}{{ available_licenses|default:"0" }} available{% endif %}</p>
+            </div>
+        </div>
+    </div>
+    <!-- Pending Batch Requests Card -->
+    {% if pending_batch_requests > 0 %}
+    <div class="col-sm-6 col-lg-3">
+        <a href="{% url 'batch_requests_list' %}" class="text-decoration-none">
+            <div class="card border-0 shadow-sm h-100 border-warning border-2">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-3">
+                        <div>
+                            <p class="text-warning small mb-1 fw-bold">Pending Requests</p>
+                            <h3 class="fw-bold mb-0 text-warning">{{ pending_batch_requests }}</h3>
+                        </div>
+                        <div class="stat-icon bg-warning bg-opacity-10 rounded-3 p-2">
+                            <i class="fas fa-inbox text-warning"></i>
+                        </div>
+                    </div>
+                    <p class="text-warning small mb-0">Click to review →</p>
+                </div>
+            </div>
+        </a>
+    </div>
+    {% endif %}
+    {% elif user.role == 'COMPANY_ADMIN' %}
+    <!-- Company Admin View -->
+    <div class="col-sm-6 col-lg-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <div>
+                        <p class="text-secondary small mb-1">Total Devices</p>
+                        <h3 class="fw-bold mb-0">{{ devices_count|default:"0" }}</h3>
+                    </div>
+                    <div class="stat-icon bg-light rounded-3 p-2">
+                        <i class="fas fa-desktop text-secondary"></i>
+                    </div>
+                </div>
+                <p class="text-secondary small mb-0">{{ active_devices|default:"0" }} online</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-lg-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <div>
+                        <p class="text-secondary small mb-1">Offline Devices</p>
+                        <h3 class="fw-bold mb-0">{{ offline_devices|default:"0" }}</h3>
+                    </div>
+                    <div class="stat-icon bg-light rounded-3 p-2">
+                        <i class="fas fa-wifi text-secondary"></i>
+                    </div>
+                </div>
+                <p class="text-secondary small mb-0">Require attention</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-lg-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <div>
+                        <p class="text-secondary small mb-1">Branches</p>
+                        <h3 class="fw-bold mb-0">{{ branches_count|default:"0" }}</h3>
+                    </div>
+                    <div class="stat-icon bg-light rounded-3 p-2">
+                        <i class="fas fa-code-branch text-secondary"></i>
+                    </div>
+                </div>
+                <p class="text-secondary small mb-0">Active locations</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-lg-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <div>
+                        <p class="text-secondary small mb-1">Profiles</p>
+                        <h3 class="fw-bold mb-0">{{ profiles_count|default:"0" }}</h3>
+                    </div>
+                    <div class="stat-icon bg-light rounded-3 p-2">
+                        <i class="fas fa-user-cog text-secondary"></i>
+                    </div>
+                </div>
+                <p class="text-secondary small mb-0">Display configurations</p>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<div class="row g-4">
+    <!-- Recent Activity -->
+    <div class="col-lg-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-white border-0 py-3">
+                <h5 class="card-title mb-0 fw-bold">Recent Activity</h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="list-group list-group-flush">
+                    {% for activity in recent_activity %}
+                    <div class="list-group-item border-0 px-4 py-3">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div class="d-flex align-items-start">
+                                <span class="text-primary me-2">●</span>
+                                <div>
+                                    <p class="mb-1 fw-medium text-dark">{{ activity.action }}</p>
+                                    <p class="mb-0 small text-muted">{{ activity.details|truncatechars:50 }}</p>
+                                </div>
+                            </div>
+                            <small class="text-muted">{{ activity.timestamp|timesince }} ago</small>
+                        </div>
+                    </div>
+                    {% empty %}
+                    <div class="text-center py-5 text-muted">
+                        <i class="fas fa-history fa-2x mb-2 opacity-50"></i>
+                        <p class="mb-0">No recent activity</p>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- System Alerts -->
+    <div class="col-lg-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-white border-0 py-3">
+                <h5 class="card-title mb-0 fw-bold">System Alerts</h5>
+            </div>
+            <div class="card-body">
+                {% for alert in alerts %}
+                <div class="alert-item bg-light rounded-3 p-3 mb-3">
+                    <h6 class="fw-semibold mb-1">{{ alert.title }}</h6>
+                    <p class="text-muted small mb-0">{{ alert.message }}</p>
+                </div>
+                {% empty %}
+                <div class="text-center py-4 text-muted">
+                    <i class="fas fa-check-circle fa-2x mb-2 text-success opacity-50"></i>
+                    <p class="mb-0">No active alerts</p>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if user.role == 'COMPANY_ADMIN' %}
+<!-- Device Status by Branch -->
+<div class="row g-4 mt-0">
+    <div class="col-lg-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-white border-0 py-3">
+                <h5 class="card-title mb-0 fw-bold">Device Status by Branch</h5>
+            </div>
+            <div class="card-body">
+                {% for branch in branch_stats %}
+                <div class="mb-4">
+                    <div class="d-flex justify-content-between mb-2">
+                        <span class="fw-medium">{{ branch.name }}</span>
+                        <span class="text-muted small">{{ branch.device_count }} devices</span>
+                    </div>
+                    <div class="d-flex gap-1">
+                        <div class="progress flex-grow-1 rounded-pill" style="height: 8px;">
+                            <div class="bg-success rounded-pill" role="progressbar"
+                                style="width: {{ branch.online_percent }}%"></div>
+                        </div>
+                        {% if branch.offline_percent > 0 %}
+                        <div class="progress" style="height: 8px; width: {{ branch.offline_percent }}%;">
+                            <div class="bg-danger rounded-pill" role="progressbar" style="width: 100%"></div>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% empty %}
+                <div class="text-center py-4 text-muted">
+                    <p class="mb-0">No branch data available</p>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="col-lg-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-white border-0 py-3">
+                <h5 class="card-title mb-0 fw-bold">Quick Actions</h5>
+            </div>
+            <div class="card-body">
+                <a href="{% url 'device_list' %}"
+                    class="d-block text-decoration-none text-dark p-3 bg-light rounded-3 mb-3 hover-bg">
+                    <h6 class="fw-semibold mb-1">View Offline Devices</h6>
+                    <p class="text-muted small mb-0">Check connectivity issues</p>
+                </a>
+                <a href="#" class="d-block text-decoration-none text-dark p-3 bg-light rounded-3 hover-bg">
+                    <h6 class="fw-semibold mb-1">Create New Profile</h6>
+                    <p class="text-muted small mb-0">Add display schedule</p>
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

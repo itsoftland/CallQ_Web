@@ -1,0 +1,409 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Register Device{% endblock %}
+{% block page_title %}Register Device{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+    <!-- Registration Form -->
+    <div class="col-lg-5">
+        <div class="card border-0 shadow-sm rounded-4">
+            <div class="card-header bg-white border-0 pt-4">
+                <div class="d-flex align-items-center gap-2 mb-2">
+                    <div class="bg-primary-subtle p-2 rounded-3 text-primary">
+                        <i class="fas fa-plus-circle fa-lg"></i>
+                    </div>
+                    <h5 class="fw-bold mb-0">Register New Device</h5>
+                </div>
+                <p class="text-secondary small">Add devices to the registration list using their serial numbers.</p>
+            </div>
+            <div class="card-body p-4">
+                <form id="deviceForm">
+                    <div class="mb-3">
+                        <label class="form-label text-secondary small fw-bold">Company <span
+                                class="text-danger">*</span></label>
+                        <select id="company_id" class="form-select bg-light border-0 rounded-3" required>
+                            {% for company in companies %}
+                            <option value="{{ company.id }}">{{ company.company_name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label text-secondary small fw-bold">Branch <span
+                                class="text-danger">*</span></label>
+                        <select id="branch_id" class="form-select bg-light border-0 rounded-3" required>
+                            <option value="">Select Branch...</option>
+                            {% for branch in branches %}
+                            <option value="{{ branch.id }}">{{ branch.branch_name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label text-secondary small fw-bold">Device Type <span
+                                class="text-danger">*</span></label>
+                        <select id="device_type" class="form-select bg-light border-0 rounded-3" required>
+                            <option value="">Select Type...</option>
+                            <option value="TV">Android TV</option>
+                            <option value="TOKEN_DISPENSER">Token Dispenser</option>
+                            <option value="KEYPAD">Keypad / Embedded</option>
+                            <option value="BROKER">Broker</option>
+                            <option value="LED">LED Device</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label text-secondary small fw-bold">Serial Number <span
+                                class="text-danger">*</span></label>
+                        <div class="input-group">
+                            <input type="text" id="mac_address" class="form-control bg-light border-0 rounded-3"
+                                placeholder="Search or select serial number..." list="serial_number_list"
+                                autocomplete="off" required>
+                            <datalist id="serial_number_list">
+                                <!-- Options populated via JavaScript -->
+                            </datalist>
+                        </div>
+                        <small class="text-muted">Only shows unregistered serial numbers from production batches</small>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label text-secondary small fw-bold">Bluetooth Name</label>
+                        <input type="text" id="device_model" class="form-control bg-light border-0 rounded-3"
+                            placeholder="e.g. Counter 1, Mini PC">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label text-secondary small fw-bold">Display Name</label>
+                        <input type="text" id="display_name" class="form-control bg-light border-0 rounded-3"
+                            placeholder="e.g. Reception Counter, Main Hall TV">
+                        <small class="text-muted">Customer-friendly name to identify this device easily</small>
+                    </div>
+
+                    <div class="mb-3" id="tokenTypeContainer" style="display: none;">
+                        <label class="form-label text-secondary small fw-bold">No. of Buttons <span
+                                class="text-danger">*</span></label>
+                        <select id="token_type" class="form-select bg-light border-0 rounded-3">
+                            <option value="1_BUTTON">1 Button</option>
+                            <option value="2_BUTTON">2 Buttons</option>
+                            <option value="3_BUTTON">3 Buttons</option>
+                            <option value="4_BUTTON">4 Buttons</option>
+                        </select>
+                    </div>
+
+                    <div class="d-grid mt-4">
+                        <button type="button" id="addToListBtn"
+                            class="btn btn-outline-primary rounded-pill py-2 fw-bold">
+                            <i class="fas fa-plus me-2"></i>Add to List
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Registration List -->
+    <div class="col-lg-7">
+        <div class="card border-0 shadow-sm rounded-4 h-100">
+            <div class="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center">
+                <h6 class="fw-bold mb-0">Registration List (<span id="deviceCount">0</span>)</h6>
+                <button type="button" id="clearListBtn" class="btn btn-sm btn-outline-danger border-0 rounded-pill">
+                    <i class="fas fa-trash-alt me-1"></i>Clear All
+                </button>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive" style="max-height: 500px;">
+                    <table class="table table-hover align-middle mb-0" id="registrationTable">
+                        <thead class="bg-light sticky-top">
+                            <tr>
+                                <th class="ps-4 py-3 text-secondary fw-medium small">Serial Number</th>
+                                <th class="py-3 text-secondary fw-medium small">Type</th>
+                                <th class="py-3 text-secondary fw-medium small">Name</th>
+                                <th class="pe-4 py-3 text-end text-secondary fw-medium small">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="deviceListBody">
+                            <!-- Injected via JS -->
+                            <tr id="emptyRow">
+                                <td colspan="4" class="text-center py-5 text-secondary">
+                                    <i class="fas fa-list fa-3x mb-3 opacity-25"></i>
+                                    <p class="mb-0">No devices added to the list yet.</p>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="card-footer bg-white border-0 p-4">
+                <form method="POST" id="finalRegistrationForm">
+                    {% csrf_token %}
+                    <input type="hidden" name="company_id" id="hidden_company_id">
+                    <input type="hidden" name="branch_id" id="hidden_branch_id">
+                    <input type="hidden" name="devices_data" id="devices_data">
+
+                    <button type="submit" id="registerBtn"
+                        class="btn btn-primary rounded-pill py-3 px-5 fw-bold shadow-sm w-100 disabled">
+                        <i class="fas fa-check-circle me-2"></i>Register All Devices
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        // Initialization based on User Role to avoid Template Syntax Errors
+        const userRole = "{{ request.user.role }}";
+        const userCompanyId = "{{ request.user.company_relation.id|default:'' }}";
+
+        const companySelect = document.getElementById('company_id');
+        const branchSelect = document.getElementById('branch_id');
+
+        if (userRole === "COMPANY_ADMIN") {
+            companySelect.disabled = true;
+            if (userCompanyId) {
+                companySelect.value = userCompanyId;
+            }
+        }
+
+        function loadBranches(companyId) {
+            if (!companyId) {
+                branchSelect.innerHTML = '<option value="">Select Branch...</option>';
+                return;
+            }
+
+            fetch(`/CallQ/api/company-branches/${companyId}/`)
+                .then(response => response.json())
+                .then(data => {
+                    branchSelect.innerHTML = '<option value="">Select Branch...</option>';
+                    if (data.branches && data.branches.length > 0) {
+                        data.branches.forEach(branch => {
+                            const option = document.createElement('option');
+                            option.value = branch.id;
+                            option.textContent = branch.branch_name;
+                            branchSelect.appendChild(option);
+                        });
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching branches:', error);
+                });
+        }
+
+        companySelect.addEventListener('change', function () {
+            loadBranches(this.value);
+        });
+
+        // Load branches on init if a company is selected (standard for SuperAdmin/Admin)
+        // and branch list is currently empty (only contains "Select Branch...")
+        if (companySelect.value && branchSelect.options.length <= 1) {
+            loadBranches(companySelect.value);
+        }
+
+        const devices = [];
+        const addBtn = document.getElementById('addToListBtn');
+        const tableBody = document.getElementById('deviceListBody');
+        const emptyRow = document.getElementById('emptyRow');
+        const deviceCountSpan = document.getElementById('deviceCount');
+        const registerBtn = document.getElementById('registerBtn');
+        const finalForm = document.getElementById('finalRegistrationForm');
+        const deviceTypeSelect = document.getElementById('device_type');
+        const serialInput = document.getElementById('mac_address');
+        const serialDatalist = document.getElementById('serial_number_list');
+
+        // Function to fetch available serial numbers
+        // Function to fetch available serial numbers
+        function fetchSerialNumbers(deviceType, search = '') {
+            let url = '/CallQ/config/api/available-serial-numbers/?device_type=' + encodeURIComponent(deviceType);
+            if (search) {
+                url += '&search=' + encodeURIComponent(search);
+            }
+
+
+            fetch(url, {
+                credentials: 'include', // Ensure cookies are sent
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok: ' + response.statusText);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    serialDatalist.innerHTML = '';
+                    if (data.serial_numbers && data.serial_numbers.length > 0) {
+                        data.serial_numbers.forEach(sn => {
+                            const option = document.createElement('option');
+                            option.value = sn.serial_number;
+                            // label is attribute, textContent is inner text. Datalist behavior varies.
+                            option.label = 'Batch: ' + sn.batch_id;
+                            option.textContent = sn.serial_number + ' (Batch: ' + sn.batch_id + ')';
+                            serialDatalist.appendChild(option);
+                        });
+                    } else {
+                        if (!search) {
+                            // Optional: add a dummy option saying "No serials found"
+                            const option = document.createElement('option');
+                            option.value = "";
+                            option.textContent = "No unregistered serial numbers found for " + deviceType;
+                            option.disabled = true;
+                            serialDatalist.appendChild(option);
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching serial numbers:', error);
+                    alert("Error fetching serial numbers. Please check console.");
+                });
+        }
+
+        // Show/Hide Token Type based on selection
+        deviceTypeSelect.addEventListener('change', function () {
+            const deviceType = this.value;
+            const tokenTypeContainer = document.getElementById('tokenTypeContainer');
+            if (deviceType === 'TOKEN_DISPENSER') {
+                tokenTypeContainer.style.display = 'block';
+            } else {
+                tokenTypeContainer.style.display = 'none';
+            }
+
+            // ... Existing fetch logic ...
+            serialInput.value = ''; // Clear current selection
+            if (deviceType) {
+                fetchSerialNumbers(deviceType);
+            } else {
+                serialDatalist.innerHTML = '';
+            }
+        });
+
+        // Real-time search as user types
+        let searchTimeout;
+        serialInput.addEventListener('input', function () {
+            const deviceType = deviceTypeSelect.value;
+            const search = this.value;
+
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                if (deviceType) {
+                    fetchSerialNumbers(deviceType, search);
+                }
+            }, 300); // Debounce 300ms
+        });
+
+        addBtn.addEventListener('click', function () {
+            const mac = document.getElementById('mac_address').value.trim();
+            const type = document.getElementById('device_type').value;
+            const model = document.getElementById('device_model').value.trim() || type;
+            const displayName = document.getElementById('display_name').value.trim();
+            let typeLabel = document.getElementById('device_type').options[document.getElementById('device_type').selectedIndex].text;
+
+            let tokenType = null;
+            if (type === 'TOKEN_DISPENSER') {
+                tokenType = document.getElementById('token_type').value;
+                const tokenTypeLabel = document.getElementById('token_type').options[document.getElementById('token_type').selectedIndex].text;
+                typeLabel += ` (${tokenTypeLabel})`;
+            }
+
+            if (!mac || !type) {
+                alert('Please fill in both Serial Number and Device Type.');
+                return;
+            }
+
+            // Check for duplicates in the current list
+            if (devices.some(d => d.mac_address === mac)) {
+                alert('This device is already in the list.');
+                return;
+            }
+
+            const device = { mac_address: mac, device_type: type, device_model: model, display_name: displayName, typeLabel: typeLabel, token_type: tokenType };
+            devices.push(device);
+            updateTable();
+
+            // Reset SN input
+            document.getElementById('mac_address').value = '';
+            document.getElementById('device_model').value = '';
+            document.getElementById('display_name').value = '';
+            // Reset token type to default if needed or keep sticky
+        });
+
+        function updateTable() {
+            if (devices.length === 0) {
+                tableBody.innerHTML = '';
+                tableBody.appendChild(emptyRow);
+                registerBtn.classList.add('disabled');
+            } else {
+                if (emptyRow.parentNode) tableBody.removeChild(emptyRow);
+                tableBody.innerHTML = '';
+                devices.forEach((dev, index) => {
+                    const row = document.createElement('tr');
+                    const displayLabel = dev.display_name || dev.mac_address;
+                    row.innerHTML = `
+                    <td class="ps-4 py-3">
+                        <div class="fw-bold">${displayLabel}</div>
+                        ${dev.display_name ? `<small class="text-muted font-monospace">${dev.mac_address}</small>` : ''}
+                    </td>
+                    <td class="py-3"><span class="badge bg-light text-dark border rounded-pill px-3">${dev.typeLabel}</span></td>
+                    <td class="py-3 text-secondary">${dev.device_model}</td>
+                    <td class="pe-4 py-3 text-end">
+                        <button type="button" class="btn btn-sm btn-link text-danger p-0 delete-btn" data-index="${index}">
+                            <i class="fas fa-times-circle"></i>
+                        </button>
+                    </td>
+                `;
+                    tableBody.appendChild(row);
+                });
+                registerBtn.classList.remove('disabled');
+            }
+            deviceCountSpan.textContent = devices.length;
+        }
+
+        tableBody.addEventListener('click', function (e) {
+            if (e.target.closest('.delete-btn')) {
+                const index = e.target.closest('.delete-btn').dataset.index;
+                devices.splice(index, 1);
+                updateTable();
+            }
+        });
+
+        document.getElementById('clearListBtn').addEventListener('click', function () {
+            if (confirm('Are you sure you want to clear the entire list?')) {
+                devices.length = 0;
+                updateTable();
+            }
+        });
+
+        finalForm.addEventListener('submit', function (e) {
+            if (devices.length === 0) {
+                e.preventDefault();
+                return;
+            }
+
+            const branchId = document.getElementById('branch_id').value;
+            if (!branchId) {
+                e.preventDefault();
+                alert('Please select a Branch for the devices.');
+                return;
+            }
+
+            document.getElementById('hidden_company_id').value = document.getElementById('company_id').value;
+            document.getElementById('hidden_branch_id').value = branchId;
+            document.getElementById('devices_data').value = JSON.stringify(devices);
+        });
+    });
+</script>
+
+<style>
+    .bg-primary-subtle {
+        background-color: #e7f0ff;
+    }
+
+    .sticky-top {
+        z-index: 1;
+    }
+</style>
+{% endblock %}

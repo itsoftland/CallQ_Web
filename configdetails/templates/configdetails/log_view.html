@@ -1,0 +1,412 @@
+{% extends 'base.html' %}
+{% load static %}
+{% load humanize %}
+{% block title %}{{ log_type }}.log - {{ year }}/{{ month }}/{{ day }}{% endblock %}
+{% block extra_css %}
+<style>
+    body {
+        background-color: #1e1e1e !important;
+        color: #ffffff;
+        margin: 0;
+        padding: 0;
+    }
+    .main-content {
+        margin: 0 !important;
+        padding: 0 !important;
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+    .content {
+        padding: 0 !important;
+        margin: 0 !important;
+    }
+    .log-viewer-container {
+        padding: 0;
+        margin: 0;
+        min-height: 100vh;
+        background-color: #1e1e1e;
+        width: 100%;
+    }
+    .log-header {
+        background-color: #252526;
+        border-bottom: 1px solid #3e3e42;
+        padding: 12px 20px;
+        position: sticky;
+        top: 0;
+        z-index: 100;
+    }
+    .log-header a {
+        color: #4ec9b0;
+        text-decoration: none;
+        font-size: 0.9rem;
+    }
+    .log-header a:hover {
+        color: #6ec9b0;
+        text-decoration: underline;
+    }
+    .log-header .file-info {
+        color: #cccccc;
+        font-size: 0.85rem;
+        margin-top: 4px;
+    }
+    .search-container {
+        margin-top: 12px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .search-container input {
+        background-color: #3e3e42;
+        border: 1px solid #3e3e42;
+        color: #cccccc;
+        padding: 6px 12px;
+        font-size: 0.9rem;
+        border-radius: 4px;
+        flex: 1;
+        max-width: 400px;
+    }
+    .search-container input:focus {
+        outline: none;
+        border-color: #007acc;
+        background-color: #2d2d30;
+    }
+    .search-container input::placeholder {
+        color: #6e6e6e;
+    }
+    .search-results {
+        color: #cccccc;
+        font-size: 0.85rem;
+        white-space: nowrap;
+    }
+    .search-controls {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+    .search-btn {
+        background-color: #3e3e42;
+        border: 1px solid #3e3e42;
+        color: #cccccc;
+        padding: 6px 10px;
+        font-size: 0.85rem;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+    .search-btn:hover:not(:disabled) {
+        background-color: #4e4e52;
+        border-color: #4e4e52;
+    }
+    .search-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+    .log-content {
+        padding: 20px;
+        font-family: 'Courier New', 'Consolas', 'Monaco', monospace;
+        font-size: 13px;
+        line-height: 1.6;
+        color: #d4d4d4;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        background-color: #1e1e1e;
+        min-height: calc(100vh - 200px);
+        overflow-x: auto;
+    }
+    .log-content .log-line {
+        display: block;
+        margin: 0;
+        padding: 0;
+    }
+    .log-content .highlight {
+        background-color: #264f78;
+        color: #ffffff;
+        padding: 2px 0;
+        border-radius: 2px;
+    }
+    .log-content .highlight.current {
+        background-color: #007acc;
+        color: #ffffff;
+    }
+    .log-pagination {
+        background-color: #252526;
+        border-top: 1px solid #3e3e42;
+        padding: 12px 20px;
+        position: sticky;
+        bottom: 0;
+        z-index: 100;
+    }
+    .log-pagination .pagination {
+        margin: 0;
+    }
+    .log-pagination .page-link {
+        background-color: #3e3e42;
+        border-color: #3e3e42;
+        color: #cccccc;
+        padding: 6px 12px;
+        font-size: 0.85rem;
+    }
+    .log-pagination .page-link:hover {
+        background-color: #4e4e52;
+        border-color: #4e4e52;
+        color: #ffffff;
+    }
+    .log-pagination .page-item.active .page-link {
+        background-color: #007acc;
+        border-color: #007acc;
+        color: #ffffff;
+    }
+    .log-pagination .page-item.disabled .page-link {
+        background-color: #2d2d30;
+        border-color: #2d2d30;
+        color: #6e6e6e;
+        cursor: not-allowed;
+    }
+</style>
+{% endblock %}
+{% block content %}
+<div class="log-viewer-container">
+    <div class="log-header">
+        <div>
+            <a href="{% url 'log_list' %}?year={{ year }}&month={{ month }}&day={{ day }}">
+                ← To Parent Directory
+            </a>
+            <span style="color: #6e6e6e; margin: 0 8px;">/</span>
+            <span style="color: #cccccc;">{{ year }}/{{ month }}/{{ day }}/</span>
+            <span style="color: #ffffff; font-weight: 600;">{{ log_type }}.log</span>
+        </div>
+        <div class="file-info">
+            File Size: 
+            {% if file_size_mb >= 1 %}
+                {{ file_size_mb|floatformat:2 }} MB
+            {% else %}
+                {{ file_size_kb|floatformat:2 }} KB
+            {% endif %}
+            | Total Lines: {{ total_lines|intcomma }}
+        </div>
+        <div class="search-container">
+            <input type="text" id="searchInput" placeholder="Search in log..." autocomplete="off">
+            <div class="search-controls">
+                <button class="search-btn" id="prevBtn" title="Previous match" disabled>
+                    <i class="fas fa-chevron-up"></i>
+                </button>
+                <button class="search-btn" id="nextBtn" title="Next match" disabled>
+                    <i class="fas fa-chevron-down"></i>
+                </button>
+                <button class="search-btn" id="clearBtn" title="Clear search" style="display: none;">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="search-results" id="searchResults"></div>
+        </div>
+    </div>
+
+    {% if messages %}
+        {% for message in messages %}
+            <div style="background-color: #3e3e42; color: #ffffff; padding: 12px 20px; border-bottom: 1px solid #3e3e42;">
+                {{ message }}
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    <div class="log-content">
+        {% for line in log_page %}
+            <span class="log-line">{{ line }}</span>
+        {% endfor %}
+    </div>
+
+    <div class="log-pagination">
+        <nav aria-label="Log pagination">
+            <ul class="pagination pagination-sm mb-0 justify-content-center">
+                {% if log_page.has_previous %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page=1">&laquo; First</a>
+                    </li>
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ log_page.previous_page_number }}">Previous</a>
+                    </li>
+                {% else %}
+                    <li class="page-item disabled">
+                        <span class="page-link">&laquo; First</span>
+                    </li>
+                    <li class="page-item disabled">
+                        <span class="page-link">Previous</span>
+                    </li>
+                {% endif %}
+
+                <li class="page-item active">
+                    <span class="page-link">
+                        Page {{ log_page.number }} of {{ log_page.paginator.num_pages }}
+                    </span>
+                </li>
+
+                {% if log_page.has_next %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ log_page.next_page_number }}">Next</a>
+                    </li>
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ log_page.paginator.num_pages }}">Last &raquo;</a>
+                    </li>
+                {% else %}
+                    <li class="page-item disabled">
+                        <span class="page-link">Next</span>
+                    </li>
+                    <li class="page-item disabled">
+                        <span class="page-link">Last &raquo;</span>
+                    </li>
+                {% endif %}
+            </ul>
+        </nav>
+    </div>
+</div>
+
+<script>
+let searchMatches = [];
+let currentMatchIndex = -1;
+let originalContent = '';
+
+// Get original content on page load
+document.addEventListener('DOMContentLoaded', function() {
+    const logContent = document.querySelector('.log-content');
+    originalContent = logContent.innerHTML;
+    
+    const searchInput = document.getElementById('searchInput');
+    const prevBtn = document.getElementById('prevBtn');
+    const nextBtn = document.getElementById('nextBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const searchResults = document.getElementById('searchResults');
+    
+    // Search functionality
+    searchInput.addEventListener('input', function() {
+        const searchTerm = this.value.trim();
+        
+        if (searchTerm === '') {
+            clearSearch();
+            return;
+        }
+        
+        performSearch(searchTerm);
+    });
+    
+    // Keyboard shortcuts
+    searchInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            if (e.shiftKey) {
+                navigateMatch(-1); // Previous
+            } else {
+                navigateMatch(1); // Next
+            }
+        } else if (e.key === 'Escape') {
+            clearSearch();
+        }
+    });
+    
+    // Navigation buttons
+    prevBtn.addEventListener('click', function() {
+        navigateMatch(-1);
+    });
+    
+    nextBtn.addEventListener('click', function() {
+        navigateMatch(1);
+    });
+    
+    clearBtn.addEventListener('click', function() {
+        clearSearch();
+        searchInput.focus();
+    });
+    
+    function performSearch(term) {
+        const logContent = document.querySelector('.log-content');
+        let content = originalContent;
+        
+        // Escape special regex characters
+        const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const regex = new RegExp(`(${escapedTerm})`, 'gi');
+        
+        // Find all matches
+        searchMatches = [];
+        let match;
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = content;
+        const textContent = tempDiv.textContent || tempDiv.innerText;
+        
+        while ((match = regex.exec(textContent)) !== null) {
+            searchMatches.push(match.index);
+        }
+        
+        // Highlight matches
+        content = content.replace(regex, '<span class="highlight">$1</span>');
+        logContent.innerHTML = content;
+        
+        // Update UI
+        if (searchMatches.length > 0) {
+            currentMatchIndex = 0;
+            highlightCurrentMatch();
+            prevBtn.disabled = false;
+            nextBtn.disabled = false;
+            clearBtn.style.display = 'block';
+            searchResults.textContent = `${currentMatchIndex + 1} of ${searchMatches.length} matches`;
+            searchResults.style.color = '#cccccc';
+        } else {
+            currentMatchIndex = -1;
+            prevBtn.disabled = true;
+            nextBtn.disabled = true;
+            clearBtn.style.display = 'block';
+            searchResults.textContent = 'No matches found';
+            searchResults.style.color = '#ef4444';
+        }
+    }
+    
+    function highlightCurrentMatch() {
+        const highlights = document.querySelectorAll('.log-content .highlight');
+        highlights.forEach((el, index) => {
+            el.classList.remove('current');
+            if (index === currentMatchIndex) {
+                el.classList.add('current');
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        });
+        
+        if (searchMatches.length > 0) {
+            const searchResults = document.getElementById('searchResults');
+            searchResults.textContent = `${currentMatchIndex + 1} of ${searchMatches.length} matches`;
+        }
+    }
+    
+    function navigateMatch(direction) {
+        if (searchMatches.length === 0) return;
+        
+        currentMatchIndex += direction;
+        
+        if (currentMatchIndex < 0) {
+            currentMatchIndex = searchMatches.length - 1;
+        } else if (currentMatchIndex >= searchMatches.length) {
+            currentMatchIndex = 0;
+        }
+        
+        highlightCurrentMatch();
+    }
+    
+    function clearSearch() {
+        const logContent = document.querySelector('.log-content');
+        logContent.innerHTML = originalContent;
+        searchInput.value = '';
+        searchMatches = [];
+        currentMatchIndex = -1;
+        prevBtn.disabled = true;
+        nextBtn.disabled = true;
+        clearBtn.style.display = 'none';
+        document.getElementById('searchResults').textContent = '';
+    }
+    
+    // Focus search on Ctrl+F or Cmd+F
+    document.addEventListener('keydown', function(e) {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+            e.preventDefault();
+            searchInput.focus();
+            searchInput.select();
+        }
+    });
+});
+</script>
+{% endblock %}

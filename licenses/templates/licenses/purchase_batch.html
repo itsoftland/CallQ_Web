@@ -1,0 +1,63 @@
+{% extends 'base.html' %}
+
+{% block title %}Purchase Batch{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h2>Purchase New Batch</h2>
+        <p class="text-muted">Request a new batch of licenses for your company.</p>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8 col-lg-6">
+        <div class="card shadow-sm">
+            <div class="card-body p-4">
+                <form method="post">
+                    {% csrf_token %}
+
+                    <h5 class="mb-3">Device Quantities</h5>
+
+                    <div class="mb-3">
+                        <label for="max_tvs" class="form-label">Number of TVs</label>
+                        <input type="number" class="form-control" id="max_tvs" name="max_tvs" min="0" value="0"
+                            required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="max_dispensers" class="form-label">Number of Token Dispensers</label>
+                        <input type="number" class="form-control" id="max_dispensers" name="max_dispensers" min="0"
+                            value="0" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="max_keypads" class="form-label">Number of Keypads</label>
+                        <input type="number" class="form-control" id="max_keypads" name="max_keypads" min="0" value="0"
+                            required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="max_brokers" class="form-label">Number of Brokers</label>
+                        <input type="number" class="form-control" id="max_brokers" name="max_brokers" min="0" value="0"
+                            required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="max_leds" class="form-label">Number of LED Displays</label>
+                        <input type="number" class="form-control" id="max_leds" name="max_leds" min="0" value="0"
+                            required>
+                    </div>
+
+                    <div class="d-grid gap-2 mt-4">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-shopping-cart me-2"></i> Purchase Batch
+                        </button>
+                        <a href="{% url 'batch_list' %}" class="btn btn-outline-secondary">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

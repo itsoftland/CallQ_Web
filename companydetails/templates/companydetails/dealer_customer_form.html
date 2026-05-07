@@ -1,0 +1,103 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{{ title }}{% endblock %}
+{% block page_title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card border-0 shadow-sm rounded-4">
+            <div class="card-body p-4">
+                <form method="post">
+                    {% csrf_token %}
+
+                    <!-- Company Information -->
+                    <h5 class="fw-bold mb-4">Company Information</h5>
+
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-6">
+                            <label class="form-label fw-medium">Company Name <span class="text-danger">*</span></label>
+                            <input type="text" name="company_name" class="form-control"
+                                value="{{ customer.company_name|default:'' }}" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-medium">Company Email <span class="text-danger">*</span></label>
+                            <input type="email" name="company_email" class="form-control"
+                                value="{{ customer.company_email|default:'' }}" required>
+                            <small class="text-muted">For notifications and communication</small>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-medium">GST Number</label>
+                            <input type="text" name="gst_number" class="form-control"
+                                value="{{ customer.gst_number|default:'' }}">
+                        </div>
+                    </div>
+
+                    <!-- Contact Information -->
+                    <h5 class="fw-bold mb-4 mt-4">Contact Information</h5>
+
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-6">
+                            <label class="form-label fw-medium">Contact Person <span
+                                    class="text-danger">*</span></label>
+                            <input type="text" name="contact_person" class="form-control"
+                                value="{{ customer.contact_person|default:'' }}" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-medium">Contact Number <span
+                                    class="text-danger">*</span></label>
+                            <input type="text" name="contact_number" class="form-control"
+                                value="{{ customer.contact_number|default:'' }}" required>
+                            <small class="text-muted">For expiry notifications</small>
+                        </div>
+                    </div>
+
+                    <!-- Address Information -->
+                    <h5 class="fw-bold mb-4 mt-4">Address Information</h5>
+
+                    <div class="row g-3 mb-4">
+                        <div class="col-12">
+                            <label class="form-label fw-medium">Address Line 1 <span
+                                    class="text-danger">*</span></label>
+                            <textarea name="address" class="form-control" rows="2"
+                                required>{{ customer.address|default:'' }}</textarea>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label fw-medium">Address Line 2</label>
+                            <textarea name="address_2" class="form-control"
+                                rows="2">{{ customer.address_2|default:'' }}</textarea>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-medium">City <span class="text-danger">*</span></label>
+                            <input type="text" name="city" class="form-control" value="{{ customer.city|default:'' }}"
+                                required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-medium">District</label>
+                            <input type="text" name="district" class="form-control"
+                                value="{{ customer.district|default:'' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-medium">State <span class="text-danger">*</span></label>
+                            <input type="text" name="state" class="form-control" value="{{ customer.state|default:'' }}"
+                                required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-medium">ZIP Code <span class="text-danger">*</span></label>
+                            <input type="text" name="zip_code" class="form-control"
+                                value="{{ customer.zip_code|default:'' }}" required>
+                        </div>
+                    </div>
+
+                    <!-- Form Actions -->
+                    <div class="d-flex justify-content-end gap-2 mt-4">
+                        <a href="{% url 'dealer_customer_list' %}" class="btn btn-link text-secondary">Cancel</a>
+                        <button type="submit" class="btn btn-primary px-4">{{ button_text }}</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

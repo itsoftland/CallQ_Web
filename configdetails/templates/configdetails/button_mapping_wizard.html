@@ -1,0 +1,552 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Button Mapping Wizard - {{ family.family_name }}{% endblock %}
+{% block page_title %}Button Mapping Wizard{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <style>
+        .wizard-steps {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+            position: relative;
+        }
+        .wizard-steps::before {
+            content: '';
+            position: absolute;
+            top: 20px;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: #e5e7eb;
+            z-index: 0;
+        }
+        .wizard-step {
+            position: relative;
+            z-index: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            flex: 1;
+        }
+        .wizard-step-circle {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            margin-bottom: 8px;
+            background: #f3f4f6;
+            color: #6b7280;
+            border: 2px solid #e5e7eb;
+        }
+        .wizard-step.active .wizard-step-circle {
+            background: #2563eb;
+            color: white;
+            border-color: #2563eb;
+        }
+        .wizard-step.completed .wizard-step-circle {
+            background: #10b981;
+            color: white;
+            border-color: #10b981;
+        }
+        .wizard-step-label {
+            font-size: 0.875rem;
+            color: #6b7280;
+            font-weight: 500;
+        }
+        .wizard-step.active .wizard-step-label {
+            color: #2563eb;
+            font-weight: 600;
+        }
+        .step-content {
+            min-height: 400px;
+        }
+        .mapping-row {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 1rem;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            background: white;
+        }
+        .device-info {
+            flex: 1;
+            font-weight: 500;
+        }
+        .button-select {
+            min-width: 120px;
+        }
+        .target-select {
+            min-width: 200px;
+        }
+    </style>
+
+    <div class="card border-0 shadow-sm rounded-4 mb-4">
+        <div class="card-header bg-white border-0 pt-4 pb-3">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <div>
+                    <h5 class="fw-bold mb-1">Button Mapping Wizard</h5>
+                    <p class="text-secondary small mb-0">Family: <strong>{{ family.family_name }}</strong></p>
+                </div>
+                <a href="{% url 'mapping_list' %}" class="btn btn-light rounded-pill px-4">Cancel</a>
+            </div>
+            
+            <!-- Wizard Steps -->
+            <div class="wizard-steps">
+                {% for step in steps %}
+                <div class="wizard-step {% if step.key == current_step %}active{% endif %}" data-step="{{ step.key }}">
+                    <div class="wizard-step-circle">{{ step.num }}</div>
+                    <div class="wizard-step-label">{{ step.name }}</div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="card-body p-4">
+            <!-- Step 1: Config -->
+            {% if current_step == 'config' %}
+            <div class="step-content">
+                <h6 class="fw-bold mb-4">Family Configuration Summary</h6>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <div class="card bg-light border-0 p-3">
+                            <div class="small text-muted mb-1">Token Dispensers</div>
+                            <div class="h5 mb-0">{{ dispensers_list|length }}</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card bg-light border-0 p-3">
+                            <div class="small text-muted mb-1">Keypads</div>
+                            <div class="h5 mb-0">{{ keypads_list|length }}</div>
+                        </div>
+                    </div>
+                    {% if leds_list|length > 0 %}
+                    <div class="col-md-6">
+                        <div class="card bg-light border-0 p-3">
+                            <div class="small text-muted mb-1">LEDs</div>
+                            <div class="h5 mb-0">{{ leds_list|length }}</div>
+                        </div>
+                    </div>
+                    {% endif %}
+                    {% if brokers_list|length > 0 %}
+                    <div class="col-md-6">
+                        <div class="card bg-light border-0 p-3">
+                            <div class="small text-muted mb-1">Brokers</div>
+                            <div class="h5 mb-0">{{ brokers_list|length }}</div>
+                        </div>
+                    </div>
+                    {% endif %}
+                    <div class="col-md-6">
+                        <div class="card bg-light border-0 p-3">
+                            <div class="small text-muted mb-1">TVs</div>
+                            <div class="h5 mb-0">{{ tvs_list|length }}</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-4 text-end">
+                    <button class="btn btn-primary rounded-pill px-4" onclick="goToStep('dispensers')">
+                        Next: Map Dispensers <i class="fas fa-arrow-right ms-2"></i>
+                    </button>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Step 2: Dispensers -->
+            {% if current_step == 'dispensers' %}
+            <div class="step-content">
+                <h6 class="fw-bold mb-4">Map Token Dispensers to Keypads</h6>
+                <p class="text-muted small mb-4">Map each token dispenser button to its corresponding keypad. Buttons are determined by the dispenser type (1-button or 2-button).</p>
+                
+                <div id="dispenserMappings">
+                    {% for dispenser in dispensers_list %}
+                    <div class="mapping-row" data-dispenser-id="{{ dispenser.id }}">
+                        <div class="device-info">
+                            <strong>{{ dispenser.get_display_identifier }}</strong>
+                            <div class="small text-muted">SN: {{ dispenser.serial_number }}</div>
+                            <div class="small text-muted">Type: {{ dispenser.token_type|default:"1 Button" }}</div>
+                        </div>
+                        <div class="button-select">
+                            <select class="form-select form-select-sm" id="dispenser_{{ dispenser.id }}_button" disabled>
+                                <option>Loading...</option>
+                            </select>
+                        </div>
+                        <div class="text-muted">→</div>
+                        <div class="target-select">
+                            <select class="form-select form-select-sm" id="dispenser_{{ dispenser.id }}_keypad" required>
+                                <option value="">Select Keypad</option>
+                                {% for keypad in keypads_list %}
+                                <option value="{{ keypad.id }}">{{ keypad.get_display_identifier }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                
+                <div class="mt-4 d-flex justify-content-between">
+                    <button class="btn btn-light rounded-pill px-4" onclick="goToStep('config')">
+                        <i class="fas fa-arrow-left me-2"></i> Previous
+                    </button>
+                    <button class="btn btn-primary rounded-pill px-4" onclick="saveStep('dispensers')">
+                        Save & Continue <i class="fas fa-arrow-right ms-2"></i>
+                    </button>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Step 3: LEDs -->
+            {% if current_step == 'leds' %}
+            <div class="step-content">
+                <h6 class="fw-bold mb-4">Map Keypad Buttons to LEDs</h6>
+                <p class="text-muted small mb-4">Map keypad buttons (A, B, C, D) to LEDs for display.</p>
+                
+                <div id="ledMappings">
+                    {% for keypad in keypads_list %}
+                    <div class="mb-4">
+                        <h6 class="mb-3">{{ keypad.get_display_identifier }}</h6>
+                        <div class="row g-2">
+                            {% for btn in 'ABCD'|make_list %}
+                            <div class="col-md-6">
+                                <div class="mapping-row">
+                                    <div class="device-info">
+                                        <strong>Button {{ btn }}</strong>
+                                    </div>
+                                    <div class="text-muted">→</div>
+                                    <div class="target-select flex-grow-1">
+                                        <select class="form-select form-select-sm keypad-led-select" 
+                                                data-keypad-id="{{ keypad.id }}" 
+                                                data-button="{{ btn }}">
+                                            <option value="">No Mapping</option>
+                                            {% for led in leds_list %}
+                                            <option value="{{ led.id }}">{{ led.get_display_identifier }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                
+                <div class="mt-4 d-flex justify-content-between">
+                    <button class="btn btn-light rounded-pill px-4" onclick="goToStep('dispensers')">
+                        <i class="fas fa-arrow-left me-2"></i> Previous
+                    </button>
+                    <button class="btn btn-primary rounded-pill px-4" onclick="saveStep('leds')">
+                        Save & Continue <i class="fas fa-arrow-right ms-2"></i>
+                    </button>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Step 4: Brokers (In) -->
+            {% if current_step == 'brokers_in' %}
+            <div class="step-content">
+                <h6 class="fw-bold mb-4">Map Keypad Buttons to Brokers</h6>
+                <p class="text-muted small mb-4">Map keypad buttons (A, B, C, D) to brokers for triggering.</p>
+                
+                <div id="brokerInMappings">
+                    {% for keypad in keypads_list %}
+                    <div class="mb-4">
+                        <h6 class="mb-3">{{ keypad.get_display_identifier }}</h6>
+                        <div class="row g-2">
+                            {% for btn in 'ABCD'|make_list %}
+                            <div class="col-md-6">
+                                <div class="mapping-row">
+                                    <div class="device-info">
+                                        <strong>Button {{ btn }}</strong>
+                                    </div>
+                                    <div class="text-muted">→</div>
+                                    <div class="target-select flex-grow-1">
+                                        <select class="form-select form-select-sm keypad-broker-select" 
+                                                data-keypad-id="{{ keypad.id }}" 
+                                                data-button="{{ btn }}">
+                                            <option value="">No Mapping</option>
+                                            {% for broker in brokers_list %}
+                                            <option value="{{ broker.id }}">{{ broker.get_display_identifier }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                
+                <div class="mt-4 d-flex justify-content-between">
+                    <button class="btn btn-light rounded-pill px-4" onclick="goToStep('{% if leds_list|length > 0 %}leds{% else %}dispensers{% endif %}')">
+                        <i class="fas fa-arrow-left me-2"></i> Previous
+                    </button>
+                    <button class="btn btn-primary rounded-pill px-4" onclick="saveStep('brokers_in')">
+                        Save & Continue <i class="fas fa-arrow-right ms-2"></i>
+                    </button>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Step 5: Brokers (Out) -->
+            {% if current_step == 'brokers_out' %}
+            <div class="step-content">
+                <h6 class="fw-bold mb-4">Map Brokers to TVs</h6>
+                <p class="text-muted small mb-4">Map each broker to its corresponding TV for display.</p>
+                
+                <div id="brokerOutMappings">
+                    {% for broker in brokers_list %}
+                    <div class="mapping-row" data-broker-id="{{ broker.id }}">
+                        <div class="device-info">
+                            <strong>{{ broker.get_display_identifier }}</strong>
+                            <div class="small text-muted">SN: {{ broker.serial_number }}</div>
+                        </div>
+                        <div class="text-muted">→</div>
+                        <div class="target-select flex-grow-1">
+                            <select class="form-select form-select-sm broker-tv-select" 
+                                    data-broker-id="{{ broker.id }}">
+                                <option value="">Select TV</option>
+                                {% for tv in tvs_list %}
+                                <option value="{{ tv.id }}">{{ tv.get_display_identifier }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                
+                <div class="mt-4 d-flex justify-content-between">
+                    <button class="btn btn-light rounded-pill px-4" onclick="goToStep('brokers_in')">
+                        <i class="fas fa-arrow-left me-2"></i> Previous
+                    </button>
+                    <button class="btn btn-primary rounded-pill px-4" onclick="saveStep('brokers_out')">
+                        Save & Continue <i class="fas fa-arrow-right ms-2"></i>
+                    </button>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Step 6: Preview -->
+            {% if current_step == 'preview' %}
+            <div class="step-content">
+                <h6 class="fw-bold mb-4">Preview All Mappings</h6>
+                <div id="previewMappings" class="mb-4">
+                    <div class="text-center py-5">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="mt-4 d-flex justify-content-between">
+                    <button class="btn btn-light rounded-pill px-4" onclick="goToStep('{% if brokers_list|length > 0 and tvs_list|length > 0 %}brokers_out{% elif brokers_list|length > 0 %}brokers_in{% elif leds_list|length > 0 %}leds{% else %}dispensers{% endif %}')">
+                        <i class="fas fa-arrow-left me-2"></i> Previous
+                    </button>
+                    <button class="btn btn-success rounded-pill px-4" onclick="completeWizard()">
+                        <i class="fas fa-check me-2"></i> Complete Mapping
+                    </button>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+const familyId = {{ family.id }};
+const currentStep = '{{ current_step }}';
+
+// Load dispenser button counts on page load
+document.addEventListener('DOMContentLoaded', function() {
+    if (currentStep === 'dispensers') {
+        loadDispenserButtons();
+    }
+    if (currentStep === 'preview') {
+        loadPreview();
+    }
+    loadExistingMappings();
+});
+
+function loadDispenserButtons() {
+    {% for dispenser in dispensers_list %}
+    const dispenser{{ dispenser.id }} = {
+        id: {{ dispenser.id }},
+        token_type: '{{ dispenser.token_type|default:"1_BUTTON" }}'
+    };
+    
+    const buttonCount = parseInt(dispenser{{ dispenser.id }}.token_type.split('_')[0]) || 1;
+    const select = document.getElementById('dispenser_{{ dispenser.id }}_button');
+    select.innerHTML = '';
+    
+    for (let i = 1; i <= buttonCount; i++) {
+        const option = document.createElement('option');
+        option.value = `Button ${i}`;
+        option.textContent = `Button ${i}`;
+        select.appendChild(option);
+    }
+    select.disabled = false;
+    {% endfor %}
+}
+
+function loadExistingMappings() {
+    fetch(`/CallQ/config/api/mapping/family/${familyId}/button-mappings/`)
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === 'success') {
+                data.mappings.forEach(mapping => {
+                    // Populate existing mappings in the form
+                    if (currentStep === 'dispensers') {
+                        const keypadSelect = document.getElementById(`dispenser_${mapping.source_device_id}_keypad`);
+                        if (keypadSelect && mapping.target_device_id) {
+                            keypadSelect.value = mapping.target_device_id;
+                        }
+                    } else if (currentStep === 'leds') {
+                        // Extract button letter from "Button A", "Button B", etc.
+                        const buttonLetter = mapping.source_button.replace('Button ', '').trim();
+                        const ledSelect = document.querySelector(`.keypad-led-select[data-keypad-id="${mapping.source_device_id}"][data-button="${buttonLetter}"]`);
+                        if (ledSelect && mapping.target_device_id) {
+                            ledSelect.value = mapping.target_device_id;
+                        }
+                    } else if (currentStep === 'brokers_in') {
+                        // Extract button letter from "Button A", "Button B", etc.
+                        const buttonLetter = mapping.source_button.replace('Button ', '').trim();
+                        const brokerSelect = document.querySelector(`.keypad-broker-select[data-keypad-id="${mapping.source_device_id}"][data-button="${buttonLetter}"]`);
+                        if (brokerSelect && mapping.target_device_id) {
+                            brokerSelect.value = mapping.target_device_id;
+                        }
+                    } else if (currentStep === 'brokers_out') {
+                        const tvSelect = document.querySelector(`.broker-tv-select[data-broker-id="${mapping.source_device_id}"]`);
+                        if (tvSelect && mapping.target_device_id) {
+                            tvSelect.value = mapping.target_device_id;
+                        }
+                    }
+                });
+            }
+        })
+        .catch(err => console.error('Error loading mappings:', err));
+}
+
+function goToStep(step) {
+    window.location.href = `{% url 'button_mapping_wizard' family.id %}?step=${step}`;
+}
+
+function saveStep(step) {
+    const mappings = [];
+    
+    if (step === 'dispensers') {
+        {% for dispenser in dispensers_list %}
+        const keypadSelect = document.getElementById('dispenser_{{ dispenser.id }}_keypad');
+        const buttonSelect = document.getElementById('dispenser_{{ dispenser.id }}_button');
+        if (keypadSelect.value && buttonSelect.value) {
+            const buttonCount = parseInt('{{ dispenser.token_type|default:"1_BUTTON" }}'.split('_')[0]) || 1;
+            for (let i = 1; i <= buttonCount; i++) {
+                mappings.push({
+                    source_device_id: {{ dispenser.id }},
+                    source_button: `Button ${i}`,
+                    target_device_id: parseInt(keypadSelect.value)
+                });
+            }
+        }
+        {% endfor %}
+    } else if (step === 'leds') {
+        document.querySelectorAll('.keypad-led-select').forEach(select => {
+            if (select.value) {
+                mappings.push({
+                    source_device_id: parseInt(select.dataset.keypadId),
+                    source_button: `Button ${select.dataset.button}`,  // Button A, Button B, etc.
+                    target_device_id: parseInt(select.value)
+                });
+            }
+        });
+    } else if (step === 'brokers_in') {
+        document.querySelectorAll('.keypad-broker-select').forEach(select => {
+            if (select.value) {
+                mappings.push({
+                    source_device_id: parseInt(select.dataset.keypadId),
+                    source_button: `Button ${select.dataset.button}`,  // Button A, Button B, etc.
+                    target_device_id: parseInt(select.value)
+                });
+            }
+        });
+    } else if (step === 'brokers_out') {
+        document.querySelectorAll('.broker-tv-select').forEach(select => {
+            if (select.value) {
+                mappings.push({
+                    source_device_id: parseInt(select.dataset.brokerId),
+                    source_button: 'Button 1',
+                    target_device_id: parseInt(select.value)
+                });
+            }
+        });
+    }
+    
+    fetch(`/CallQ/config/api/mapping/family/${familyId}/button-mappings/save/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token }}'
+        },
+        body: JSON.stringify({
+            step: step,
+            mappings: mappings
+        })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.status === 'success') {
+            // Determine next step
+            let nextStep = 'preview';
+            if (step === 'dispensers') {
+                nextStep = '{% if leds_list|length > 0 %}leds{% elif brokers_list|length > 0 %}brokers_in{% else %}preview{% endif %}';
+            } else if (step === 'leds') {
+                nextStep = '{% if brokers_list|length > 0 %}brokers_in{% else %}preview{% endif %}';
+            } else if (step === 'brokers_in') {
+                nextStep = '{% if tvs_list|length > 0 %}brokers_out{% else %}preview{% endif %}';
+            } else if (step === 'brokers_out') {
+                nextStep = 'preview';
+            }
+            goToStep(nextStep);
+        } else {
+            alert('Error saving mappings: ' + data.message);
+        }
+    })
+    .catch(err => {
+        console.error('Error:', err);
+        alert('Error saving mappings. Please try again.');
+    });
+}
+
+function loadPreview() {
+    fetch(`/CallQ/config/api/mapping/family/${familyId}/button-mappings/`)
+        .then(res => res.json())
+        .then(data => {
+            const previewDiv = document.getElementById('previewMappings');
+            if (data.status === 'success' && data.mappings.length > 0) {
+                let html = '<div class="table-responsive"><table class="table table-bordered"><thead><tr><th>Source Device</th><th>Button</th><th>Target Device</th></tr></thead><tbody>';
+                data.mappings.forEach(m => {
+                    html += `<tr><td>${m.source_device_name}</td><td>${m.source_button}</td><td>${m.target_device_name}</td></tr>`;
+                });
+                html += '</tbody></table></div>';
+                previewDiv.innerHTML = html;
+            } else {
+                previewDiv.innerHTML = '<div class="alert alert-info">No mappings configured yet.</div>';
+            }
+        })
+        .catch(err => {
+            document.getElementById('previewMappings').innerHTML = '<div class="alert alert-danger">Error loading preview.</div>';
+        });
+}
+
+function completeWizard() {
+    window.location.href = '{% url "mapping_list" %}';
+}
+</script>
+{% endblock %}

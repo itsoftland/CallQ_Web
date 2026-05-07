@@ -1,0 +1,975 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Device Mappings{% endblock %}
+{% block page_title %}Device Mappings{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="card border-0 shadow-sm rounded-4">
+        <div class="card-header bg-white border-0 pt-4 pb-0 d-flex justify-content-between align-items-center">
+            <h5 class="fw-bold mb-0">Device Grouping List</h5>
+            <a href="{% url 'mapping_view' %}" class="btn btn-primary rounded-pill px-4 shadow-sm">
+                <i class="fas fa-plus me-2"></i>New Grouping
+            </a>
+        </div>
+        <div class="card-body p-4">
+            {% if grouped_mappings %}
+
+            {% for branch, branch_data in grouped_mappings.items %}
+            <div class="mb-5 branch-section" data-branch-id="{{ branch.id|default:'none' }}">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h6
+                        class="fw-bold text-secondary text-uppercase mb-0 px-1 border-start border-4 border-primary ps-2">
+                        {% if branch.branch_name %}
+                            {{ branch.branch_name }}
+                            <span class="text-muted small fw-normal ms-2">({{ branch.company.company_name }})</span>
+                        {% else %}
+                            Company Wide
+                            <span class="text-muted small fw-normal ms-2">({{ branch.company_name }})</span>
+                        {% endif %}
+                    </h6>
+
+                    <!-- Group Selector -->
+                    {% if branch_data.groups|length > 1 %}
+                    <div class="d-flex align-items-center gap-2">
+                        <label class="small text-muted mb-0">
+                            <i class="fas fa-filter me-1"></i>Filter Group:
+                        </label>
+                        <select class="form-select form-select-sm group-selector"
+                            style="width: auto; min-width: 280px;"
+                            onchange="filterGroups(this, '{{ branch.id|default:'none' }}')">
+                            <option value="all">📋 All Groups ({{ branch_data.groups|length }})</option>
+                            {% for group in branch_data.groups %}
+                            <option value="group-{{ forloop.counter }}">
+                                🔗 {{ group.group_name|default:"Unnamed Group" }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <!-- Device Groups -->
+                {% if branch_data.groups %}
+                <div class="mb-4">
+                    <h6 class="text-muted small fw-semibold mb-3">
+                        <i class="fas fa-sitemap me-2"></i>Device Groups
+                        <span class="badge bg-primary-subtle text-primary ms-2">{{ branch_data.groups|length }}</span>
+                    </h6>
+                    <div class="row g-3">
+                        {% for group in branch_data.groups %}
+                        <div class="col-12 group-container" data-group-id="group-{{ forloop.counter }}">
+                            <div class="card border-0 shadow-sm rounded-3 overflow-hidden group-card">
+                                <div class="card-header bg-white border-0 pt-3 pb-2 px-3">
+                                    <div class="d-flex align-items-center justify-content-between">
+                                        <h6 class="mb-0 fw-bold text-primary">
+                                            <i class="fas fa-sitemap me-2"></i>{{ group.group_name|default:"Unnamed Group" }}
+                                        </h6>
+                                        <div class="d-flex align-items-center gap-2">
+                                            <span class="badge bg-primary-subtle text-primary">
+                                                {{ group.group_mapping.no_of_dispensers }} Dispenser{{ group.group_mapping.no_of_dispensers|pluralize }}, 
+                                                {{ group.group_mapping.no_of_keypads }} Keypad{{ group.group_mapping.no_of_keypads|pluralize }}
+                                                {% if group.group_mapping.no_of_leds > 0 %}, {{ group.group_mapping.no_of_leds }} LED{{ group.group_mapping.no_of_leds|pluralize }}{% endif %}
+                                                {% if group.group_mapping.no_of_brokers > 0 %}, {{ group.group_mapping.no_of_brokers }} Broker{{ group.group_mapping.no_of_brokers|pluralize }}{% endif %}
+                                                {% if group.group_mapping.no_of_tvs > 0 %}, {{ group.group_mapping.no_of_tvs }} TV{{ group.group_mapping.no_of_tvs|pluralize }}{% endif %}
+                                            </span>
+                                            <button class="btn btn-sm btn-outline-danger delete-group-btn" 
+                                                    onclick="deleteGroup('{{ group.group_mapping.id }}', '{{ group.group_name|default:"Unnamed Group"|escapejs }}', event); return false;"
+                                                    title="Delete Group">
+                                                <i class="fas fa-trash-alt"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="card-body p-3">
+                                    <!-- Group Chain Visualization -->
+                                    <!-- Display in hierarchical order: Token Dispenser -> Keypad -> Broker -> TV/LED -->
+                                    <div
+                                        class="d-flex align-items-center flex-wrap gap-2 mb-3 border bg-light-subtle rounded-3 p-3 position-relative">
+                                        {% comment %} First show group devices grouped by type (Token Dispenser, Keypad, Broker, LED)
+                                        in hierarchical order {% endcomment %}
+                                        {% for device_type, devices_list in group.devices_by_type.items %}
+                                        <div class="d-flex align-items-center">
+                                            {% if devices_list|length > 1 %}
+                                            <!-- Multiple devices of this type - show selector -->
+                                            <div class="device-badge text-white rounded px-3 py-2 d-flex align-items-center flowchart-device {% if device_type == 'TOKEN_DISPENSER' %}bg-primary{% elif device_type == 'KEYPAD' %}bg-success{% elif device_type == 'BROKER' %}bg-warning text-dark{% elif device_type == 'LED' %}bg-danger{% else %}bg-secondary{% endif %}"
+                                                data-device-type="{{ device_type }}"
+                                                style="cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; user-select: none; position: relative; min-width: 180px;">
+                                                <i class="{% if device_type == 'TOKEN_DISPENSER' %}fas fa-ticket-alt{% elif device_type == 'KEYPAD' %}fas fa-keyboard{% elif device_type == 'BROKER' %}fas fa-network-wired{% elif device_type == 'LED' %}fas fa-lightbulb{% else %}fas fa-microchip{% endif %} me-2"></i>
+                                                <div style="flex: 1;">
+                                                    <div class="fw-bold small mb-1">{{ device_type }}</div>
+                                                    <select class="form-select form-select-sm border-0 bg-transparent text-white p-0 m-0" 
+                                                            style="font-size: 0.7rem; cursor: pointer; font-weight: 600; color: white !important;"
+                                                            onchange="switchGroupDevice('group-{{ forloop.parentloop.counter }}', '{{ device_type }}', this.value)"
+                                                            onclick="event.stopPropagation();">
+                                                        {% for device in devices_list %}
+                                                        <option value="{{ device.id }}" style="color: #000;" {% if forloop.first %}selected{% endif %}>{{ device.get_display_identifier }}</option>
+                                                        {% endfor %}
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            {% else %}
+                                            <!-- Single device of this type - show directly -->
+                                            {% with device=devices_list|first %}
+                                            <div class="device-badge text-white rounded px-3 py-2 d-flex align-items-center flowchart-device {% if device_type == 'TOKEN_DISPENSER' %}bg-primary{% elif device_type == 'KEYPAD' %}bg-success{% elif device_type == 'BROKER' %}bg-warning text-dark{% elif device_type == 'LED' %}bg-danger{% else %}bg-secondary{% endif %}"
+                                                data-device-id="{{ device.id }}"
+                                                data-device-type="{{ device_type }}"
+                                                onclick="toggleMappingDetails('group-{{ forloop.parentloop.counter }}', '{{ device.id }}')"
+                                                style="cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; user-select: none;">
+                                                <i class="{% if device_type == 'TOKEN_DISPENSER' %}fas fa-ticket-alt{% elif device_type == 'KEYPAD' %}fas fa-keyboard{% elif device_type == 'BROKER' %}fas fa-network-wired{% elif device_type == 'LED' %}fas fa-lightbulb{% else %}fas fa-microchip{% endif %} me-2"></i>
+                                                <div>
+                                                    <div class="fw-bold small">{{ device.get_display_identifier }}</div>
+                                                    <div class="x-small {% if device_type == 'BROKER' %}text-dark{% else %}opacity-75{% endif %}">{{ device_type }}</div>
+                                                </div>
+                                            </div>
+                                            {% endwith %}
+                                            {% endif %}
+                                            <i class="fas fa-arrow-right text-muted mx-2"></i>
+                                        </div>
+                                        {% endfor %}
+                                        {% comment %} Then show TV devices (if any) at the end {% endcomment %}
+                                        {% if group.tv_devices %}
+                                        {% for tv_device in group.tv_devices.keys %}
+                                        <div class="d-flex align-items-center">
+                                            <div class="device-badge bg-info text-dark rounded px-3 py-2 d-flex align-items-center flowchart-device"
+                                                data-device-id="{{ tv_device.id }}"
+                                                onclick="toggleMappingDetails('group-{{ forloop.parentloop.parentloop.counter }}', '{{ tv_device.id }}')"
+                                                style="cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; user-select: none;">
+                                                <i class="fas fa-tv me-2"></i>
+                                                <div>
+                                                    <div class="fw-bold small">{{ tv_device.get_display_identifier }}
+                                                    </div>
+                                                    <div class="x-small opacity-75">{{ tv_device.device_type }}</div>
+                                                </div>
+                                            </div>
+                                            {% if not forloop.last %}
+                                            <i class="fas fa-arrow-right text-muted mx-2"></i>
+                                            {% endif %}
+                                        </div>
+                                        {% endfor %}
+                                        {% endif %}
+
+                                        <div class="position-absolute bottom-0 end-0 p-2">
+                                            <span class="badge bg-secondary opacity-50"><i
+                                                    class="fas fa-hand-pointer me-1"></i>Click devices to edit</span>
+                                        </div>
+                                    </div>
+
+                                    <!-- Device-wise Button Mappings -->
+                                    {% for source_device, mapping_data in group.button_ordered_mappings.items %}
+                                    <div class="device-mapping-group mb-4 mapping-details-container mt-4"
+                                        id="mapping-details-group-{{ forloop.parentloop.counter }}-{{ source_device.id }}"
+                                        style="display: none;">
+                                        <!-- Device Header -->
+                                        <div
+                                            class="d-flex align-items-center justify-content-between mb-3 p-2 bg-light rounded">
+                                            <div class="d-flex align-items-center">
+                                                <div
+                                                    class="avatar-sm bg-primary text-white rounded-circle me-2 d-flex align-items-center justify-content-center">
+                                                    <i class="fas fa-microchip"></i>
+                                                </div>
+                                                <div>
+                                                    <div class="small fw-bold text-dark">{{ source_device.get_display_identifier }}</div>
+                                                    <div class="x-small text-muted">{{ source_device.device_type }}</div>
+                                                </div>
+                                            </div>
+                                            {% for dev, map_list in group.device_mappings.items %}
+                                            {% if dev == source_device %}
+                                            <span class="badge bg-primary-subtle text-primary">
+                                                {{ map_list|length }} mapping{{ map_list|length|pluralize }}
+                                            </span>
+                                            {% endif %}
+                                            {% endfor %}
+                                        </div>
+
+                                        {% if source_device.device_type == 'KEYPAD' %}
+                                        <!-- Separate Broker and LED Mappings -->
+                                        <div class="row g-3">
+                                            <!-- Broker Mappings Box -->
+                                            <div class="col-md-6">
+                                                <div
+                                                    class="card border-0 shadow-sm h-100 mapping-type-box mapping-broker-box">
+                                                    <div
+                                                        class="card-header bg-primary-subtle border-0 py-2 px-3 d-flex align-items-center justify-content-between">
+                                                        <div class="d-flex align-items-center">
+                                                            <i class="fas fa-network-wired text-primary me-2"></i>
+                                                            <span class="small fw-bold text-primary">Broker
+                                                                Mappings</span>
+                                                        </div>
+                                                        <span class="badge bg-primary text-white">
+                                                            {{ mapping_data.broker_count }} mapping{{ mapping_data.broker_count|pluralize }}
+                                                        </span>
+                                                    </div>
+                                                    <div class="card-body p-0">
+                                                        <div class="table-responsive">
+                                                            <table class="table table-sm table-hover mb-0 align-middle">
+                                                                <thead class="bg-light-subtle">
+                                                                    <tr>
+                                                                        <th class="ps-3 text-secondary small"
+                                                                            style="width: 30%; min-width: 150px;">Button
+                                                                        </th>
+                                                                        <th class="text-secondary small">Target Device
+                                                                        </th>
+                                                                        <th class="text-end pe-3" style="width: 50px;">
+                                                                        </th>
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody>
+                                                                    {% for item in mapping_data.broker %}
+                                                                    {% if item %}
+                                                                    {% for mapping in item.mappings %}
+                                                                    <tr class="mapping-row mapping-broker">
+                                                                        <td class="ps-3 align-middle">
+                                                                            <span
+                                                                                class="badge bg-primary-subtle text-primary-emphasis border border-primary-subtle rounded-pill small fw-semibold d-inline-flex align-items-center gap-1"
+                                                                                style="white-space: nowrap; min-width: 120px;">
+                                                                                <i
+                                                                                    class="fas fa-network-wired small"></i>
+                                                                                {{ mapping.source_button }}
+                                                                            </span>
+                                                                        </td>
+                                                                        <td class="align-middle">
+                                                                            <div class="d-flex align-items-center">
+                                                                                <div class="me-2">
+                                                                                    <i
+                                                                                        class="fas fa-network-wired text-primary small"></i>
+                                                                                </div>
+                                                                                <div>
+                                                                                    <div class="small fw-semibold text-dark">{{ mapping.target_device.get_display_identifier|default:'(No Target)' }}</div>
+                                                                                    <div class="x-small text-muted">{{ mapping.target_device.device_type }}</div>
+                                                                                </div>
+                                                                            </div>
+                                                                        </td>
+                                                                        <td class="text-end pe-3 align-middle">
+                                                                            <button
+                                                                                class="btn btn-link text-danger p-0 delete-mapping-btn opacity-50 hover-opacity-100"
+                                                                                title="Remove Mapping"
+                                                                                data-id="{{ mapping.id }}"
+                                                                                onclick="deleteMapping('{{ mapping.id }}')">
+                                                                                <i class="fas fa-times-circle"></i>
+                                                                            </button>
+                                                                        </td>
+                                                                    </tr>
+                                                                    {% endfor %}
+                                                                    {% endif %}
+                                                                    {% if not item %}
+                                                                    {% comment %} Show unmapped button placeholder {% endcomment %}
+                                                                    <tr class="text-muted">
+                                                                        <td class="ps-3 align-middle">
+                                                                            <span
+                                                                                class="badge bg-secondary-subtle text-secondary border border-secondary-subtle rounded-pill small"
+                                                                                style="white-space: nowrap; min-width: 120px;">
+                                                                                {% if forloop.counter == 1 %}Button A{% elif forloop.counter == 2 %}Button B{% elif forloop.counter == 3 %}Button C{% elif forloop.counter == 4 %}Button D{% endif %}
+                                                                            </span>
+                                                                        </td>
+                                                                        <td class="align-middle">
+                                                                            <span class="text-muted small">Not
+                                                                                mapped</span>
+                                                                        </td>
+                                                                        <td class="text-end pe-3"></td>
+                                                                    </tr>
+                                                                    {% endif %}
+                                                                    {% endfor %}
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <!-- LED Mappings Box -->
+                                            <div class="col-md-6">
+                                                <div
+                                                    class="card border-0 shadow-sm h-100 mapping-type-box mapping-led-box">
+                                                    <div
+                                                        class="card-header bg-success-subtle border-0 py-2 px-3 d-flex align-items-center justify-content-between">
+                                                        <div class="d-flex align-items-center">
+                                                            <i class="fas fa-lightbulb text-success me-2"></i>
+                                                            <span class="small fw-bold text-success">LED Mappings</span>
+                                                        </div>
+                                                        <span class="badge bg-success text-white">
+                                                            {{ mapping_data.led_count }} mapping{{ mapping_data.led_count|pluralize }}
+                                                        </span>
+                                                    </div>
+                                                    <div class="card-body p-0">
+                                                        <div class="table-responsive">
+                                                            <table class="table table-sm table-hover mb-0 align-middle">
+                                                                <thead class="bg-light-subtle">
+                                                                    <tr>
+                                                                        <th class="ps-3 text-secondary small"
+                                                                            style="width: 30%; min-width: 150px;">Button
+                                                                        </th>
+                                                                        <th class="text-secondary small">Target Device
+                                                                        </th>
+                                                                        <th class="text-end pe-3" style="width: 50px;">
+                                                                        </th>
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody>
+                                                                    {% for item in mapping_data.led %}
+                                                                    {% if item %}
+                                                                    {% for mapping in item.mappings %}
+                                                                    <tr class="mapping-row mapping-led">
+                                                                        <td class="ps-3 align-middle">
+                                                                            <span
+                                                                                class="badge bg-success-subtle text-success-emphasis border border-success-subtle rounded-pill small fw-semibold d-inline-flex align-items-center gap-1"
+                                                                                style="white-space: nowrap; min-width: 120px;">
+                                                                                <i class="fas fa-lightbulb small"></i>
+                                                                                {{ mapping.source_button }}
+                                                                            </span>
+                                                                        </td>
+                                                                        <td class="align-middle">
+                                                                            <div class="d-flex align-items-center">
+                                                                                <div class="me-2">
+                                                                                    <i
+                                                                                        class="fas fa-lightbulb text-success small"></i>
+                                                                                </div>
+                                                                                <div>
+                                                                                    <div class="small fw-semibold text-dark">{{ mapping.target_device.get_display_identifier|default:'(No Target)' }}</div>
+                                                                                    <div class="x-small text-muted">{{ mapping.target_device.device_type }}</div>
+                                                                                </div>
+                                                                            </div>
+                                                                        </td>
+                                                                        <td class="text-end pe-3 align-middle">
+                                                                            <button
+                                                                                class="btn btn-link text-danger p-0 delete-mapping-btn opacity-50 hover-opacity-100"
+                                                                                title="Remove Mapping"
+                                                                                data-id="{{ mapping.id }}"
+                                                                                onclick="deleteMapping('{{ mapping.id }}')">
+                                                                                <i class="fas fa-times-circle"></i>
+                                                                            </button>
+                                                                        </td>
+                                                                    </tr>
+                                                                    {% endfor %}
+                                                                    {% endif %}
+                                                                    {% if not item %}
+                                                                    {% comment %} Show unmapped button placeholder {% endcomment %}
+                                                                    <tr class="text-muted">
+                                                                        <td class="ps-3 align-middle">
+                                                                            <span
+                                                                                class="badge bg-secondary-subtle text-secondary border border-secondary-subtle rounded-pill small"
+                                                                                style="white-space: nowrap; min-width: 120px;">
+                                                                                {% if forloop.counter == 1 %}Button A{% elif forloop.counter == 2 %}Button B{% elif forloop.counter == 3 %}Button C{% elif forloop.counter == 4 %}Button D{% endif %}
+                                                                            </span>
+                                                                        </td>
+                                                                        <td class="align-middle">
+                                                                            <span class="text-muted small">Not
+                                                                                mapped</span>
+                                                                        </td>
+                                                                        <td class="text-end pe-3"></td>
+                                                                    </tr>
+                                                                    {% endif %}
+                                                                    {% endfor %}
+                                                                    {% if not mapping_data.led %}
+                                                                    <tr>
+                                                                        <td colspan="3"
+                                                                            class="text-center text-muted py-3">
+                                                                            <small>No LED mappings configured</small>
+                                                                        </td>
+                                                                    </tr>
+                                                                    {% endif %}
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {% else %}
+                                        <!-- For non-keypad devices, show mappings in sorted order -->
+                                        <div class="table-responsive">
+                                            <table class="table table-sm table-hover mb-0 align-middle">
+                                                <thead class="bg-light-subtle">
+                                                    <tr>
+                                                        <th class="ps-3 text-secondary small"
+                                                            style="width: 30%; min-width: 180px;">Button</th>
+                                                        <th class="text-secondary small">Target Device</th>
+                                                        <th class="text-end pe-3" style="width: 50px;"></th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {% comment %} For non-keypad devices, mapping_data is a list {% endcomment %}
+                                                    {% for m in mapping_data %}
+                                                    <tr>
+                                                        <td class="ps-3 align-middle">
+                                                            <span
+                                                                class="badge bg-info-subtle text-info-emphasis border border-info-subtle rounded-pill small fw-semibold"
+                                                                style="white-space: nowrap; min-width: 120px;">
+                                                                {{ m.source_button|default:'(No Btn)' }}
+                                                            </span>
+                                                        </td>
+                                                        <td class="align-middle">
+                                                            <div class="d-flex align-items-center">
+                                                                <div>
+                                                                    <div class="small fw-semibold text-dark">{{ m.target_device.get_display_identifier|default:'(No Target)' }}</div>
+                                                                    <div class="x-small text-muted">{{ m.target_device.device_type }}</div>
+                                                                </div>
+                                                            </div>
+                                                        </td>
+                                                        <td class="text-end pe-3 align-middle">
+                                                            <button
+                                                                class="btn btn-link text-danger p-0 delete-mapping-btn opacity-50 hover-opacity-100"
+                                                                title="Remove Mapping" data-id="{{ m.id }}"
+                                                                onclick="deleteMapping('{{ m.id }}')">
+                                                                <i class="fas fa-times-circle"></i>
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                    {% endfor %}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                        {% endif %}
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Standalone Devices -->
+                {% if branch_data.standalone_by_type %}
+                <div class="standalone-section mt-5">
+                    <h6 class="text-muted small fw-semibold mb-3">
+                        <i class="fas fa-microchip me-2"></i>Standalone Devices
+                    </h6>
+                    <div class="row g-3">
+                        {% for device_type, devices_dict in branch_data.standalone_by_type.items %}
+                        <div class="col-md-6 col-lg-4">
+                            <div class="card h-100 border-0 shadow-sm rounded-3 overflow-hidden standalone-card" data-device-type="{{ device_type }}">
+                                <div class="card-header bg-light border-0 py-2 px-3">
+                                    <div class="d-flex align-items-center justify-content-between mb-2">
+                                        <div class="d-flex align-items-center">
+                                            <div
+                                                class="avatar-sm bg-white rounded-circle me-2 shadow-sm d-flex align-items-center justify-content-center text-primary">
+                                                <i
+                                                    class="{% if device_type == 'TOKEN_DISPENSER' %}fas fa-ticket-alt{% elif device_type == 'KEYPAD' %}fas fa-keyboard{% elif device_type == 'BROKER' %}fas fa-network-wired{% elif device_type == 'LED' %}fas fa-lightbulb{% elif device_type == 'TV' %}fas fa-tv{% else %}fas fa-microchip{% endif %}"></i>
+                                            </div>
+                                            <div>
+                                                <h6 class="mb-0 fw-bold small">{{ device_type }}</h6>
+                                                <div class="x-small text-muted">{{ devices_dict|length }} device{{ devices_dict|length|pluralize }}</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {% if devices_dict|length > 1 %}
+                                    <select class="form-select form-select-sm standalone-device-selector" 
+                                            onchange="switchStandaloneDevice('{{ branch.id|default:'none' }}', '{{ device_type }}', this.value)"
+                                            style="width: 100%;">
+                                        {% for device, map_list in devices_dict.items %}
+                                        <option value="{{ device.id }}">{{ device.get_display_identifier }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    {% else %}
+                                    {% for device, map_list in devices_dict.items %}
+                                    <div class="small text-muted">{{ device.get_display_identifier }}</div>
+                                    {% endfor %}
+                                    {% endif %}
+                                </div>
+                                {% for device, map_list in devices_dict.items %}
+                                <div class="card-body p-0 standalone-mapping-details standalone-device-{{ device.id }}"
+                                    {% if devices_dict|length > 1 and not forloop.first %}style="display: none;"{% endif %}>
+                                    <table class="table table-sm table-hover mb-0 align-middle">
+                                        <thead class="bg-light-subtle small border-bottom">
+                                            <tr>
+                                                <th class="ps-3 text-secondary" style="width: 35%; min-width: 150px;">
+                                                    Button</th>
+                                                <th class="text-secondary">Target</th>
+                                                <th class="text-end pe-3" style="width: 50px;"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for m in map_list %}
+                                            <tr>
+                                                <td class="ps-3 align-middle">
+                                                    <span
+                                                        class="badge bg-info-subtle text-info-emphasis border border-info-subtle rounded-pill small"
+                                                        style="white-space: nowrap;">
+                                                        {{ m.source_button|default:'(No Btn)' }}
+                                                    </span>
+                                                </td>
+                                                <td class="align-middle">
+                                                    <div class="d-flex align-items-center">
+                                                        <div>
+                                                            <div class="small fw-semibold text-dark">{{ m.target_device.get_display_identifier|default:'(No Target)' }}</div>
+                                                            <div class="x-small text-muted">{{ m.target_device.device_type }}</div>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td class="text-end pe-3">
+                                                    <button
+                                                        class="btn btn-link text-danger p-0 delete-mapping-btn opacity-50 hover-opacity-100"
+                                                        title="Remove Mapping" data-id="{{ m.id }}"
+                                                        onclick="deleteMapping('{{ m.id }}')">
+                                                        <i class="fas fa-times-circle"></i>
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+
+            </div>
+            {% endfor %}
+
+            {% else %}
+            <div class="text-center py-5">
+                <div class="text-muted">
+                    <div class="mb-3">
+                        <div
+                            class="avatar-lg bg-light rounded-circle mx-auto d-flex align-items-center justify-content-center text-secondary">
+                            <i class="fas fa-project-diagram fa-2x"></i>
+                        </div>
+                    </div>
+                    <h5 class="fw-bold">No Mappings Configured</h5>
+                    <p class="text-secondary mb-4">Start by creating a new device mapping configuration.</p>
+                    <a href="{% url 'mapping_view' %}" class="btn btn-primary rounded-pill px-4 shadow-sm">
+                        Create First Mapping
+                    </a>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+    async function deleteMapping(mappingId) {
+        if (!confirm('Are you sure you want to remove this mapping?')) return;
+
+        try {
+            const btn = document.querySelector(`.delete-mapping-btn[data-id="${mappingId}"]`);
+            if (btn) btn.disabled = true;
+
+            const resp = await fetch(`/CallQ/config/api/mapping/button/${mappingId}/delete/`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': getCookie('csrftoken'),
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (resp.ok) {
+                if (btn) {
+                    const row = btn.closest('tr');
+                    row.style.transition = 'all 0.3s';
+                    row.style.opacity = '0';
+
+                    setTimeout(() => {
+                        row.remove();
+                        // Check if table is empty and reload if needed
+                        const tbody = row.closest('tbody');
+                        if (tbody && tbody.children.length === 0) {
+                            location.reload();
+                        }
+                    }, 300);
+                } else {
+                    location.reload();
+                }
+            } else {
+                alert('Failed to delete mapping.');
+                if (btn) btn.disabled = false;
+            }
+        } catch (err) {
+            console.error(err);
+            alert('Error deleting mapping.');
+        }
+    }
+
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+
+    // Group filtering function
+    function filterGroups(selectElement, branchId) {
+        const selectedValue = selectElement.value;
+        const branchSection = document.querySelector(`.branch-section[data-branch-id="${branchId}"]`);
+
+        if (!branchSection) return;
+
+        const groupContainers = branchSection.querySelectorAll('.group-container');
+        const standaloneSection = branchSection.querySelector('.standalone-section');
+
+        if (selectedValue === 'all') {
+            // Show all groups
+            groupContainers.forEach(container => {
+                container.style.display = '';
+                container.style.opacity = '1';
+            });
+            // Show standalone devices
+            if (standaloneSection) {
+                standaloneSection.style.display = '';
+            }
+        } else {
+            // Hide all groups first
+            groupContainers.forEach(container => {
+                if (container.dataset.groupId === selectedValue) {
+                    container.style.display = '';
+                    container.style.opacity = '1';
+                } else {
+                    container.style.display = 'none';
+                }
+            });
+            // Hide standalone devices when filtering
+            if (standaloneSection) {
+                standaloneSection.style.display = 'none';
+            }
+        }
+
+        // Smooth scroll to top of branch section
+        branchSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    // Initialize: Show all groups by default
+    document.addEventListener('DOMContentLoaded', function () {
+        // All groups are visible by default, no action needed
+    });
+
+    function toggleMappingDetails(groupId, deviceId) {
+        // Find the container for this group
+        const groupContainer = document.querySelector(`.group-container[data-group-id="${groupId}"]`);
+        if (!groupContainer) return;
+
+        // Reset all devices in this group to default state
+        groupContainer.querySelectorAll('.flowchart-device').forEach(device => {
+            device.style.transform = '';
+            device.style.boxShadow = '';
+            device.classList.remove('ring-active');
+        });
+
+        // Hide all mapping details in this group
+        groupContainer.querySelectorAll('.mapping-details-container').forEach(container => {
+            if (container.id !== `mapping-details-${groupId}-${deviceId}`) {
+                container.style.display = 'none';
+            }
+        });
+
+        // Toggle the clicked device's mappings
+        const targetContainer = document.getElementById(`mapping-details-${groupId}-${deviceId}`);
+        const clickedDevices = groupContainer.querySelectorAll(`.flowchart-device[data-device-id="${deviceId}"]`);
+
+        if (targetContainer) {
+            if (targetContainer.style.display === 'none') {
+                targetContainer.style.display = 'block';
+                // Highlight device
+                clickedDevices.forEach(device => {
+                    device.style.transform = 'translateY(-2px)';
+                    device.classList.add('ring-active');
+                });
+
+                // Optional: scroll slightly to bring details into view
+                setTimeout(() => {
+                    targetContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }, 50);
+            } else {
+                targetContainer.style.display = 'none';
+            }
+        } else {
+            // For devices that are only targets (like TV/Broker sometimes), there might not be a source mapping container.
+            // Brief visual feedback showing it's clicked, but no details to show as a source.
+            clickedDevices.forEach(device => {
+                device.style.transform = 'translateY(-2px)';
+                setTimeout(() => { device.style.transform = ''; }, 200);
+            });
+        }
+    }
+
+    function toggleStandaloneDetails(deviceId) {
+        const detailsContainer = document.getElementById(`standalone-details-${deviceId}`);
+        const icon = document.getElementById(`standalone-icon-${deviceId}`);
+
+        if (detailsContainer.style.display === 'none') {
+            detailsContainer.style.display = 'block';
+            icon.style.transform = 'rotate(180deg)';
+        } else {
+            detailsContainer.style.display = 'none';
+            icon.style.transform = 'rotate(0deg)';
+        }
+    }
+
+    function switchStandaloneDevice(branchId, deviceType, selectedDeviceId) {
+        // Find the branch section
+        const branchSection = document.querySelector(`.branch-section[data-branch-id="${branchId}"]`);
+        if (!branchSection) return;
+
+        // Find the standalone card for this device type
+        const standaloneCard = branchSection.querySelector(`.standalone-card[data-device-type="${deviceType}"]`);
+        if (!standaloneCard) return;
+
+        // Hide all device details in this card
+        const allDetails = standaloneCard.querySelectorAll('.standalone-mapping-details');
+        allDetails.forEach(detail => {
+            detail.style.display = 'none';
+        });
+        
+        // Show the selected device's details
+        const selectedDetails = standaloneCard.querySelector(`.standalone-device-${selectedDeviceId}`);
+        if (selectedDetails) {
+            selectedDetails.style.display = 'block';
+        }
+    }
+
+    function switchGroupDevice(groupId, deviceType, selectedDeviceId) {
+        // Find the group container
+        const groupContainer = document.querySelector(`.group-container[data-group-id="${groupId}"]`);
+        if (!groupContainer) return;
+
+        // Hide all mapping details first
+        const allMappingDetails = groupContainer.querySelectorAll('.mapping-details-container');
+        allMappingDetails.forEach(container => {
+            container.style.display = 'none';
+        });
+
+        // Show the mapping details for the selected device
+        const selectedContainer = groupContainer.querySelector(`#mapping-details-${groupId}-${selectedDeviceId}`);
+        if (selectedContainer) {
+            selectedContainer.style.display = 'block';
+        }
+
+        // Update the visual state of device badges
+        const allBadges = groupContainer.querySelectorAll('.flowchart-device');
+        allBadges.forEach(badge => {
+            badge.style.transform = '';
+            badge.classList.remove('ring-active');
+        });
+
+        // Highlight the selected device badge (if it exists as a single device badge)
+        const selectedBadges = groupContainer.querySelectorAll(`.flowchart-device[data-device-id="${selectedDeviceId}"]`);
+        selectedBadges.forEach(badge => {
+            badge.style.transform = 'translateY(-2px)';
+            badge.classList.add('ring-active');
+        });
+
+        // Scroll to the selected device's mapping details
+        if (selectedContainer) {
+            setTimeout(() => {
+                selectedContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }, 50);
+        }
+    }
+
+    async function deleteGroup(groupId, groupName, event) {
+        if (!confirm(`Are you sure you want to delete the group "${groupName}"?\n\nThis will delete the group and all associated button mappings. This action cannot be undone.`)) {
+            return;
+        }
+
+        // Find the button that was clicked
+        const btn = event ? event.target.closest('.delete-group-btn') : document.querySelector(`button[onclick*="deleteGroup('${groupId}'"]`);
+        
+        try {
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+            }
+
+            const resp = await fetch(`/CallQ/config/api/mapping/family/${groupId}/delete/`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': getCookie('csrftoken'),
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            const data = await resp.json();
+
+            if (resp.ok && data.status === 'success') {
+                // Find the family container by finding the button's parent card
+                let familyCard = null;
+                if (btn) {
+                    familyCard = btn.closest('.family-container');
+                }
+                
+                if (!familyCard) {
+                    // Fallback: find by searching for the family ID in the card
+                    const allCards = document.querySelectorAll('.family-container');
+                    for (let card of allCards) {
+                        const cardBtn = card.querySelector(`button[onclick*="deleteFamily('${familyId}'"]`);
+                        if (cardBtn) {
+                            familyCard = card;
+                            break;
+                        }
+                    }
+                }
+
+                if (familyCard) {
+                    familyCard.style.transition = 'all 0.3s';
+                    familyCard.style.opacity = '0';
+                    familyCard.style.transform = 'translateX(-20px)';
+                    setTimeout(() => {
+                        familyCard.remove();
+                        // Check if there are any remaining families
+                        const remainingFamilies = document.querySelectorAll('.family-container');
+                        if (remainingFamilies.length === 0) {
+                            location.reload();
+                        }
+                    }, 300);
+                } else {
+                    // If we can't find the card, just reload
+                    location.reload();
+                }
+            } else {
+                alert(data.message || 'Failed to delete group. Please try again.');
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fas fa-trash-alt"></i>';
+                }
+            }
+        } catch (err) {
+            console.error(err);
+            alert('Error deleting group. Please try again.');
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-trash-alt"></i>';
+            }
+        }
+    }
+</script>
+
+<style>
+    .avatar-sm {
+        width: 32px;
+        height: 32px;
+        font-size: 0.875rem;
+    }
+
+    .avatar-lg {
+        width: 80px;
+        height: 80px;
+    }
+
+    .x-small {
+        font-size: 0.7rem;
+    }
+
+    .device-badge {
+        min-width: 120px;
+        font-size: 0.85rem;
+    }
+
+    .family-card {
+        border-left: 4px solid #0d6efd !important;
+    }
+
+    .family-card:hover {
+        box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
+        transition: box-shadow 0.3s;
+    }
+
+    .ring-active {
+        box-shadow: 0 0 0 0.3rem rgba(13, 110, 253, 0.35) !important;
+    }
+
+    .table-sm {
+        font-size: 0.875rem;
+    }
+
+    .delete-mapping-btn:hover {
+        opacity: 1 !important;
+        transform: scale(1.1);
+        transition: all 0.2s;
+    }
+
+    .family-container {
+        transition: opacity 0.3s ease, display 0.3s ease;
+    }
+
+    .family-selector {
+        border: 1px solid #dee2e6;
+        border-radius: 0.375rem;
+    }
+
+    .family-selector:focus {
+        border-color: #0d6efd;
+        box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+    }
+
+    .branch-section {
+        transition: all 0.3s ease;
+    }
+
+    /* Ensure button badges don't wrap and are fully visible */
+    .badge {
+        display: inline-block;
+        max-width: 100%;
+    }
+
+    /* Table cell alignment */
+    table td {
+        vertical-align: middle !important;
+    }
+
+    /* Ensure button column has enough space */
+    th[style*="min-width"] {
+        min-width: 150px !important;
+    }
+
+    /* Visual differentiation for mapping types */
+    .mapping-row.mapping-broker {
+        border-left: 3px solid #0d6efd;
+    }
+
+    .mapping-row.mapping-broker:hover {
+        background-color: #e7f1ff !important;
+    }
+
+    .mapping-row.mapping-led {
+        border-left: 3px solid #198754;
+    }
+
+    .mapping-row.mapping-led:hover {
+        background-color: #d1e7dd !important;
+    }
+
+    .mapping-row.mapping-other {
+        border-left: 3px solid #0dcaf0;
+    }
+
+    .mapping-row.mapping-other:hover {
+        background-color: #cff4fc !important;
+    }
+
+    .badge .small {
+        font-size: 0.7rem;
+    }
+
+    /* Separate mapping type boxes */
+    .mapping-type-box {
+        border-top: 3px solid transparent;
+    }
+
+    .mapping-broker-box {
+        border-top-color: #0d6efd;
+    }
+
+    .mapping-led-box {
+        border-top-color: #198754;
+    }
+
+    .mapping-type-box .card-header {
+        font-weight: 600;
+    }
+</style>
+{% endblock %}

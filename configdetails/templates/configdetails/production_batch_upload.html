@@ -1,0 +1,166 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Production Batch Upload{% endblock %}
+{% block page_title %}Production Batch Upload{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <!-- Upload Card -->
+        <div class="card border-0 shadow-sm rounded-4 mb-4">
+            <div class="card-header bg-white border-0 pt-4 pb-0">
+                <div class="d-flex align-items-center gap-2 mb-2">
+                    <div class="bg-primary-subtle p-2 rounded-3 text-primary">
+                        <i class="fas fa-upload fa-lg"></i>
+                    </div>
+                    <h5 class="fw-bold mb-0">Upload Production Batch</h5>
+                </div>
+                <p class="text-secondary small">Register factory-validated serial numbers into the system.</p>
+            </div>
+            <div class="card-body p-4">
+                <form method="POST" enctype="multipart/form-data">
+                    {% csrf_token %}
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label text-secondary small fw-bold">Batch ID <span
+                                    class="text-danger">*</span></label>
+                            <input type="text" name="batch_id" class="form-control bg-light border-0 rounded-3"
+                                placeholder="e.g. PB-2024-001" required>
+                        </div>
+
+                        <div class="col-12 mt-4">
+                            <div class="p-4 border-2 border-dashed rounded-4 bg-light text-center" id="dropzone">
+                                <i class="fas fa-file-csv fa-3x text-success mb-3"></i>
+                                <h6 class="fw-bold">File Upload (Excel / CSV)</h6>
+                                <p class="text-secondary small mb-3">Upload .csv or .xlsx with columns: <strong>Date,
+                                        Time, Device Type, Serial Number</strong></p>
+                                <input type="file" name="excel_upload" class="form-control d-none" id="excelFile"
+                                    accept=".xlsx, .xls, .csv">
+                                <button type="button" class="btn btn-outline-success rounded-pill px-4"
+                                    onclick="document.getElementById('excelFile').click()">
+                                    <i class="fas fa-plus me-2"></i>Choose File
+                                </button>
+                                <div id="fileNameContainer"
+                                    class="mt-3 d-none align-items-center justify-content-center bg-white border rounded-3 py-2 px-3 d-inline-flex shadow-sm">
+                                    <i class="fas fa-file-csv text-success me-2"></i>
+                                    <span id="fileNameDisplay" class="small fw-medium text-dark me-3"></span>
+                                    <button type="button" class="btn btn-link text-danger p-0 text-decoration-none"
+                                        id="removeFileBtn" title="Remove file">
+                                        <i class="fas fa-times"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="d-grid mt-4">
+                        <button type="submit" class="btn btn-primary rounded-pill py-3 fw-bold shadow-sm">
+                            <i class="fas fa-cloud-upload-alt me-2"></i>Submit Batch
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Recent Batches Card -->
+        <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+            <div class="card-header bg-white border-bottom py-3">
+                <h6 class="fw-bold mb-0">Recent Production Batches</h6>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="bg-light">
+                        <tr>
+                            <th class="ps-4 py-3 text-secondary fw-medium small">Batch ID</th>
+                            <th class="py-3 text-secondary fw-medium small">Device Summary</th>
+                            <th class="py-3 text-secondary fw-medium small text-center">Total</th>
+                            <th class="py-3 text-secondary fw-medium small">Created At</th>
+                            <th class="py-3 text-secondary fw-medium small text-end pe-4">Export</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for batch in batches %}
+                        <tr>
+                            <td class="ps-4 py-3 fw-bold text-nowrap">{{ batch.batch_id }}</td>
+                            <td class="py-3">
+                                <span class="small text-muted">{{ batch.summary }}</span>
+                            </td>
+                            <td class="py-3 text-center">
+                                <span class="fw-bold text-primary">{{ batch.total_devices }}</span>
+                            </td>
+                            <td class="py-3 text-secondary small text-nowrap">{{ batch.created_at|date:"d-m-Y H:i" }}
+                            </td>
+                            <td class="py-3 text-end pe-4">
+                                <div class="dropdown">
+                                    <button class="btn btn-sm btn-light border dropdown-toggle" type="button"
+                                        data-bs-toggle="dropdown">
+                                        <i class="fas fa-download"></i>
+                                    </button>
+                                    <ul class="dropdown-menu dropdown-menu-end">
+                                        <li><a class="dropdown-item"
+                                                href="{% url 'batch_download' batch_id=batch.id file_format='csv' %}"><i
+                                                    class="fas fa-file-csv me-2 text-success"></i>CSV</a></li>
+                                        <li><a class="dropdown-item"
+                                                href="{% url 'batch_download' batch_id=batch.id file_format='pdf' %}"><i
+                                                    class="fas fa-file-pdf me-2 text-danger"></i>PDF</a></li>
+                                        <li><a class="dropdown-item"
+                                                href="{% url 'batch_download' batch_id=batch.id file_format='docx' %}"><i
+                                                    class="fas fa-file-word me-2 text-primary"></i>DOCX</a></li>
+                                    </ul>
+                                </div>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="5" class="text-center py-5 text-secondary">
+                                <p class="mb-0">No production batches uploaded yet.</p>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const excelFile = document.getElementById('excelFile');
+    const fileNameContainer = document.getElementById('fileNameContainer');
+    const fileNameDisplay = document.getElementById('fileNameDisplay');
+    const removeFileBtn = document.getElementById('removeFileBtn');
+
+    excelFile.addEventListener('change', function (e) {
+        if (e.target.files.length > 0) {
+            const fileName = e.target.files[0].name;
+            fileNameDisplay.textContent = fileName;
+            fileNameContainer.classList.remove('d-none');
+            fileNameContainer.classList.add('d-inline-flex');
+        } else {
+            hideFileDisplay();
+        }
+    });
+
+    removeFileBtn.addEventListener('click', function () {
+        excelFile.value = ''; // Clear the file input
+        hideFileDisplay();
+    });
+
+    function hideFileDisplay() {
+        fileNameDisplay.textContent = '';
+        fileNameContainer.classList.add('d-none');
+        fileNameContainer.classList.remove('d-inline-flex');
+    }
+</script>
+
+<style>
+    .border-dashed {
+        border-style: dashed !important;
+    }
+
+    .bg-primary-subtle {
+        background-color: #e7f0ff;
+    }
+</style>
+{% endblock %}

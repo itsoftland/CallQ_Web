@@ -1,0 +1,200 @@
+{% extends 'base.html' %}
+{% load static %}
+{% load humanize %}
+{% block title %}API Logs{% endblock %}
+{% block content %}
+<div class="container py-4">
+    <div class="mb-3">
+        <h2 class="h5 mb-1">CallQ Logs - /CallQ_logs/</h2>
+        <p class="text-muted small mb-0">Select a date to view API request and action logs</p>
+    </div>
+
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    <div class="card mb-3">
+        <div class="card-body">
+            <form method="GET" action="{% url 'log_list' %}" id="logDateForm">
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-3">
+                        <label for="year" class="form-label fw-bold small">Select Year</label>
+                        <select class="form-select form-select-sm" id="year" name="year" onchange="updateForm()">
+                            <option value="">-- Select Year --</option>
+                            {% for year in years %}
+                                <option value="{{ year }}" {% if selected_year == year %}selected{% endif %}>{{ year }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="month" class="form-label fw-bold small">Select Month</label>
+                        <select class="form-select form-select-sm" id="month" name="month" {% if not selected_year %}disabled{% endif %} onchange="updateForm()">
+                            <option value="">-- Select Month --</option>
+                            {% for month in months %}
+                                <option value="{{ month }}" {% if selected_month == month %}selected{% endif %}>{{ month }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="day" class="form-label fw-bold small">Select Day</label>
+                        <select class="form-select form-select-sm" id="day" name="day" {% if not selected_month %}disabled{% endif %} onchange="updateForm()">
+                            <option value="">-- Select Day --</option>
+                            {% for day in days %}
+                                <option value="{{ day }}" {% if selected_day == day %}selected{% endif %}>{{ day }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <button type="button" class="btn btn-outline-secondary btn-sm w-100" onclick="resetForm()">
+                            <i class="fas fa-redo me-1"></i> Reset
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {% if log_info %}
+    <div class="card">
+        <div class="card-body p-0">
+            <table class="table table-sm table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width: 20%;">Date/Time</th>
+                        <th style="width: 10%;">Type</th>
+                        <th style="width: 50%;">Name</th>
+                        <th style="width: 20%;" class="text-end">Size</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>{{ log_info.year }}/{{ log_info.month }}/{{ log_info.day }}</td>
+                        <td>
+                            {% if log_info.has_request_hits %}
+                                <span class="badge bg-secondary">file</span>
+                            {% else %}
+                                <span class="badge bg-secondary">-</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if log_info.has_request_hits %}
+                                <a href="{% url 'log_view' log_info.year log_info.month log_info.day 'request_hits' %}" class="text-decoration-none">
+                                    <i class="fas fa-file-alt me-1"></i>request_hits.log
+                                </a>
+                            {% else %}
+                                <span class="text-muted">request_hits.log</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">
+                            {% if log_info.has_request_hits %}
+                                {{ log_info.request_hits_size|filesizeformat }}
+                            {% else %}
+                                <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>{{ log_info.year }}/{{ log_info.month }}/{{ log_info.day }}</td>
+                        <td>
+                            {% if log_info.has_actions %}
+                                <span class="badge bg-secondary">file</span>
+                            {% else %}
+                                <span class="badge bg-secondary">-</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if log_info.has_actions %}
+                                <a href="{% url 'log_view' log_info.year log_info.month log_info.day 'actions' %}" class="text-decoration-none">
+                                    <i class="fas fa-file-alt me-1"></i>actions.log
+                                </a>
+                            {% else %}
+                                <span class="text-muted">actions.log</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">
+                            {% if log_info.has_actions %}
+                                {{ log_info.actions_size|filesizeformat }}
+                            {% else %}
+                                <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% elif selected_year or selected_month or selected_day %}
+    <div class="card">
+        <div class="card-body text-center py-5">
+            <i class="fas fa-info-circle fa-2x text-muted mb-3"></i>
+            <p class="text-muted mb-0">Please select a complete date (Year, Month, and Day) to view log files.</p>
+        </div>
+    </div>
+    {% else %}
+    <div class="card">
+        <div class="card-body text-center py-5">
+            <i class="fas fa-folder-open fa-2x text-muted mb-3"></i>
+            <p class="text-muted mb-0">Select a year, month, and day to view available log files.</p>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<style>
+.table th {
+    font-weight: 600;
+    font-size: 0.875rem;
+    border-bottom: 2px solid #dee2e6;
+}
+.table td {
+    font-size: 0.875rem;
+    vertical-align: middle;
+}
+.table a {
+    color: #2563EB;
+}
+.table a:hover {
+    color: #1D4ED8;
+    text-decoration: underline;
+}
+</style>
+
+<script>
+function updateForm() {
+    const form = document.getElementById('logDateForm');
+    const year = document.getElementById('year').value;
+    const month = document.getElementById('month');
+    const day = document.getElementById('day');
+    
+    // If year is cleared, disable and clear month and day
+    if (!year) {
+        month.disabled = true;
+        month.value = '';
+        day.disabled = true;
+        day.value = '';
+    } else {
+        month.disabled = false;
+    }
+    
+    // If month is cleared, disable and clear day
+    if (!month.value) {
+        day.disabled = true;
+        day.value = '';
+    } else {
+        day.disabled = false;
+    }
+    
+    // Submit form to update dropdowns
+    form.submit();
+}
+
+function resetForm() {
+    window.location.href = "{% url 'log_list' %}";
+}
+</script>
+{% endblock %}

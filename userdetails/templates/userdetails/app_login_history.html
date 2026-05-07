@@ -1,0 +1,79 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}App Login History{% endblock %}
+{% block page_title %}App Login History{% endblock %}
+{% block content %}
+<div class="mb-4">
+    <h2 class="h3 fw-bold mb-1">App Login History</h2>
+    <p class="text-secondary mb-0">Monitor Android app login attempts and versions</p>
+</div>
+
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <form method="GET" class="d-flex gap-3 flex-wrap flex-grow-1">
+        <div class="position-relative" style="width: 300px;">
+            <span class="position-absolute ms-3 translate-middle-y top-50 text-muted"><i
+                    class="fas fa-search"></i></span>
+            <input type="text" name="q" value="{{ q }}" class="form-control ps-5 bg-light border-0 rounded-3"
+                placeholder="Search by user, MAC, or version...">
+        </div>
+        <button type="submit" class="btn btn-secondary rounded-3">Search</button>
+        {% if q %}
+        <a href="{% url 'app_login_history' %}" class="btn btn-link text-secondary">Clear</a>
+        {% endif %}
+    </form>
+</div>
+
+<div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="bg-white border-bottom">
+                <tr>
+                    <th class="ps-4 py-3 text-secondary fw-medium">User</th>
+                    <th class="py-3 text-secondary fw-medium">Company</th>
+                    <th class="py-3 text-secondary fw-medium">MAC Address</th>
+                    <th class="py-3 text-secondary fw-medium">App Version</th>
+                    <th class="pe-4 py-3 text-end text-secondary fw-medium">Timestamp</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for log in history %}
+                <tr class="border-bottom">
+                    <td class="ps-4 py-3">
+                        <div class="d-flex flex-column">
+                            <span class="fw-medium text-dark">{{ log.user.username }}</span>
+                            <small class="text-muted">{{ log.user.email }}</small>
+                        </div>
+                    </td>
+                    <td class="py-3 px-3">
+                        <span class="text-secondary">{{ log.company.company_name }}</span>
+                    </td>
+                    <td class="py-3">
+                        <code class="text-primary small fw-bold">{{ log.mac_address }}</code>
+                    </td>
+                    <td class="py-3">
+                        {% if log.version %}
+                        <span class="badge bg-light text-dark border border-light-subtle rounded-pill px-3">{{ log.version }}</span>
+                        {% else %}
+                        <span class="text-muted small">N/A</span>
+                        {% endif %}
+                    </td>
+                    <td class="pe-4 py-3 text-end">
+                        <div class="d-flex flex-column">
+                            <span class="text-dark small fw-medium">{{ log.timestamp|date:"d M Y" }}</span>
+                            <small class="text-muted">{{ log.timestamp|time:"H:i" }}</small>
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="5" class="text-center py-5">
+                        <div class="text-muted opacity-50 mb-3"><i class="fas fa-history fa-3x"></i></div>
+                        <p class="h6 text-secondary">No login history records found</p>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

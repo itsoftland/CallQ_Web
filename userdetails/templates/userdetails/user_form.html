@@ -1,0 +1,294 @@
+{% extends 'base.html' %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<style>
+    .state-tag {
+        display: inline-flex;
+        align-items: center;
+        background-color: #e9ecef;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        padding: 4px 10px;
+        margin: 4px;
+        font-size: 0.9rem;
+        color: #333;
+    }
+
+    .state-tag .remove-btn {
+        margin-left: 10px;
+        cursor: pointer;
+        color: #d9534f;
+        font-weight: bold;
+        font-size: 1.1rem;
+        line-height: 1;
+    }
+
+    .selected-states-wrapper {
+        border: 1px solid #ced4da;
+        border-radius: 4.8px;
+        padding: 8px;
+        min-height: 50px;
+        background-color: #f8f9fa;
+        margin-top: 10px;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-start;
+    }
+</style>
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card border-0 shadow-sm rounded-4">
+                <div class="card-header bg-white border-0 pt-4">
+                    <h4 class="fw-bold mb-0 text-center">{{ title }}</h4>
+                </div>
+                <div class="card-body p-4">
+                    <form method="POST">
+                        {% csrf_token %}
+                        <div class="mb-3">
+                            <label class="form-label fw-medium">Display Name</label>
+                            <input type="text" name="display_name" class="form-control rounded-3" value="{% if form_data.display_name %}{{ form_data.display_name }}{% elif edit_user %}{{ edit_user.display_name|default:'' }}{% endif %}" placeholder="e.g. John Doe">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-medium">Email</label>
+                            <input type="email" name="email" class="form-control rounded-3" value="{% if form_data.email %}{{ form_data.email }}{% elif edit_user %}{{ edit_user.email }}{% endif %}" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-medium">Password <small>{{ password_help }}</small></label>
+                            {% if password_required %}
+                            <input type="password" name="password" class="form-control rounded-3" required>
+                            {% else %}
+                            <input type="password" name="password" class="form-control rounded-3">
+                            {% endif %}
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-medium">Role</label>
+                            <select name="role" class="form-select rounded-3">
+                                {% for r_val, r_name in roles %}
+                                <option value="{{ r_val }}" {% if form_data.role == r_val or edit_user.role == r_val %}selected{% endif %}>{{ r_name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-medium d-block">Platform Access</label>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="checkbox" name="is_web_user" id="is_web_user" {% if edit_user %}{% if edit_user.is_web_user %}checked{% endif %}{% else %}checked{% endif %}>
+                                <label class="form-check-label" for="is_web_user">Web Access</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="checkbox" name="is_android_user" id="is_android_user" {% if edit_user %}{% if edit_user.is_android_user %}checked{% endif %}{% endif %}>
+                                <label class="form-check-label" for="is_android_user">Android Access</label>
+                            </div>
+                        </div>
+                        <div class="mb-3" id="state-field" style="display:none;">
+                            <label class="form-label fw-medium">Assigned States</label>
+                            <select id="state-selector" class="form-select mb-2 rounded-3">
+                                <option value="">Select State</option>
+                            </select>
+                            <div id="selected-states-container" class="selected-states-wrapper rounded-3"></div>
+                            <div id="hidden-inputs-container"></div>
+                        </div>
+                        <div id="company-branch-fields">
+                            {% if single_branch %}
+                            {# Both locked: only one branch exists #}
+                            <div class="mb-3">
+                                <label class="form-label fw-medium">Company</label>
+                                <div class="d-flex align-items-center gap-2">
+                                    <input type="text" class="form-control rounded-3 bg-light"
+                                        value="{{ single_branch.company.company_name }}" disabled>
+                                    <span class="badge bg-secondary text-white px-2 py-2" title="Auto-set from your account">
+                                        <i class="fas fa-lock"></i>
+                                    </span>
+                                </div>
+                                <input type="hidden" name="company" value="{{ single_branch.company.id }}">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label fw-medium">Branch</label>
+                                <div class="d-flex align-items-center gap-2">
+                                    <input type="text" class="form-control rounded-3 bg-light"
+                                        value="{{ single_branch.branch_name }}" disabled>
+                                    <span class="badge bg-secondary text-white px-2 py-2" title="Auto-set — only one branch exists">
+                                        <i class="fas fa-lock"></i>
+                                    </span>
+                                </div>
+                                <input type="hidden" name="branch" value="{{ single_branch.id }}">
+                                <small class="text-muted">Auto-selected — only one branch exists</small>
+                            </div>
+                            {% elif auto_company %}
+                            {# Company locked, Branch selectable (multiple branches) #}
+                            <div class="mb-3">
+                                <label class="form-label fw-medium">Company</label>
+                                <div class="d-flex align-items-center gap-2">
+                                    <input type="text" class="form-control rounded-3 bg-light"
+                                        value="{{ auto_company.company_name }}" disabled>
+                                    <span class="badge bg-secondary text-white px-2 py-2" title="Auto-set from your account">
+                                        <i class="fas fa-lock"></i>
+                                    </span>
+                                </div>
+                                <input type="hidden" name="company" value="{{ auto_company.id }}">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label fw-medium">Branch</label>
+                                <select name="branch" class="form-select rounded-3" id="id_branch">
+                                    <option value="">None</option>
+                                    {% for b in branches %}
+                                    <option value="{{ b.id }}" {% if form_data.branch == b.id or b.is_selected %}selected{% endif %}>{{ b.branch_name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            {% else %}
+                            {# Default: both selectable (SUPER_ADMIN / ADMIN / DEALER_ADMIN etc.) #}
+                            <div class="mb-3">
+                                <label class="form-label fw-medium">Company</label>
+                                <select name="company" class="form-select rounded-3" id="id_company">
+                                    <option value="">None</option>
+                                    {% for c in companies %}
+                                    <option value="{{ c.id }}" data-type="{{ c.company_type }}" {% if form_data.company == c.id or c.is_selected %}selected{% endif %}>{{ c.company_name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label fw-medium">Branch</label>
+                                <select name="branch" class="form-select rounded-3" id="id_branch">
+                                    <option value="">None</option>
+                                    {% for b in branches %}
+                                    <option value="{{ b.id }}" {% if form_data.branch == b.id or b.is_selected %}selected{% endif %}>{{ b.branch_name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            {% endif %}
+                        </div>
+                        <div class="d-grid mt-4">
+                            <button type="submit" class="btn btn-primary rounded-3 py-2 fw-bold text-white">{{ button_text }}</button>
+                        </div>
+                        <div class="text-center mt-3">
+                            <a href="{% url 'user_list' %}" class="btn btn-link text-secondary text-decoration-none small">Back to List</a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const currentUserRole = "{{ request.user.role }}";
+        const rS = document.querySelector('select[name="role"]'),
+            sF = document.getElementById('state-field'),
+            cBF = document.getElementById('company-branch-fields'),
+            cS = document.getElementById('id_company'),   // null when single_branch
+            bS = document.getElementById('id_branch'),    // null when single_branch
+            sSel = document.getElementById('state-selector'),
+            sSC = document.getElementById('selected-states-container'),
+            hIC = document.getElementById('hidden-inputs-container');
+
+        let selectedStates = new Set();
+        const allOpts = cS ? Array.from(cS.options) : [];
+
+        fetch("{% url 'get_states' %}?country=India")
+            .then(res => res.json())
+            .then(data => {
+                data.states.forEach(s => {
+                    const o = document.createElement('option');
+                    o.value = s.name; o.textContent = s.name;
+                    sSel.appendChild(o);
+                });
+            });
+
+        function toggle() {
+            const r = rS.value;
+            cBF.style.display = (["SUPER_ADMIN", "ADMIN", "EMPLOYEE"].includes(r)) ? "none" : "block";
+            sF.style.display = (r === "ADMIN" || r === "EMPLOYEE") ? "block" : "none";
+            if (cS) filter(r);
+        }
+
+        function filter(r) {
+            if (!cS) return;
+            const currentVal = cS.value;
+            cS.innerHTML = '';
+            cS.appendChild(allOpts[0]);
+
+            let t;
+            if (currentUserRole === 'DEALER_ADMIN') {
+                // Dealer Admin creating users:
+                // Branch Admin -> show dealer's own company (DEALER type)
+                // Company Admin -> show dealer-created customers (CUSTOMER type)
+                if (r === "DEALER_ADMIN" || r === "BRANCH_ADMIN") {
+                    t = "DEALER";
+                } else {
+                    t = "CUSTOMER";
+                }
+            } else {
+                // Standard filter logic for other admin types
+                t = (r === "DEALER_ADMIN") ? "DEALER" : (["COMPANY_ADMIN", "BRANCH_ADMIN", "EMPLOYEE", "COMPANY_EMPLOYEE"].includes(r) ? "CUSTOMER" : (r === "PRODUCTION_ADMIN" ? null : null));
+            }
+
+            allOpts.slice(1).forEach(o => {
+                if (!t || o.getAttribute("data-type") === t) {
+                    cS.appendChild(o);
+                    if (o.value === currentVal) o.selected = true;
+                }
+            });
+
+            // For Dealer Admin: auto-select company and load branches for Branch Admin
+            if (currentUserRole === 'DEALER_ADMIN' && (r === "BRANCH_ADMIN" || r === "DEALER_ADMIN")) {
+                if (cS.options.length > 1) {
+                    cS.selectedIndex = 1;
+                    fetchBranches(cS.value);
+                }
+            }
+        }
+
+        function fetchBranches(id) {
+            if (!bS) return;
+            bS.innerHTML = '<option value="">Loading...</option>';
+            fetch("{% url 'ajax_get_company_branches' company_id=0 %}".replace('0', id))
+                .then(res => { if (!res.ok) throw new Error('Network response was not ok'); return res.json(); })
+                .then(d => {
+                    bS.innerHTML = '<option value="">None</option>';
+                    if (d && d.branches) {
+                        d.branches.forEach(b => {
+                            const o = document.createElement('option');
+                            o.value = b.id; o.textContent = b.branch_name;
+                            bS.appendChild(o);
+                        });
+                    }
+                })
+                .catch(e => { console.error('Error fetching branches:', e); bS.innerHTML = '<option value="">Error</option>'; });
+        }
+
+        if (cS) cS.addEventListener('change', function () { if (this.value) fetchBranches(this.value); else if (bS) bS.innerHTML = '<option value="">None</option>'; });
+        rS.addEventListener('change', toggle);
+        sSel.addEventListener('change', function () { if (this.value && !selectedStates.has(this.value)) add(this.value); });
+
+        function add(s) {
+            if (selectedStates.has(s)) return;
+            selectedStates.add(s);
+            const t = document.createElement('div');
+            t.className = 'state-tag';
+            t.innerHTML = `${s} <span class="remove-btn" data-state="${s}">&times;</span>`;
+            sSC.appendChild(t);
+            const i = document.createElement('input');
+            i.type = 'hidden'; i.name = 'assigned_state'; i.value = s; i.id = `i-${s.replace(/\s+/g, '-')}`;
+            hIC.appendChild(i);
+        }
+
+        sSC.addEventListener('click', e => {
+            if (e.target.classList.contains('remove-btn')) {
+                const s = e.target.getAttribute('data-state');
+                selectedStates.delete(s); e.target.parentElement.remove();
+                const i = document.getElementById(`i-${s.replace(/\s+/g, '-')}`);
+                if (i) i.remove();
+            }
+        });
+
+        toggle();
+        {% if form_data.assigned_state %}
+        {% for s in form_data.assigned_state %} add("{{ s }}"); {% endfor %}
+        {% elif edit_user.assigned_state %}
+        {% for s in edit_user.assigned_state %} add("{{ s }}"); {% endfor %}
+        {% else %} add("Kerala"); {% endif %}
+    });
+</script>
+{% endblock %}
+

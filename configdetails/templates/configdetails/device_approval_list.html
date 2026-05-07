@@ -1,0 +1,208 @@
+{% extends 'base.html' %} {% load static %}
+
+{% block title %}Device Requests{% endblock %} {% block page_title %}Device Requests{% endblock %} {% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2 class="h4 fw-bold mb-1">Device Requests</h2>
+        <p class="text-secondary mb-0">Filter and manage device requests by status.</p>
+    </div>
+    <a href="{% url 'device_list' %}" class="btn btn-outline-secondary">
+        <i class="fas fa-arrow-left me-2"></i>Back to Devices
+    </a>
+</div>
+
+<!-- Filter Buttons -->
+<div class="btn-group mb-4" role="group" aria-label="Status filter">
+    <a href="?status=Pending"
+        class="btn {% if current_status == 'Pending' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+        <i class="fas fa-clock me-1"></i>Pending
+    </a>
+    <a href="?status=Active"
+        class="btn {% if current_status == 'Active' %}btn-success{% else %}btn-outline-success{% endif %}">
+        <i class="fas fa-check-circle me-1"></i>Approved
+    </a>
+    <a href="?status=Rejected"
+        class="btn {% if current_status == 'Rejected' %}btn-danger{% else %}btn-outline-danger{% endif %}">
+        <i class="fas fa-times-circle me-1"></i>Rejected
+    </a>
+    <a href="?status=All"
+        class="btn {% if current_status == 'All' %}btn-secondary{% else %}btn-outline-secondary{% endif %}">
+        <i class="fas fa-list me-1"></i>All
+    </a>
+</div>
+
+{% if devices %}
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="bg-light">
+                    <tr>
+                        <th class="ps-4">Serial / MAC</th>
+                        <th>Type</th>
+                        <th>Company</th>
+                        <th>Status</th>
+                        <th>Requested Date</th>
+                        {% if current_status == 'Pending' %}
+                        <th class="text-end pe-4">Actions</th>
+                        {% endif %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for device in devices %}
+                    <tr>
+                        <td class="ps-4">
+                            <div class="fw-semibold text-dark">{{ device.get_display_identifier }}</div>
+                            {% if device.display_name %}
+                            <small class="text-muted font-monospace">{{ device.serial_number }}</small>
+                            {% endif %}
+                            <div class="text-muted small">{{ device.mac_address }}</div>
+                        </td>
+                        <td>
+                            <span class="badge bg-light text-dark border">{{ device.get_device_type_display }}</span>
+                        </td>
+                        <td>
+                            {% if device.company %}
+                            {{ device.company.company_name }}
+                            {% elif device.dealer_customer %}
+                            {{ device.dealer_customer.company_name }} <span class="badge bg-info text-dark ms-1">Dealer
+                                Customer</span>
+                            {% else %}
+                            <span class="text-muted">Unassigned</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if device.licence_status == 'Pending' %}
+                            <span class="badge bg-warning text-dark">Pending</span>
+                            {% elif device.licence_status == 'Active' %}
+                            <span class="badge bg-success">Approved</span>
+                            {% elif device.licence_status == 'Rejected' %}
+                            <span class="badge bg-danger">Rejected</span>
+                            {% else %}
+                            <span class="badge bg-secondary">{{ device.licence_status }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-muted small">
+                            {{ device.created_at|date:"M d, Y H:i" }}
+                        </td>
+                        {% if current_status == 'Pending' %}
+                        <td class="text-end pe-4">
+                            <form method="post" action="{% url 'approve_device_request' device.id %}"
+                                style="display:inline;" onsubmit="return confirm('Approve this device?');">
+                                {% csrf_token %}
+                                
+                                <div class="mb-2" style="min-width: 180px;">
+                                    <label class="form-label small mb-1">Display Name</label>
+                                    <input type="text" name="display_name" class="form-control form-control-sm"
+                                        placeholder="Friendly Name (Optional)" value="{{ device.display_name|default:'' }}">
+                                </div>
+
+                                {% if companies %}
+                                <div class="mb-2" style="min-width: 180px;">
+                                    <label class="form-label small mb-1">Company</label>
+                                    <select name="company_id" class="form-select form-select-sm company-select"
+                                        data-device-id="{{ device.id }}" required>
+                                        <option value="">Select Company</option>
+                                        {% for company in companies %}
+                                        <option value="{{ company.id }}" {% if device.company_id == company.id %}selected{% endif %}>{{ company.company_name }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                {% endif %}
+
+                                <div class="mb-2" style="min-width: 180px;">
+                                    <label class="form-label small mb-1">Branch</label>
+                                    <select name="branch_id" id="branch-select-{{ device.id }}"
+                                        class="form-select form-select-sm branch-select" required>
+                                        <option value="">Select Branch</option>
+                                        {% if device.company %}
+                                        {% for branch in device.company.branches.all %}
+                                        <option value="{{ branch.id }}" {% if device.branch_id == branch.id %}selected{% endif %}>{{ branch.branch_name }}</option>
+                                        {% endfor %}
+                                        {% endif %}
+                                    </select>
+                                </div>
+
+                                <button type="submit" class="btn btn-sm btn-success me-1 w-100">
+                                    <i class="fas fa-check me-1"></i>Approve
+                                </button>
+                            </form>
+
+                            <div class="mt-2">
+                                <form method="post" action="{% url 'reject_device_request' device.id %}"
+                                    style="display:inline;" onsubmit="return confirm('Reject this request?');">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn btn-sm btn-outline-danger w-100">
+                                        <i class="fas fa-times me-1"></i>Reject
+                                    </button>
+                                </form>
+                            </div>
+                        </td>
+                        {% endif %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% else %}
+<div class="card">
+    <div class="card-body p-5 text-center">
+        <div class="text-muted opacity-50 mb-3">
+            <i class="fas fa-check-circle fa-3x"></i>
+        </div>
+        <p class="text-muted mb-0">No {{ current_status|lower }} requests found.</p>
+    </div>
+</div>
+{% endif %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const companySelects = document.querySelectorAll('.company-select');
+
+        companySelects.forEach(select => {
+            select.addEventListener('change', function () {
+                const companyId = this.value;
+                const deviceId = this.getAttribute('data-device-id');
+                const branchSelect = document.getElementById(`branch-select-${deviceId}`);
+
+                // Clear current branches
+                branchSelect.innerHTML = '<option value="">Loading branches...</option>';
+
+                if (!companyId) {
+                    branchSelect.innerHTML = '<option value="">Select Branch</option>';
+                    return;
+                }
+
+                // Use existing API to fetch branches
+                fetch(`/CallQ/api/company-branches/${companyId}/`)
+                    .then(response => response.json())
+                    .then(data => {
+                        branchSelect.innerHTML = '<option value="">Select Branch</option>';
+                        if (data.branches && data.branches.length > 0) {
+                            data.branches.forEach(branch => {
+                                const option = document.createElement('option');
+                                option.value = branch.id;
+                                option.textContent = branch.branch_name;
+                                branchSelect.appendChild(option);
+                            });
+                        } else {
+                            const option = document.createElement('option');
+                            option.value = '';
+                            option.disabled = true;
+                            option.textContent = 'No branches found';
+                            branchSelect.appendChild(option);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error fetching branches:', error);
+                        branchSelect.innerHTML = '<option value="">Error loading branches</option>';
+                    });
+            });
+        });
+    });
+</script>
+{% endblock %}
+{% endblock %}

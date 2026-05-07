@@ -1,0 +1,310 @@
+{% extends 'base.html' %}
+
+{% block title %}Location Management{% endblock %}
+{% block page_title %}Location Management{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="row g-4">
+        {% if not is_admin %}
+        <!-- Add State Section (Super Admin Only) -->
+        <div class="col-md-6">
+            <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+                <div class="card-header bg-primary py-3">
+                    <h5 class="card-title mb-0 text-white"><i class="fas fa-map-marker-alt me-2"></i>Add New State</h5>
+                </div>
+                <div class="card-body p-4">
+                    <form method="POST" class="needs-validation" id="addStateForm">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="add_state">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Country <span class="text-danger">*</span></label>
+                            <select name="country_id" class="form-select rounded-3" required>
+                                {% for country in countries %}
+                                <option value="{{ country.id }}" {% if country.name == 'India' %}selected{% endif %}>{{ country.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">State Name <span class="text-danger">*</span></label>
+                            <input type="text" name="name" class="form-control rounded-3" placeholder="e.g. Kerala" required>
+                        </div>
+                        <div class="d-grid shadow-sm mt-4">
+                            <button type="submit" class="btn btn-primary rounded-3 py-2 fw-bold text-white">
+                                <i class="fas fa-plus-circle me-1"></i> Add State
+                            </button>
+                        </div>
+                    </form>
+
+                    <hr class="my-4 opacity-10">
+
+                    <h6 class="fw-bold mb-3">Existing States</h6>
+                    <div class="table-responsive" style="max-height: 300px;">
+                        <table class="table table-hover align-middle">
+                            <thead class="table-light sticky-top">
+                                <tr>
+                                    <th>#</th>
+                                    <th>State</th>
+                                    <th>Country</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for state in states %}
+                                <tr>
+                                    <td>{{ forloop.counter }}</td>
+                                    <td>{{ state.name }}</td>
+                                    <td><span class="badge bg-secondary opacity-75">{{ state.country.name }}</span></td>
+                                    <td>
+                                        <button type="button" class="btn btn-sm btn-outline-info rounded-pill px-3 view-districts-btn" data-state-id="{{ state.id }}" data-state-name="{{ state.name }}">View Districts</button>
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="4" class="text-center py-4 text-muted">No states found.</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Add District Section -->
+        <div class="{% if is_admin %}col-12{% else %}col-md-6{% endif %}">
+            <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+                <div class="card-header bg-success py-3">
+                    <h5 class="card-title mb-0 text-white"><i class="fas fa-city me-2"></i>Add New District{% if admin_state %} for {{ admin_state.name }}{% endif %}</h5>
+                </div>
+                <div class="card-body p-4">
+                    <form method="POST" id="addDistrictForm">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="add_district">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Select State <span class="text-danger">*</span></label>
+                            {% if admin_state %}
+                            <input type="hidden" name="state_id" value="{{ admin_state.id }}">
+                            <input type="text" class="form-control rounded-3 bg-light" value="{{ admin_state.name }}" disabled>
+                            {% else %}
+                            <select name="state_id" id="stateSelect" class="form-select rounded-3" required>
+                                <option value="">-- Choose State --</option>
+                                {% for state in states %}
+                                <option value="{{ state.id }}" data-state-name="{{ state.name }}" {% if selected_state_id == state.id|stringformat:"s" %}selected{% endif %}>{{ state.name }}</option>
+                                {% endfor %}
+                            </select>
+                            {% endif %}
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">District Name <span class="text-danger">*</span></label>
+                            <input type="text" name="name" id="districtNameInput" class="form-control rounded-3" placeholder="e.g. Ernakulam" required>
+                        </div>
+                        <div class="d-grid shadow-sm mt-4">
+                            <button type="submit" class="btn btn-success rounded-3 py-2 fw-bold text-white">
+                                <i class="fas fa-plus-circle me-1"></i> Add District
+                            </button>
+                        </div>
+                    </form>
+
+                    <hr class="my-4 opacity-10">
+
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h6 class="fw-bold mb-0" id="districtsHeader">
+                            Districts
+                            <span id="selectedStateName" class="text-muted fw-normal"></span>
+                        </h6>
+                        <button type="button" id="clearFilterBtn" class="btn btn-sm btn-light rounded-pill border d-none">Clear Filter</button>
+                    </div>
+
+                    <!-- Loading indicator -->
+                    <div id="districtsLoading" class="text-center py-4 d-none">
+                        <div class="spinner-border text-success" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2 text-muted">Loading districts...</p>
+                    </div>
+
+                    <div class="table-responsive" style="max-height: 300px;" id="districtsTableContainer">
+                        <table class="table table-hover align-middle">
+                            <thead class="table-light sticky-top">
+                                <tr>
+                                    <th>#</th>
+                                    <th>District</th>
+                                    <th>State</th>
+                                </tr>
+                            </thead>
+                            <tbody id="districtsTableBody">
+                                {% for dist in districts %}
+                                <tr>
+                                    <td>{{ forloop.counter }}</td>
+                                    <td>{{ dist.name }}</td>
+                                    <td>{{ dist.state.name }}</td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="3" class="text-center py-4 text-muted">
+                                        Please select a state to view districts.
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .rounded-4 {
+        border-radius: 1rem !important;
+    }
+    .card-header {
+        border-bottom: none;
+    }
+    .table thead th {
+        font-weight: 600;
+        text-transform: uppercase;
+        font-size: 0.75rem;
+        letter-spacing: 0.05rem;
+        background: #f8f9fa;
+    }
+    .table td {
+        font-size: 0.9rem;
+    }
+    .btn-sm {
+        font-size: 0.8rem;
+    }
+    .opacity-10 {
+        opacity: 0.1;
+    }
+    .sticky-top {
+        z-index: 10;
+    }
+    .view-districts-btn {
+        cursor: pointer;
+    }
+    .view-districts-btn:hover {
+        background-color: var(--bs-info);
+        color: white;
+    }
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const stateSelect = document.getElementById('stateSelect');
+    const districtsTableBody = document.getElementById('districtsTableBody');
+    const districtsLoading = document.getElementById('districtsLoading');
+    const districtsTableContainer = document.getElementById('districtsTableContainer');
+    const selectedStateName = document.getElementById('selectedStateName');
+    const clearFilterBtn = document.getElementById('clearFilterBtn');
+    const viewDistrictsBtns = document.querySelectorAll('.view-districts-btn');
+    
+    let currentStateId = null;
+    let currentStateName = null;
+
+    // Function to fetch and display districts
+    function fetchDistricts(stateId, stateName) {
+        if (!stateId) {
+            showEmptyState();
+            return;
+        }
+
+        currentStateId = stateId;
+        currentStateName = stateName;
+
+        // Show loading
+        districtsTableContainer.classList.add('d-none');
+        districtsLoading.classList.remove('d-none');
+
+        // Fetch districts via AJAX
+        fetch('/CallQ/api/get-districts/?state_id=' + stateId)
+            .then(response => response.json())
+            .then(data => {
+                // Hide loading
+                districtsLoading.classList.add('d-none');
+                districtsTableContainer.classList.remove('d-none');
+
+                // Update header
+                if (stateName) {
+                    selectedStateName.textContent = ' for ' + stateName;
+                    clearFilterBtn.classList.remove('d-none');
+                }
+
+                // Populate table
+                if (data.districts && data.districts.length > 0) {
+                    let html = '';
+                    data.districts.forEach(function(district, index) {
+                        html += '<tr><td>' + (index + 1) + '</td><td>' + district.name + '</td><td>' + (stateName || '-') + '</td></tr>';
+                    });
+                    districtsTableBody.innerHTML = html;
+                } else {
+                    districtsTableBody.innerHTML = '<tr><td colspan="3" class="text-center py-4 text-muted">No districts found for this state.</td></tr>';
+                }
+            })
+            .catch(function(error) {
+                console.error('Error fetching districts:', error);
+                districtsLoading.classList.add('d-none');
+                districtsTableContainer.classList.remove('d-none');
+                districtsTableBody.innerHTML = '<tr><td colspan="3" class="text-center py-4 text-danger">Error loading districts. Please try again.</td></tr>';
+            });
+    }
+
+    function showEmptyState() {
+        currentStateId = null;
+        currentStateName = null;
+        selectedStateName.textContent = '';
+        clearFilterBtn.classList.add('d-none');
+        districtsTableBody.innerHTML = '<tr><td colspan="3" class="text-center py-4 text-muted">Please select a state to view districts.</td></tr>';
+    }
+
+    // State dropdown change handler
+    if (stateSelect) {
+        stateSelect.addEventListener('change', function() {
+            const selectedOption = this.options[this.selectedIndex];
+            const stateId = this.value;
+            const stateName = selectedOption.dataset.stateName || selectedOption.textContent;
+            
+            if (stateId) {
+                fetchDistricts(stateId, stateName);
+            } else {
+                showEmptyState();
+            }
+        });
+
+        // Trigger fetch on page load if state is pre-selected
+        if (stateSelect.value) {
+            const selectedOption = stateSelect.options[stateSelect.selectedIndex];
+            fetchDistricts(stateSelect.value, selectedOption.dataset.stateName || selectedOption.textContent);
+        }
+    }
+
+    // View Districts button click handlers (for states table)
+    viewDistrictsBtns.forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            const stateId = this.dataset.stateId;
+            const stateName = this.dataset.stateName;
+            
+            // Also update the state dropdown if it exists
+            if (stateSelect) {
+                stateSelect.value = stateId;
+            }
+            
+            fetchDistricts(stateId, stateName);
+        });
+    });
+
+    // Clear filter button
+    if (clearFilterBtn) {
+        clearFilterBtn.addEventListener('click', function() {
+            if (stateSelect) {
+                stateSelect.value = '';
+            }
+            showEmptyState();
+        });
+    }
+});
+</script>
+{% endblock %}

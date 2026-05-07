@@ -1,0 +1,46 @@
+{% extends "companydetails/layouts/base.html" %}
+
+{% load static %}
+
+{% block title %}Customer Verification Dashboard{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="card">
+        <div class="card-header bg-primary text-white">
+            <h4 class="mb-0">Customer Verification Dashboard</h4>
+        </div>
+
+        <div class="card-body">
+            <div id="loading" class="text-center py-5">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-2">Loading customers...</p>
+            </div>
+
+            <div id="error" class="alert alert-danger d-none" role="alert"></div>
+
+            <div id="customerList" class="d-none">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Company ID</th>
+                                <th>Company Name</th>
+                                <th>Verification Status</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="customerTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'companydetails/js/customer_list.js' %}"></script>
+{% endblock %}

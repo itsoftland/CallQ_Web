@@ -1,0 +1,467 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{% if profile %}Edit{% else %}Create{% endif %} Profile Template{% endblock %}
+
+{% block content %}
+<div class='container py-4'>
+    <div class='d-flex justify-content-between align-items-center mb-4'>
+        <div>
+            <h2 class='mb-1'>
+                {% if profile %}Edit{% else %}Create{% endif %} Profile Template
+            </h2>
+            <p class='text-muted fs-5'>
+                Device Type: <span class='badge bg-primary fs-6 px-3 py-2'>{{ device_type }}</span>
+            </p>
+        </div>
+        <a href="{%  url 'embedded_profile_list'  %}" class='btn btn-outline-secondary'>
+            <i class='fas fa-arrow-left me-1'></i> Back to List
+        </a>
+    </div>
+
+    <div class='card shadow-sm border-0'>
+        <div class='card-body p-4'>
+            <form method='POST'>
+                {% csrf_token %}
+                <input type='hidden' name='device_type' value='{{  device_type  }}'>
+
+                <div class='row g-3 mb-4'>
+                    <div class='col-12'>
+                        <h5 class='text-muted mb-3'>
+                            <i class='fas fa-tag me-2'></i>Profile Information
+                        </h5>
+                    </div>
+
+                    <div class='col-md-6'>
+                        <label class='form-label fw-bold'>Profile Name</label>
+                        <input type='text' name='name' class='form-control' value='{{  profile.name|default:""  }}'
+                            placeholder='e.g., Morning Shift Config' required>
+                    </div>
+
+                    <div class='col-md-6'>
+                        <label class='form-label fw-bold'>Active Days</label>
+                        <div class='d-flex flex-wrap gap-2 mb-2'>
+                            <input type='checkbox' class='btn-check' name='day' id='day_mon' value='MON' {% if profile and 'MON' in profile.day %}checked{% endif %}>
+                            <label class='btn btn-outline-primary btn-sm px-3' for='day_mon'>Mon</label>
+
+                            <input type='checkbox' class='btn-check' name='day' id='day_tue' value='TUE' {% if profile and 'TUE' in profile.day %}checked{% endif %}>
+                            <label class='btn btn-outline-primary btn-sm px-3' for='day_tue'>Tue</label>
+
+                            <input type='checkbox' class='btn-check' name='day' id='day_wed' value='WED' {% if profile and 'WED' in profile.day %}checked{% endif %}>
+                            <label class='btn btn-outline-primary btn-sm px-3' for='day_wed'>Wed</label>
+
+                            <input type='checkbox' class='btn-check' name='day' id='day_thu' value='THU' {% if profile and 'THU' in profile.day %}checked{% endif %}>
+                            <label class='btn btn-outline-primary btn-sm px-3' for='day_thu'>Thu</label>
+
+                            <input type='checkbox' class='btn-check' name='day' id='day_fri' value='FRI' {% if profile and 'FRI' in profile.day %}checked{% endif %}>
+                            <label class='btn btn-outline-primary btn-sm px-3' for='day_fri'>Fri</label>
+
+                            <input type='checkbox' class='btn-check' name='day' id='day_sat' value='SAT' {% if profile and 'SAT' in profile.day %}checked{% endif %}>
+                            <label class='btn btn-outline-primary btn-sm px-3' for='day_sat'>Sat</label>
+
+                            <input type='checkbox' class='btn-check' name='day' id='day_sun' value='SUN' {% if profile and 'SUN' in profile.day %}checked{% endif %}>
+                            <label class='btn btn-outline-primary btn-sm px-3' for='day_sun'>Sun</label>
+                        </div>
+                        <div id='selectedDaysContainer' class='mt-2 d-flex flex-wrap gap-2'></div>
+                        <small class='text-muted'>Select one or multiple days.</small>
+                    </div>
+                    <div class='col-md-3'>
+                        <label class='form-label fw-bold'>Start Time</label>
+                        <input type='time' name='start_time' class='form-control'
+                            value='{{  profile.start_time|time:"H:i"  }}'>
+                    </div>
+                    <div class='col-md-3'>
+                        <label class='form-label fw-bold'>End Time</label>
+                        <input type='time' name='end_time' class='form-control'
+                            value='{{  profile.end_time|time:"H:i"  }}'>
+                    </div>
+                    <div class='col-md-12'>
+                        <div class='form-check form-switch'>
+                            {% if profile.is_active or not profile %}
+                            <input class='form-check-input' type='checkbox' name='is_active' checked>
+                            {% else %}
+                            <input class='form-check-input' type='checkbox' name='is_active'>
+                            {% endif %}
+                            <label class='form-check-label fw-bold'>Profile Active</label>
+                        </div>
+                    </div>
+
+                    <div class='col-12 mt-4'>
+                        <h5 class='text-muted mb-3'>
+                            <i class='fas fa-cog me-2'></i>Configuration Settings
+                        </h5>
+                    </div>
+
+                    {% if device_type == 'KEYPAD' %}
+                    <div class='col-md-6'>
+                        <label class='form-label fw-bold'>Keypad Device Text</label>
+                        <input type='text' name='keypad_device_text' class='form-control'
+                            value='{{  profile.config_json.keypad_device_text|default:""  }}'
+                            placeholder='Enter device text'>
+                    </div>
+                    <div class='col-md-6'>
+                        <label class='form-label fw-bold'>Counter No</label>
+                        <input type='number' name='counter_no' class='form-control'
+                            value='{{  profile.config_json.counter_no|default:""  }}' placeholder='1'>
+                    </div>
+
+                    {% elif device_type == 'TOKEN_DISPENSER' %}
+                    <div class='col-12'>
+                        <h6 class='text-muted mb-2'><i class='fas fa-sliders-h me-2'></i>Dispenser Settings</h6>
+                    </div>
+
+                    <div class='col-md-4'>
+                        <div class='form-check form-switch mt-2'>
+                            {% if profile.config_json.day_wise_reset == "1" %}
+                            <input class='form-check-input' type='checkbox' name='day_wise_reset' id='day_wise_reset'
+                                checked>
+                            {% else %}
+                            <input class='form-check-input' type='checkbox' name='day_wise_reset' id='day_wise_reset'>
+                            {% endif %}
+                            <label class='form-check-label fw-bold' for='day_wise_reset'>Day Wise Reset</label>
+                        </div>
+                    </div>
+                    <div class='col-md-4'>
+                        <label class='form-label fw-bold'>Reset Token Number</label>
+                        <input type='number' name='reset_token_number' id='reset_token_number' class='form-control'
+                            value='{{  profile.config_json.reset_token_number|default:""  }}' placeholder='Enter'>
+                        <small class='text-muted'>Used when Day Wise Reset is enabled.</small>
+                    </div>
+                    <div class='col-md-4'>
+                        <div class='form-check form-switch mt-2'>
+                            {% if profile.config_json.common_pool == "1" %}
+                            <input class='form-check-input' type='checkbox' name='common_pool' id='common_pool' checked>
+                            {% else %}
+                            <input class='form-check-input' type='checkbox' name='common_pool' id='common_pool'>
+                            {% endif %}
+                            <label class='form-check-label fw-bold' for='common_pool'>Common Pool</label>
+                        </div>
+                        <div class='form-check form-switch mt-2'>
+                            {% if profile.config_json.duplicate_print == "1" %}
+                            <input class='form-check-input' type='checkbox' name='duplicate_print' id='duplicate_print'
+                                checked>
+                            {% else %}
+                            <input class='form-check-input' type='checkbox' name='duplicate_print' id='duplicate_print'>
+                            {% endif %}
+                            <label class='form-check-label fw-bold' for='duplicate_print'>Duplicate Print</label>
+                        </div>
+                        <div class='form-check form-switch mt-2'>
+                            {% if profile.config_json.standalone == "1" %}
+                            <input class='form-check-input' type='checkbox' name='standalone' id='standalone' checked>
+                            {% else %}
+                            <input class='form-check-input' type='checkbox' name='standalone' id='standalone'>
+                            {% endif %}
+                            <label class='form-check-label fw-bold' for='standalone'>Standalone</label>
+                        </div>
+                        <div class='form-check form-switch mt-2'>
+                            {% if profile.config_json.initial_print == "1" %}
+                            <input class='form-check-input' type='checkbox' name='initial_print' id='initial_print'
+                                checked>
+                            {% else %}
+                            <input class='form-check-input' type='checkbox' name='initial_print' id='initial_print'>
+                            {% endif %}
+                            <label class='form-check-label fw-bold' for='initial_print'>Initial Print</label>
+                        </div>
+                    </div>
+
+                    <div class='col-12 mt-2'>
+                        <label class='form-label fw-bold'>Token Cut</label>
+                        <div class='btn-group' role='group' aria-label='Token Cut'>
+                            {% if profile.config_json.token_cut|default:"full" == "full" %}
+                            <input type='radio' class='btn-check' name='token_cut' id='token_cut_full' value='full'
+                                checked>
+                            {% else %}
+                            <input type='radio' class='btn-check' name='token_cut' id='token_cut_full' value='full'>
+                            {% endif %}
+                            <label class='btn btn-outline-primary btn-sm' for='token_cut_full'>Full</label>
+
+                            {% if profile.config_json.token_cut == "half" %}
+                            <input type='radio' class='btn-check' name='token_cut' id='token_cut_half' value='half'
+                                checked>
+                            {% else %}
+                            <input type='radio' class='btn-check' name='token_cut' id='token_cut_half' value='half'>
+                            {% endif %}
+                            <label class='btn btn-outline-primary btn-sm' for='token_cut_half'>Half</label>
+                        </div>
+                    </div>
+
+                    <div class='col-md-6'>
+                        <label class='form-label fw-bold'>Company Name</label>
+                        <input type='text' name='company_name' class='form-control'
+                            value='{{  profile.config_json.company_name|default:""  }}' placeholder='Your Company Name'>
+                    </div>
+                    <div class='col-md-6'>
+                        <label class='form-label fw-bold'>Location</label>
+                        <input type='text' name='location' class='form-control'
+                            value='{{  profile.config_json.location|default:""  }}' placeholder='Branch Location'>
+                    </div>
+                    <div class='col-md-12'>
+                        <label class='form-label fw-bold'>Footer Text</label>
+                        <input type='text' name='footer_text' class='form-control'
+                            value='{{  profile.config_json.footer_text|default:"Thank you, visit again"  }}'>
+                    </div>
+
+                    <div class='col-12 mt-2'>
+                        <label class='form-label fw-bold'>Button Details</label>
+                        <div class='btn-group w-100' role='group' aria-label='Button Details'>
+                            {% if profile.config_json.button_mode|default:"counterwise" == "counterwise" %}
+                            <input type='radio' class='btn-check' name='button_mode' id='button_mode_counterwise'
+                                value='counterwise' checked>
+                            {% else %}
+                            <input type='radio' class='btn-check' name='button_mode' id='button_mode_counterwise'
+                                value='counterwise'>
+                            {% endif %}
+                            <label class='btn btn-outline-secondary' for='button_mode_counterwise'>Counterwise</label>
+
+                            {% if profile.config_json.button_mode == "continuous" %}
+                            <input type='radio' class='btn-check' name='button_mode' id='button_mode_continuous'
+                                value='continuous' checked>
+                            {% else %}
+                            <input type='radio' class='btn-check' name='button_mode' id='button_mode_continuous'
+                                value='continuous'>
+                            {% endif %}
+                            <label class='btn btn-outline-secondary' for='button_mode_continuous'>Continuous</label>
+                        </div>
+                    </div>
+
+                    <div class='col-md-6'>
+                        <label class='form-label fw-bold'>Token Label</label>
+                        <input type='text' name='token_label' class='form-control'
+                            value='{{  profile.config_json.token_label|default:""  }}' placeholder='Enter'>
+                    </div>
+                    <div class='col-md-6'>
+                        <label class='form-label fw-bold'>Start Counter</label>
+                        <input type='number' name='start_counter' class='form-control'
+                            value='{{  profile.config_json.start_counter|default:""  }}' placeholder='Enter'>
+                    </div>
+                    <div class='col-md-6'>
+                        <label class='form-label fw-bold'>End Counter</label>
+                        <input type='number' name='end_counter' class='form-control'
+                            value='{{  profile.config_json.end_counter|default:""  }}' placeholder='Enter'>
+                    </div>
+
+                    <div class='col-12 mt-3'>
+                        <h6 class='text-muted mb-2'><i class='fas fa-star me-2'></i>VIP Settings</h6>
+                    </div>
+                    <div class='col-md-4'>
+                        <div class='form-check form-switch'>
+                            {% if profile.config_json.vip_enable == "1" %}
+                            <input class='form-check-input' type='checkbox' name='vip_enable' id='vip_enable' checked>
+                            {% else %}
+                            <input class='form-check-input' type='checkbox' name='vip_enable' id='vip_enable'>
+                            {% endif %}
+                            <label class='form-check-label fw-bold' for='vip_enable'>VIP Enable</label>
+                        </div>
+                    </div>
+                    <div class='col-md-4'>
+                        <label class='form-label fw-bold'>VIP Count From</label>
+                        <input type='number' name='vip_count_from' id='vip_count_from' class='form-control'
+                            value='{{  profile.config_json.vip_count_from|default:""  }}' placeholder='Enter'>
+                    </div>
+                    <div class='col-md-4'>
+                        <label class='form-label fw-bold'>VIP Count To</label>
+                        <input type='number' name='vip_count_to' id='vip_count_to' class='form-control'
+                            value='{{  profile.config_json.vip_count_to|default:""  }}' placeholder='Enter'>
+                    </div>
+
+                    {% elif device_type == 'BROKER' %}
+                    <div class='col-md-6'>
+                        <label class='form-label fw-bold'>SSID</label>
+                        <input type='text' name='ssid' class='form-control'
+                            value='{{  profile.config_json.ssid|default:""  }}' placeholder='WiFi SSID'>
+                    </div>
+                    <div class='col-md-6'>
+                        <label class='form-label fw-bold'>Password</label>
+                        <input type='text' name='password' class='form-control'
+                            value='{{  profile.config_json.password|default:""  }}' placeholder='WiFi Password'>
+                    </div>
+                    <div class='col-md-6'>
+                        <label class='form-label fw-bold'>Host</label>
+                        <input type='text' name='host' class='form-control'
+                            value='{{  profile.config_json.host|default:""  }}' placeholder='Server Host IP/URL'>
+                    </div>
+                    <div class='col-md-6'>
+                        <label class='form-label fw-bold'>Port</label>
+                        <input type='number' name='port' class='form-control'
+                            value='{{  profile.config_json.port|default:"8000"  }}'>
+                    </div>
+
+                    {% elif device_type == 'TV' %}
+                    <div class='col-md-6'>
+                        <label class='form-label fw-bold'>Orientation</label>
+                        <select name='orientation' class='form-select'>
+                            {% if profile.config_json.orientation == "landscape" %}<option value='landscape' selected>
+                                Landscape</option>{% else %}<option value='landscape'>Landscape</option>{% endif %}
+                            {% if profile.config_json.orientation == "portrait" %}<option value='portrait' selected>
+                                Portrait</option>{% else %}<option value='portrait'>Portrait</option>{% endif %}
+                        </select>
+                    </div>
+                    <div class='col-md-6'>
+                        <label class='form-label fw-bold'>Layout Type</label>
+                        <select name='layout_type' class='form-select'>
+                            {% if profile.config_json.layout_type == "default" %}<option value='default' selected>
+                                Default</option>{% else %}<option value='default'>Default</option>{% endif %}
+                            {% if profile.config_json.layout_type == "compact" %}<option value='compact' selected>
+                                Compact</option>{% else %}<option value='compact'>Compact</option>{% endif %}
+                        </select>
+                    </div>
+                    {% comment %} Ad Interval and Show Ads hidden - feature disabled
+                    <div class='col-md-6'>
+                        <label class='form-label fw-bold'>Ad Interval (Seconds)</label>
+                        <input type='number' name='ad_interval' class='form-control'
+                            value='{{  profile.config_json.ad_interval|default:5  }}'>
+                    </div>
+                    {% endcomment %}
+                    <div class='col-md-6'>
+                        <label class='form-label fw-bold'>Audio Language</label>
+                        <select name='audio_language' class='form-select'>
+                            {% if profile.config_json.audio_language == "en" %}<option value='en' selected>English
+                            </option>{% else %}<option value='en'>English</option>{% endif %}
+                            {% if profile.config_json.audio_language == "hi" %}<option value='hi' selected>Hindi
+                            </option>{% else %}<option value='hi'>Hindi</option>{% endif %}
+                            {% if profile.config_json.audio_language == "ml" %}<option value='ml' selected>Malayalam
+                            </option>{% else %}<option value='ml'>Malayalam</option>{% endif %}
+                            {% if profile.config_json.audio_language == "ta" %}<option value='ta' selected>Tamil
+                            </option>{% else %}<option value='ta'>Tamil</option>{% endif %}
+                        </select>
+                    </div>
+                    {% comment %} Show Ads hidden - feature disabled
+                    <div class='col-md-4'>
+                        <div class='form-check form-switch mt-4'>
+                            {% if profile.config_json.show_ads == "on" %}
+                            <input class='form-check-input' type='checkbox' name='show_ads' checked>
+                            {% else %}
+                            <input class='form-check-input' type='checkbox' name='show_ads'>
+                            {% endif %}
+                            <label class='form-check-label'>Show Ads</label>
+                        </div>
+                    </div>
+                    {% endcomment %}
+                    <div class='col-md-4'>
+                        <div class='form-check form-switch mt-4'>
+                            {% if profile.config_json.enable_counter_announcement == "on" %}
+                            <input class='form-check-input' type='checkbox' name='enable_counter_announcement' checked>
+                            {% else %}
+                            <input class='form-check-input' type='checkbox' name='enable_counter_announcement'>
+                            {% endif %}
+                            <label class='form-check-label'>Counter Announcement</label>
+                        </div>
+                    </div>
+                    <div class='col-md-4'>
+                        <div class='form-check form-switch mt-4'>
+                            {% if profile.config_json.enable_token_announcement == "on" %}
+                            <input class='form-check-input' type='checkbox' name='enable_token_announcement' checked>
+                            {% else %}
+                            <input class='form-check-input' type='checkbox' name='enable_token_announcement'>
+                            {% endif %}
+                            <label class='form-check-label'>Token Announcement</label>
+                        </div>
+                    </div>
+
+                    <!-- Scroll Text Feature REMOVED -->
+
+                    {% elif device_type == 'LED' %}
+                    <div class='col-md-6'>
+                        <label class='form-label fw-bold'>LED Identifier Name</label>
+                        <input type='text' name='led_identifier_name' class='form-control'
+                            value='{{  profile.config_json.led_identifier_name|default:""  }}' placeholder='Enter Name'>
+                    </div>
+                    <div class='col-md-6'>
+                        <label class='form-label fw-bold'>Counter Number</label>
+                        <input type='number' name='counter_number' class='form-control'
+                            value='{{  profile.config_json.counter_number|default:1  }}'>
+                    </div>
+                    <div class='col-md-6'>
+                        <label class='form-label fw-bold'>Token Calling</label>
+                        <select name='token_calling' class='form-select'>
+                            {% if profile.config_json.token_calling == "Single" %}<option value='Single' selected>Single
+                            </option>{% else %}<option value='Single'>Single</option>{% endif %}
+                            {% if profile.config_json.token_calling == "Multiple" %}<option value='Multiple' selected>
+                                Multiple</option>{% else %}<option value='Multiple'>Multiple</option>{% endif %}
+                        </select>
+                    </div>
+                    <div class='col-md-6'>
+                        <label class='form-label fw-bold'>Token Voice</label>
+                        <select name='token_voice' class='form-select'>
+                            {% if profile.config_json.token_voice == "First" %}<option value='First' selected>First
+                            </option>{% else %}<option value='First'>First</option>{% endif %}
+                            {% if profile.config_json.token_voice == "Second" %}<option value='Second' selected>Second
+                            </option>{% else %}<option value='Second'>Second</option>{% endif %}
+                        </select>
+                    </div>
+                    <div class='col-md-6'>
+                        <div class='form-check form-switch mt-4'>
+                            {% if profile.config_json.voice_announcement == "on" %}
+                            <input class='form-check-input' type='checkbox' name='voice_announcement' checked>
+                            {% else %}
+                            <input class='form-check-input' type='checkbox' name='voice_announcement'>
+                            {% endif %}
+                            <label class='form-check-label'>Voice Announcement</label>
+                        </div>
+                    </div>
+                    <div class='col-md-6'>
+                        <div class='form-check form-switch mt-4'>
+                            {% if profile.config_json.counter_voice == "on" %}
+                            <input class='form-check-input' type='checkbox' name='counter_voice' checked>
+                            {% else %}
+                            <input class='form-check-input' type='checkbox' name='counter_voice'>
+                            {% endif %}
+                            <label class='form-check-label'>Counter Voice</label>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <hr class='my-4'>
+
+                <div class='d-flex justify-content-between'>
+                    <a href='{%  url "embedded_profile_list"  %}' class='btn btn-secondary'>Cancel</a>
+                    <button type='submit' class='btn btn-primary btn-lg px-5'>
+                        <i class='fas fa-save me-2'></i>
+                        {% if profile %}Update{% else %}Create{% endif %} Profile
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{%  static 'root/js/pages/device_config.js'  %}"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const dayChecks = document.querySelectorAll('input[name="day"]');
+        const container = document.getElementById('selectedDaysContainer');
+
+        function updateSelectedDays() {
+            container.innerHTML = '';
+            let selectedCount = 0;
+
+            dayChecks.forEach(check => {
+                if (check.checked) {
+                    selectedCount++;
+                    const label = document.querySelector(`label[for="${check.id}"]`).textContent;
+                    const badge = document.createElement('span');
+                    badge.className = 'badge bg-info text-dark';
+                    badge.textContent = label;
+                    container.appendChild(badge);
+                }
+            });
+
+            if (selectedCount === 0) {
+                container.innerHTML = '<span class="text-muted fst-italic">No days selected</span>';
+            }
+        }
+
+        dayChecks.forEach(check => {
+            check.addEventListener('change', updateSelectedDays);
+        });
+
+        // Initial update
+        updateSelectedDays();
+
+
+    });
+</script>
+{% endblock %}

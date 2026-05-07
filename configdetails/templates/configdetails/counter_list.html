@@ -1,0 +1,113 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}Counter Management{% endblock %}
+{% block content %}
+<div class="container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="h4 fw-bold mb-1">Counter Management</h2>
+            <p class="text-muted small mb-0">Manage counters for token system</p>
+        </div>
+        <a href="{% url 'counter_create' %}" class="btn btn-primary">
+            <i class="fas fa-plus me-1"></i> Create Counter
+        </a>
+    </div>
+
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    <div class="card">
+        <div class="card-body">
+            {% if counters %}
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Counter Name</th>
+                            <th>Prefix Code</th>
+                            <th>Display Name</th>
+                            <th>Max Tokens</th>
+                            <th>Status</th>
+                            <th>Created</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for counter in counters %}
+                        <tr>
+                            <td><strong>{{ counter.counter_name }}</strong></td>
+                            <td><code>{{ counter.counter_prefix_code }}</code></td>
+                            <td>{{ counter.counter_display_name }}</td>
+                            <td>{{ counter.max_token_number }}</td>
+                            <td>
+                                {% if counter.status %}
+                                    <span class="badge bg-success">Active</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">Inactive</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ counter.created_at|date:"Y-m-d" }}</td>
+                            <td>
+                                <a href="{% url 'counter_edit' counter.id %}" class="btn btn-sm btn-outline-primary">
+                                    <i class="fas fa-edit"></i> Edit
+                                </a>
+                                <button type="button" class="btn btn-sm btn-outline-danger" 
+                                        onclick="confirmDelete({{ counter.id }}, '{{ counter.counter_name }}')">
+                                    <i class="fas fa-trash"></i> Delete
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-center py-5">
+                <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
+                <p class="text-muted">No counters found. Create your first counter to get started.</p>
+                <a href="{% url 'counter_create' %}" class="btn btn-primary">
+                    <i class="fas fa-plus me-1"></i> Create Counter
+                </a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Confirm Delete</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete counter "<strong id="counterName"></strong>"?</p>
+                <p class="text-danger small">This action cannot be undone. The counter cannot be deleted if it is mapped to any TV devices or token dispensers.</p>
+            </div>
+            <div class="modal-footer">
+                <form method="POST" id="deleteForm">
+                    {% csrf_token %}
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-danger">Delete</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function confirmDelete(counterId, counterName) {
+    document.getElementById('counterName').textContent = counterName;
+    document.getElementById('deleteForm').action = "{% url 'counter_delete' 0 %}".replace('0', counterId);
+    new bootstrap.Modal(document.getElementById('deleteModal')).show();
+}
+</script>
+{% endblock %}

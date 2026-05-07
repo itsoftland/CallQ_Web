@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}User Profile{% endblock %}
+{% block page_title %}My Profile{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-10">
+        <div class="card border-0 shadow-sm overflow-hidden rounded-4">
+            <div class="card-body p-0">
+                <div class="row g-0">
+                    <div class="col-md-4 bg-light p-5 text-center border-end">
+                        <div class="mb-4">
+                            <div class="avatar-xl mx-auto bg-primary text-white rounded-circle d-flex align-items-center justify-content-center shadow-lg"
+                                style="width: 120px; height: 120px; font-size: 3rem;">
+                                {{ user.username.0|upper }}
+                            </div>
+                        </div>
+                        <h4 class="fw-bold mb-1">{{ user.get_full_name|default:user.username }}</h4>
+                        <p class="text-secondary small mb-4 text-uppercase tracking-wider">{{ user.get_role_display }}
+                        </p>
+
+                        <div class="d-grid gap-2 pt-2">
+                            <a href="{% url 'trigger_password_reset' %}"
+                                class="btn btn-outline-primary rounded-pill btn-sm">
+                                <i class="fas fa-key me-2"></i>Change Password
+                            </a>
+                        </div>
+                    </div>
+
+                    <div class="col-md-8 p-5">
+                        {% if messages %}
+                        {% for message in messages %}
+                        <div class="alert alert-{{ message.tags }} alert-dismissible fade show rounded-3" role="alert">
+                            {{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                        {% endfor %}
+                        {% endif %}
+
+                        <form method="post" action="{% url 'profile' %}">
+                            {% csrf_token %}
+
+                            <h6 class="fw-bold text-primary mb-3">
+                                <i class="fas fa-user-circle me-2"></i>Personal Information
+                            </h6>
+                            <div class="row g-3 mb-4">
+                                <div class="col-md-6">
+                                    <label class="form-label fw-semibold small text-uppercase tracking-wider">First
+                                        Name</label>
+                                    <input type="text" name="first_name" class="form-control bg-light border-0"
+                                        value="{{ user.first_name }}" placeholder="Your first name">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label fw-semibold small text-uppercase tracking-wider">Last
+                                        Name</label>
+                                    <input type="text" name="last_name" class="form-control bg-light border-0"
+                                        value="{{ user.last_name }}" placeholder="Your last name">
+                                </div>
+                                <div class="col-md-12">
+                                    <label
+                                        class="form-label fw-semibold small text-uppercase tracking-wider">Email</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text bg-light border-0 text-secondary">
+                                            <i class="fas fa-envelope"></i>
+                                        </span>
+                                        <input type="email" class="form-control bg-light border-0"
+                                            value="{{ user.email }}" readonly>
+                                    </div>
+                                </div>
+                                <div class="col-12 mt-1">
+                                    <p class="text-muted small mb-0"><i class="fas fa-info-circle me-1"></i>Email also
+                                        serves as your login username. Click "Reset Password" to receive a secure link
+                                        via email.</p>
+                                </div>
+                            </div>
+
+                            {% if company or dealer_customer %}
+                            <hr class="my-4 opacity-50">
+                            <h6 class="fw-bold text-primary mb-3">
+                                <i class="fas fa-building me-2"></i>
+                                {% if user.role == "DEALER_CUSTOMER" or user.dealer_customer_relation %}
+                                Client Details
+                                {% else %}
+                                Company Details
+                                {% endif %}
+                            </h6>
+                            <div class="row g-3 mb-4">
+                                <div class="col-md-8">
+                                    <label class="form-label fw-semibold small text-uppercase tracking-wider">Company
+                                        Name</label>
+                                    <input type="text" name="company_name" class="form-control bg-light border-0"
+                                        value="{% if dealer_customer %}{{ dealer_customer.company_name }}{% else %}{{ company.company_name }}{% endif %}"
+                                        {% if user.role == "DEALER_CUSTOMER" or company.is_dealer_created and not user.dealer_customer_relation %}readonly{% endif %}>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label fw-semibold small text-uppercase tracking-wider">GST
+                                        Number</label>
+                                    <input type="text" name="gst_number" class="form-control bg-light border-0"
+                                        value="{% if dealer_customer %}{{ dealer_customer.gst_number|default:'' }}{% else %}{{ company.gst_number|default:'' }}{% endif %}"
+                                        {% if user.role == "DEALER_CUSTOMER" or company.is_dealer_created and not user.dealer_customer_relation %}readonly{% endif %}>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label fw-semibold small text-uppercase tracking-wider">Contact
+                                        Person</label>
+                                    <input type="text" name="contact_person" class="form-control bg-light border-0"
+                                        value="{% if dealer_customer %}{{ dealer_customer.contact_person }}{% else %}{{ company.contact_person }}{% endif %}"
+                                        {% if user.role == "DEALER_CUSTOMER" or company.is_dealer_created and not user.dealer_customer_relation %}readonly{% endif %}>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label fw-semibold small text-uppercase tracking-wider">Contact
+                                        Number</label>
+                                    <input type="text" name="contact_number" class="form-control bg-light border-0"
+                                        value="{% if dealer_customer %}{{ dealer_customer.contact_number }}{% else %}{{ company.contact_number }}{% endif %}"
+                                        {% if user.role == "DEALER_CUSTOMER" or company.is_dealer_created and not user.dealer_customer_relation %}readonly{% endif %}>
+                                </div>
+                                <div class="col-12">
+                                    <label
+                                        class="form-label fw-semibold small text-uppercase tracking-wider">Address</label>
+                                    <textarea name="address" class="form-control bg-light border-0" rows="2" {% if user.role == "DEALER_CUSTOMER" or company.is_dealer_created and not user.dealer_customer_relation %}readonly{% endif %}>{% if dealer_customer %}{{ dealer_customer.address }}{% else %}{{ company.address }}{% endif %}</textarea>
+                                </div>
+                                <div class="col-md-4">
+                                    <label
+                                        class="form-label fw-semibold small text-uppercase tracking-wider">City</label>
+                                    <input type="text" name="city" class="form-control bg-light border-0"
+                                        value="{% if dealer_customer %}{{ dealer_customer.city }}{% else %}{{ company.city }}{% endif %}"
+                                        {% if user.role == "DEALER_CUSTOMER" or company.is_dealer_created and not user.dealer_customer_relation %}readonly{% endif %}>
+                                </div>
+                                <div class="col-md-4">
+                                    <label
+                                        class="form-label fw-semibold small text-uppercase tracking-wider">District</label>
+                                    <input type="text" name="district" class="form-control bg-light border-0"
+                                        value="{% if dealer_customer %}{{ dealer_customer.district|default:'' }}{% else %}{{ company.district|default:'' }}{% endif %}"
+                                        {% if user.role == "DEALER_CUSTOMER" or company.is_dealer_created and not user.dealer_customer_relation %}readonly{% endif %}>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label fw-semibold small text-uppercase tracking-wider">Zip
+                                        Code</label>
+                                    <input type="text" name="zip_code" class="form-control bg-light border-0"
+                                        value="{% if dealer_customer %}{{ dealer_customer.zip_code }}{% else %}{{ company.zip_code }}{% endif %}"
+                                        {% if user.role == "DEALER_CUSTOMER" or company.is_dealer_created and not user.dealer_customer_relation %}readonly{% endif %}>
+                                </div>
+                                <div class="col-md-12">
+                                    <label
+                                        class="form-label fw-semibold small text-uppercase tracking-wider">State</label>
+                                    <input type="text" name="state" class="form-control bg-light border-0"
+                                        value="{% if dealer_customer %}{{ dealer_customer.state }}{% else %}{{ company.state }}{% endif %}"
+                                        {% if user.role == "DEALER_CUSTOMER" or company.is_dealer_created and not user.dealer_customer_relation %}readonly{% endif %}>
+                                </div>
+                            </div>
+                            {% endif %}
+
+                            <hr class="my-4 opacity-50">
+
+                            <div class="d-flex align-items-center justify-content-between">
+                                <div>
+                                    <p class="mb-0 small fw-bold">Role: <span class="text-primary">{{ user.get_role_display }}</span></p>
+                                    {% if user.role == "DEALER_CUSTOMER" and dealer_customer %}
+                                    <p class="mb-0 small fw-bold">Customer ID: <span class="text-secondary">{{ dealer_customer.customer_id }}</span></p>
+                                    {% elif user.dealer_customer_relation %}
+                                    <p class="mb-0 small fw-bold">Customer ID: <span class="text-secondary">{{ user.dealer_customer_relation.customer_id }}</span></p>
+                                    {% elif user.company_relation %}
+                                    <p class="mb-0 small fw-bold">Customer ID: <span class="text-secondary">{{ user.company_relation.company_id }}</span></p>
+                                    {% endif %}
+                                    <p class="mb-0 x-small text-muted">Join Date: {{ user.date_joined|date:"M d, Y" }}
+                                    </p>
+                                </div>
+                                <button type="submit" class="btn btn-primary px-4 py-2 rounded-3 fw-bold">
+                                    Save Changes
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,45 @@
+{% extends 'base.html' %}
+
+{% block title %}Configuration{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">Configuration</h1>
+</div>
+
+<div class="row">
+    {% for device in devices %}
+    <div class="col-md-4 mb-4">
+        <div class="card h-100 shadow-sm border-0">
+            <div class="card-body">
+                <div class="d-flex align-items-center mb-3">
+                    <div class="bg-primary text-white rounded-circle p-3 me-3">
+                        {% if device.device_type == 'TV' %}
+                        <i class="fas fa-tv fa-lg"></i>
+                        {% elif device.device_type == 'TOKEN_DISPENSER' %}
+                        <i class="fas fa-ticket-alt fa-lg"></i>
+                        {% elif device.device_type == 'KEYPAD' %}
+                        <i class="fas fa-calculator fa-lg"></i>
+                        {% else %}
+                        <i class="fas fa-server fa-lg"></i>
+                        {% endif %}
+                    </div>
+                    <div>
+                        <h5 class="card-title mb-0">{{ device.get_device_type_display }}</h5>
+                        <small class="text-muted">{{ device.serial_number }}</small>
+                    </div>
+                </div>
+                <p class="card-text small text-muted">Configure settings for this device.</p>
+                <div class="d-grid">
+                    <a href="{% url 'device_config' device.id %}" class="btn btn-outline-primary">Configure Device</a>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% empty %}
+    <div class="col-12">
+        <div class="alert alert-warning">No devices found. Please register serial numbers first.</div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

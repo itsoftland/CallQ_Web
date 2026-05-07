@@ -1,0 +1,128 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Assign Devices to Customer{% endblock %}
+{% block page_title %}Assign Devices to Customer{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2 class="h4 fw-bold mb-1">Assign Devices to Dealer Customer</h2>
+        <p class="text-secondary mb-0">Select devices and assign them to a customer.</p>
+    </div>
+    <a href="{% url 'device_list' %}" class="btn btn-outline-secondary">
+        <i class="fas fa-arrow-left me-2"></i>Back to Devices
+    </a>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <form method="post" id="assignForm">
+            {% csrf_token %}
+
+            <div class="row mb-4 align-items-end">
+                <div class="col-md-6">
+                    <label for="dealer_customer_id" class="form-label fw-bold">Select Customer</label>
+                    <select name="dealer_customer_id" id="dealer_customer_id" class="form-select" required>
+                        <option value="">-- Select Customer --</option>
+                        {% for customer in dealer_customers %}
+                        <option value="{{ customer.id }}">{{ customer.company_name }} ({{ customer.customer_id }})
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <button type="submit" class="btn btn-primary w-100"
+                        onclick="return confirm('Are you sure you want to assign selected devices to this customer? Note: This will remove any existing Branch assignment.');">
+                        <i class="fas fa-save me-2"></i>Assign Selected Devices
+                    </button>
+                </div>
+            </div>
+
+            <hr class="my-4">
+
+            <h5 class="fw-bold mb-3">Available Devices</h5>
+
+            {% if devices %}
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="bg-light">
+                        <tr>
+                            <th style="width: 40px;">
+                                <input type="checkbox" class="form-check-input" id="checkAll">
+                            </th>
+                            <th>Serial Number</th>
+                            <th>Type</th>
+                            <th>Current Assignment</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for device in devices %}
+                        <tr>
+                            <td>
+                                <input type="checkbox" class="form-check-input device-checkbox" name="device_ids"
+                                    value="{{ device.id }}">
+                            </td>
+                            <td>
+                                <span class="fw-semibold">{{ device.get_display_identifier }}</span>
+                                {% if device.display_name %}
+                                <small class="text-muted font-monospace d-block">{{ device.serial_number }}</small>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <span class="badge bg-light text-dark border">{{ device.get_device_type_display }}</span>
+                            </td>
+                            <td>
+                                {% if device.dealer_customer %}
+                                <span class="badge bg-primary-subtle text-primary border border-primary-subtle">
+                                    <i class="fas fa-user-tag me-1"></i> {{ device.dealer_customer.company_name }}
+                                </span>
+                                {% elif device.branch %}
+                                <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">
+                                    <i class="fas fa-code-branch me-1"></i> {{ device.branch.branch_name }}
+                                </span>
+                                {% else %}
+                                <span class="text-warning small fst-italic">Unassigned</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if device.is_active %}
+                                <span class="badge bg-success-subtle text-success">Active</span>
+                                {% else %}
+                                <span class="badge bg-secondary-subtle text-secondary">Inactive</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-center py-5 text-muted">
+                <i class="fas fa-laptop fa-3x mb-3 opacity-50"></i>
+                <p>No devices found available for assignment.</p>
+            </div>
+            {% endif %}
+        </form>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const checkAll = document.getElementById('checkAll');
+        const checkboxes = document.querySelectorAll('.device-checkbox');
+
+        if (checkAll) {
+            checkAll.addEventListener('change', function () {
+                checkboxes.forEach(cb => {
+                    cb.checked = this.checked;
+                });
+            });
+        }
+    });
+</script>
+{% endblock %}

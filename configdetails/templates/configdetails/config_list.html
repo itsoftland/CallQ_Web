@@ -1,0 +1,119 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Configuration List{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <!-- Page Header -->
+    <div class="mb-4">
+        <h2 class="h4 fw-bold mb-1">Configuration List</h2>
+        <p class="text-secondary mb-0">View and manage device profiles and settings.</p>
+    </div>
+
+    <!-- Action Bar with Search and Filters -->
+    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+        <div class="d-flex gap-3 align-items-center flex-wrap">
+            <div class="search-wrapper" style="width: 260px;">
+                <i class="fas fa-search text-muted"></i>
+                <input type="text" id="searchInput" class="form-control bg-light border-0 rounded-3"
+                    placeholder="Search by serial..." onkeyup="filterConfigTable()">
+            </div>
+            <select id="deviceTypeFilter" class="form-select bg-light border-0 rounded-3 w-auto"
+                onchange="filterConfigTable()">
+                <option value="">All Types</option>
+                {% for value, label in device_types %}
+                <option value="{{ value }}">{{ label }}</option>
+                {% endfor %}
+            </select>
+            {% if user.role != 'BRANCH' %}
+            <select id="branchFilter" class="form-select bg-light border-0 rounded-3 w-auto"
+                onchange="filterConfigTable()">
+                <option value="">All Branches</option>
+                {% for branch in branches %}
+                <option value="{{ branch.id }}">{{ branch.branch_name }}</option>
+                {% endfor %}
+            </select>
+            {% endif %}
+        </div>
+        <button class="btn btn-outline-secondary rounded-3" onclick="clearConfigFilters()" title="Clear Filters">
+            <i class="fas fa-times me-1"></i>Clear
+        </button>
+    </div>
+
+    <!-- Configuration Table -->
+    <div class="card">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0" id="configTable">
+                    <thead class="bg-light">
+                        <tr>
+                            <th class="ps-4">Serial Number</th>
+                            <th>Device Type</th>
+                            <th>Branch</th>
+                            <th>Config Status</th>
+                            <th>Profiles</th>
+                            <th>Last Updated</th>
+                            <th class="text-end pe-4">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in device_configs %}
+                        <tr data-serial="{{ item.device.serial_number }}" data-type="{{ item.device.device_type }}"
+                            data-branch="{{ item.device.branch.id|default:'' }}">
+                            <td class="ps-4">
+                                <span class="fw-semibold text-dark">{{ item.device.serial_number }}</span>
+                            </td>
+                            <td>
+                                <span class="badge bg-light text-dark border border-light">{{ item.device.get_device_type_display }}</span>
+                            </td>
+                            <td>{{ item.device.branch.branch_name|default:"-" }}</td>
+                            <td>
+                                {% if item.config %}
+                                <span class="badge bg-success">Configured</span>
+                                {% else %}
+                                <span class="badge bg-warning">Not Required</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <span class="badge bg-info">{{ item.profiles_count }} Profile{{ item.profiles_count|pluralize }}</span>
+                            </td>
+                            <td>
+                                {% if item.last_updated %}
+                                <small class="text-muted">{{ item.last_updated|date:"M d, Y H:i" }}</small>
+                                {% else %}
+                                <small class="text-muted">-</small>
+                                {% endif %}
+                            </td>
+                            <td class="text-end pe-4">
+                                <div class="btn-group btn-group-sm">
+                                    <a href="{% url 'device_config' item.device.id %}"
+                                        class="btn btn-sm btn-outline-primary" title="Configure">
+                                        <i class="fas fa-cog"></i>
+                                    </a>
+                                    <a href="{% url 'config_profile_create' item.device.id %}"
+                                        class="btn btn-sm btn-outline-success" title="Add Profile">
+                                        <i class="fas fa-plus"></i>
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr class="no-results">
+                            <td colspan="7" class="text-center py-4 text-muted">
+                                <i class="fas fa-inbox fa-2x mb-2"></i>
+                                <p class="mb-0">No devices found</p>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% block extra_js %}
+<script src="{% static 'root/js/pages/config_list.js' %}"></script>
+{% endblock %}
+{% endblock %}

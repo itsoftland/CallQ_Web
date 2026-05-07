@@ -1,0 +1,267 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Batch Requests{% endblock %}
+{% block page_title %}Batch Requests{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+        <h2 class="h4 fw-bold mb-1">Batch Requests</h2>
+        <p class="text-secondary mb-0">Review and manage batch license requests from customers and dealers</p>
+    </div>
+    <div class="search-wrapper" style="width: 260px;">
+        <i class="fas fa-search text-muted"></i>
+        <input type="text" id="searchInput" class="form-control bg-light border-0 rounded-3 ps-5"
+            placeholder="Search requests..." value="{{ search_query }}">
+    </div>
+</div>
+
+<!-- Stats Cards -->
+{% include 'licenses/includes/batch_request_stats.html' %}
+
+<!-- Filter Tabs -->
+<div class="mb-4">
+    <ul class="nav nav-pills gap-2" id="statusTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <a class="nav-link {% if status_filter == 'ALL' or not status_filter %}active{% endif %}"
+                href="?{% if search_query %}search={{ search_query }}&{% endif %}page=1">
+                All Requests
+            </a>
+        </li>
+        <li class="nav-item" role="presentation">
+            <a class="nav-link {% if status_filter == 'PENDING' %}active{% endif %}"
+                href="?status=PENDING{% if search_query %}&search={{ search_query }}{% endif %}&page=1">
+                <i class="fas fa-clock me-1"></i> Pending
+            </a>
+        </li>
+        <li class="nav-item" role="presentation">
+            <a class="nav-link {% if status_filter == 'APPROVED' %}active{% endif %}"
+                href="?status=APPROVED{% if search_query %}&search={{ search_query }}{% endif %}&page=1">
+                <i class="fas fa-check-circle me-1"></i> Approved
+            </a>
+        </li>
+        <li class="nav-item" role="presentation">
+            <a class="nav-link {% if status_filter == 'REJECTED' %}active{% endif %}"
+                href="?status=REJECTED{% if search_query %}&search={{ search_query }}{% endif %}&page=1">
+                <i class="fas fa-times-circle me-1"></i> Rejected
+            </a>
+        </li>
+    </ul>
+</div>
+
+<!-- Requests Table -->
+<div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+    <div class="table-responsive">
+        <table class="table align-middle mb-0" id="requestsTable">
+            <thead class="bg-light border-bottom">
+                <tr>
+                    <th class="ps-4 py-3 text-secondary text-uppercase small fw-bold">Requester</th>
+                    <th class="py-3 text-secondary text-uppercase small fw-bold">Type</th>
+                    <th class="py-3 text-secondary text-uppercase small fw-bold">Devices Requested</th>
+                    <th class="py-3 text-secondary text-uppercase small fw-bold">Date</th>
+                    <th class="py-3 text-secondary text-uppercase small fw-bold">Status</th>
+                    <th class="pe-4 py-3 text-end text-secondary text-uppercase small fw-bold">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for req in requests %}
+                <tr class="border-bottom" data-status="{{ req.status }}" data-type="{{ req.requester_type }}">
+                    <td class="ps-4 py-3">
+                        <div class="d-flex align-items-center gap-3">
+                            <div class="text-secondary opacity-50">
+                                <i class="fas fa-building fa-lg"></i>
+                            </div>
+                            <div>
+                                <div class="fw-bold text-dark">{{ req.requester.company_name }}</div>
+                                <div class="small text-secondary">{{ req.requester.state|default:"N/A" }}</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="py-3">
+                        {% if req.requester_type == 'DEALER' %}
+                        <span class="badge bg-primary px-3 py-2 rounded-pill fw-medium">
+                            <i class="fas fa-handshake me-1"></i> Dealer
+                        </span>
+                        {% else %}
+                        <span class="badge bg-info px-3 py-2 rounded-pill fw-medium">
+                            <i class="fas fa-user me-1"></i> Customer
+                        </span>
+                        {% endif %}
+                    </td>
+                    <td class="py-3">
+                        <div class="small">
+                            <div class="mb-1">
+                                <strong>{{ req.total_requested_devices }}</strong> total devices
+                            </div>
+                            <div class="text-secondary" style="font-size: 0.75rem;">{% if req.requested_tvs > 0 %}TVs: {{ req.requested_tvs }}{% endif %}{% if req.requested_dispensers > 0 %}{% if req.requested_tvs > 0 %}, {% endif %}Dispensers: {{ req.requested_dispensers }}{% endif %}{% if req.requested_keypads > 0 %}{% if req.requested_tvs > 0 or req.requested_dispensers > 0 %}, {% endif %}Keypads: {{ req.requested_keypads }}{% endif %}{% if req.requested_brokers > 0 %}{% if req.requested_tvs > 0 or req.requested_dispensers > 0 or req.requested_keypads > 0 %}, {% endif %}Brokers: {{ req.requested_brokers }}{% endif %}{% if req.requested_leds > 0 %}{% if req.requested_tvs > 0 or req.requested_dispensers > 0 or req.requested_keypads > 0 or req.requested_brokers > 0 %}, {% endif %}LEDs: {{ req.requested_leds }}{% endif %}</div>
+                        </div>
+                    </td>
+                    <td class="py-3 text-dark fw-medium">
+                        {{ req.created_at|date:"Y-m-d" }}
+                        <div class="small text-secondary">{{ req.created_at|date:"H:i" }}</div>
+                    </td>
+                    <td class="py-3">
+                        {% if req.status == 'PENDING' %}
+                        <span class="badge bg-warning text-dark px-3 py-2 rounded-pill fw-medium">
+                            <i class="fas fa-clock me-1"></i> Pending
+                        </span>
+                        {% elif req.status == 'APPROVED' %}
+                        <span class="badge bg-success text-white px-3 py-2 rounded-pill fw-medium">
+                            <i class="fas fa-check-circle me-1"></i> Approved
+                        </span>
+                        {% elif req.status == 'REJECTED' %}
+                        <span class="badge bg-danger text-white px-3 py-2 rounded-pill fw-medium">
+                            <i class="fas fa-times-circle me-1"></i> Rejected
+                        </span>
+                        {% endif %}
+                    </td>
+                    <td class="pe-4 py-3 text-end">
+                        {% if req.status == 'PENDING' %}
+                        <div class="btn-group" role="group">
+                            <form method="post" action="{% url 'approve_batch_request' req.id %}" class="d-inline">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-sm btn-success rounded-pill me-2"
+                                    title="Approve Request">
+                                    <i class="fas fa-check me-1"></i> Approve
+                                </button>
+                            </form>
+                            <form method="post" action="{% url 'reject_batch_request' req.id %}" class="d-inline">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-sm btn-danger rounded-pill" title="Reject Request">
+                                    <i class="fas fa-times me-1"></i> Reject
+                                </button>
+                            </form>
+                        </div>
+                        {% else %}
+                        <button class="btn btn-sm btn-outline-secondary rounded-pill" data-bs-toggle="modal"
+                            data-bs-target="#detailsModal{{ req.id }}" title="View Details">
+                            <i class="fas fa-eye me-1"></i> Details
+                        </button>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="6" class="text-center py-5">
+                        <div class="text-muted opacity-50 mb-3">
+                            <i class="fas fa-inbox fa-3x"></i>
+                        </div>
+                        <p class="h6 text-secondary">No results match your filters</p>
+                        <p class="small text-muted">Try adjusting your search or filter criteria</p>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <!-- Pagination -->
+    {% with items=requests %}
+    {% include 'companydetails/partials/pagination.html' %}
+    {% endwith %}
+</div>
+
+<!-- Details Modals -->
+{% for req in requests %}
+{% if req.status != 'PENDING' %}
+<div class="modal fade" id="detailsModal{{ req.id }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg rounded-4">
+            <div class="modal-header border-bottom-0">
+                <h5 class="modal-title fw-bold">Request Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="small text-secondary fw-bold">Requester</label>
+                    <div class="fw-medium">{{ req.requester.company_name }}</div>
+                </div>
+                <div class="mb-3">
+                    <label class="small text-secondary fw-bold">Status</label>
+                    <div>
+                        {% if req.status == 'APPROVED' %}
+                        <span class="badge bg-success">Approved</span>
+                        {% else %}
+                        <span class="badge bg-danger">Rejected</span>
+                        {% endif %}
+                    </div>
+                </div>
+                {% if req.reviewed_by %}
+                <div class="mb-3">
+                    <label class="small text-secondary fw-bold">Reviewed By</label>
+                    <div class="fw-medium">{{ req.reviewed_by.username }}</div>
+                    <div class="small text-secondary">{{ req.reviewed_at|date:"Y-m-d H:i" }}</div>
+                </div>
+                {% endif %}
+                {% if req.admin_notes %}
+                <div class="mb-3">
+                    <label class="small text-secondary fw-bold">Admin Notes</label>
+                    <div class="text-dark">{{ req.admin_notes }}</div>
+                </div>
+                {% endif %}
+                {% if req.reason %}
+                <div class="mb-3">
+                    <label class="small text-secondary fw-bold">Request Reason</label>
+                    <div class="text-dark">{{ req.reason }}</div>
+                </div>
+                {% endif %}
+            </div>
+            <div class="modal-footer border-top-0">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endfor %}
+
+<style>
+    .search-wrapper {
+        position: relative;
+    }
+
+    .search-wrapper i {
+        position: absolute;
+        left: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        pointer-events: none;
+    }
+
+    .nav-pills .nav-link {
+        background-color: #f8f9fa;
+        color: #6c757d;
+        border-radius: 50rem;
+        padding: 0.5rem 1rem;
+        transition: all 0.3s ease;
+    }
+
+    .nav-pills .nav-link:hover {
+        background-color: #e9ecef;
+        color: #495057;
+    }
+
+    .nav-pills .nav-link.active {
+        background-color: #0d6efd;
+        color: white;
+    }
+</style>
+
+<script>
+    // Server-side search with 500ms debounce
+    (function() {
+        var searchInput = document.getElementById('searchInput');
+        var debounce;
+        searchInput.addEventListener('input', function() {
+            clearTimeout(debounce);
+            debounce = setTimeout(function() {
+                var params = new URLSearchParams(window.location.search);
+                params.set('search', searchInput.value);
+                params.set('page', '1');
+                window.location.href = '?' + params.toString();
+            }, 500);
+        });
+    })();
+</script>
+{% endblock %}

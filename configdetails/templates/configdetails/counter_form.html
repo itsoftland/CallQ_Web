@@ -1,0 +1,86 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}{{ action }} Counter{% endblock %}
+{% block content %}
+<div class="container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="h4 fw-bold mb-1">{{ action }} Counter</h2>
+            <p class="text-muted small mb-0">{% if counter %}Edit counter details{% else %}Create a new counter for token system{% endif %}</p>
+        </div>
+        <a href="{% url 'counter_list' %}" class="btn btn-outline-secondary btn-sm">
+            <i class="fas fa-arrow-left me-1"></i> Back to List
+        </a>
+    </div>
+
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    <div class="card">
+        <div class="card-body p-4">
+            <form method="POST">
+                {% csrf_token %}
+                
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Counter Name <span class="text-danger">*</span></label>
+                        <input type="text" name="counter_name" class="form-control" 
+                               value="{{ counter.counter_name|default:'' }}" 
+                               placeholder="e.g., Counter A" required>
+                        <small class="text-muted">Unique name for the counter</small>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Counter Prefix Code <span class="text-danger">*</span></label>
+                        <input type="text" name="counter_prefix_code" class="form-control" 
+                               value="{{ counter.counter_prefix_code|default:'' }}" 
+                               placeholder="e.g., CA" required maxlength="20">
+                        <small class="text-muted">Prefix used in token generation (must be unique)</small>
+                    </div>
+                    
+                    <div class="col-md-12">
+                        <label class="form-label fw-bold">Counter Display Name <span class="text-danger">*</span></label>
+                        <input type="text" name="counter_display_name" class="form-control" 
+                               value="{{ counter.counter_display_name|default:'' }}" 
+                               placeholder="e.g., Counter A - Service Desk" required maxlength="150">
+                        <small class="text-muted">Name shown on TV display</small>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Maximum Token Number <span class="text-danger">*</span></label>
+                        <input type="number" name="max_token_number" class="form-control" 
+                               value="{{ counter.max_token_number|default:100 }}" 
+                               min="1" required>
+                        <small class="text-muted">Maximum tokens allowed for this counter</small>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Status</label>
+                        <div class="form-check form-switch mt-2">
+                            <input class="form-check-input" type="checkbox" name="status" id="status"
+                                   {% if not counter or counter.status %}checked{% endif %}>
+                            <label class="form-check-label fw-bold" for="status">Active</label>
+                        </div>
+                        <small class="text-muted d-block">Only active counters can be mapped to devices</small>
+                    </div>
+                </div>
+                
+                <div class="mt-4 pt-3 border-top">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save me-1"></i> Save Counter
+                    </button>
+                    <a href="{% url 'counter_list' %}" class="btn btn-outline-secondary">
+                        Cancel
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,11 @@
+/* ===== FOOTER ===== */
+.main-footer {
+    margin-top: auto;
+    padding: 16px 32px;
+    border-top: 1px solid var(--border-color);
+    background-color: white;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    display: flex;
+    justify-content: space-between;
+}

@@ -1,0 +1,416 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}Token Report{% endblock %}
+{% block page_title %}Token Report{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* ── Filter Card ─────────────────────────────────────────── */
+    .filter-card {
+        background: var(--card-bg);
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-sm);
+        border: 1px solid var(--border-color);
+        padding: 1.25rem 1.5rem;
+        margin-bottom: 1.5rem;
+    }
+    .filter-card .form-label {
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--text-secondary);
+        margin-bottom: 0.35rem;
+    }
+    .filter-card .form-control,
+    .filter-card .form-select {
+        font-size: 0.875rem;
+        border-color: var(--border-color);
+        border-radius: var(--radius);
+        color: var(--text-primary);
+        transition: border-color var(--transition), box-shadow var(--transition);
+    }
+    .filter-card .form-control:focus,
+    .filter-card .form-select:focus {
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+    }
+
+    /* ── Page Header ─────────────────────────────────────────── */
+    .report-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 1.5rem;
+    }
+    .report-header h2 {
+        font-size: 1.25rem;
+        font-weight: 700;
+        color: var(--text-primary);
+        margin: 0;
+    }
+    .report-header p {
+        font-size: 0.8125rem;
+        color: var(--text-secondary);
+        margin: 0.15rem 0 0;
+    }
+    .count-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        background: var(--primary-light);
+        color: var(--primary-color);
+        font-size: 0.8125rem;
+        font-weight: 600;
+        padding: 0.375rem 0.875rem;
+        border-radius: 9999px;
+    }
+
+    /* ── Report Card ─────────────────────────────────────────── */
+    .report-card {
+        background: var(--card-bg);
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-sm);
+        border: 1px solid var(--border-color);
+        overflow: hidden;
+    }
+
+    /* ── Table ───────────────────────────────────────────────── */
+    .report-table thead th {
+        background-color: #F9FAFB;
+        color: var(--text-secondary);
+        font-size: 0.72rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.055em;
+        padding: 12px 20px;
+        border-bottom: 1px solid var(--border-color);
+        white-space: nowrap;
+    }
+    .report-table tbody td {
+        padding: 13px 20px;
+        font-size: 0.8125rem;
+        color: var(--text-primary);
+        border-bottom: 1px solid var(--border-color);
+        vertical-align: middle;
+    }
+    .report-table tbody tr:last-child td {
+        border-bottom: none;
+    }
+    .report-table tbody tr:hover td {
+        background-color: #F9FAFB;
+    }
+
+    /* message cell */
+    .msg-cell {
+        font-family: 'SFMono-Regular', Consolas, monospace;
+        font-size: 0.8rem;
+        color: #1D4ED8;
+        background: #EFF6FF;
+        border-radius: 4px;
+        padding: 3px 8px;
+        display: inline-block;
+        max-width: 420px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    /* time cell */
+    .time-primary {
+        font-weight: 500;
+        color: var(--text-primary);
+        white-space: nowrap;
+    }
+    .time-secondary {
+        font-size: 0.75rem;
+        color: var(--text-muted);
+        white-space: nowrap;
+    }
+    .time-null {
+        color: var(--text-muted);
+        font-style: italic;
+        font-size: 0.75rem;
+    }
+
+    /* customer / mac chips */
+    .chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        padding: 3px 10px;
+        border-radius: 9999px;
+        font-size: 0.75rem;
+        font-weight: 500;
+        white-space: nowrap;
+    }
+    .chip-customer {
+        background: #F0FDF4;
+        color: #166534;
+    }
+    .chip-mac {
+        background: #F5F3FF;
+        color: #5B21B6;
+        font-family: 'SFMono-Regular', Consolas, monospace;
+    }
+
+    /* ── Empty State ──────────────────────────────────────────── */
+    .empty-state {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 4rem 2rem;
+        gap: 1rem;
+    }
+    .empty-state .icon-ring {
+        width: 64px;
+        height: 64px;
+        border-radius: 50%;
+        background: var(--primary-light);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--primary-color);
+        font-size: 1.5rem;
+    }
+    .empty-state p {
+        color: var(--text-secondary);
+        font-size: 0.9rem;
+        margin: 0;
+        text-align: center;
+    }
+
+    /* ── Pagination ───────────────────────────────────────────── */
+    .pagination-wrapper {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.875rem 1.25rem;
+        border-top: 1px solid var(--border-color);
+        background: #FAFAFA;
+    }
+    .pagination-info {
+        font-size: 0.8125rem;
+        color: var(--text-secondary);
+    }
+    .pagination .page-link {
+        border-radius: var(--radius);
+        font-size: 0.8125rem;
+        color: var(--primary-color);
+        border-color: var(--border-color);
+        padding: 0.3rem 0.7rem;
+    }
+    .pagination .page-item.active .page-link {
+        background-color: var(--primary-color);
+        border-color: var(--primary-color);
+        color: #fff;
+    }
+    .pagination .page-link:hover:not(.disabled) {
+        background: var(--primary-light);
+        border-color: var(--primary-color);
+        color: var(--primary-color);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4 px-4">
+
+    <!-- Page Header -->
+    <div class="report-header">
+        <div>
+            <h2><i class="fas fa-file-invoice me-2 text-primary"></i>Token Report</h2>
+            <p>Token events received from embedded devices</p>
+        </div>
+        <span class="count-badge">
+            <i class="fas fa-list-ol"></i>
+            {{ total_count }} Record{{ total_count|pluralize }}
+        </span>
+    </div>
+
+    <!-- Filter Bar -->
+    <div class="filter-card">
+        <form method="GET" id="filterForm">
+            <div class="row g-3 align-items-end">
+                <div class="col-md-3">
+                    <label for="filterId" class="form-label">Customer ID</label>
+                    <div class="input-group input-group-sm">
+                        <span class="input-group-text bg-white border-end-0">
+                            <i class="fas fa-id-card text-muted" style="font-size:.7rem;"></i>
+                        </span>
+                        <input type="text" class="form-control border-start-0"
+                               id="filterId" name="customer_id"
+                               value="{{ filter_customer }}"
+                               placeholder="Search customer…">
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <label for="filterMac" class="form-label">MAC Address</label>
+                    <div class="input-group input-group-sm">
+                        <span class="input-group-text bg-white border-end-0">
+                            <i class="fas fa-network-wired text-muted" style="font-size:.7rem;"></i>
+                        </span>
+                        <input type="text" class="form-control border-start-0"
+                               id="filterMac" name="mac_address"
+                               value="{{ filter_mac }}"
+                               placeholder="AA:BB:CC…">
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <label for="filterFrom" class="form-label">From Date</label>
+                    <input type="date" class="form-control form-control-sm"
+                           id="filterFrom" name="date_from"
+                           value="{{ filter_date_from }}">
+                </div>
+                <div class="col-md-2">
+                    <label for="filterTo" class="form-label">To Date</label>
+                    <input type="date" class="form-control form-control-sm"
+                           id="filterTo" name="date_to"
+                           value="{{ filter_date_to }}">
+                </div>
+                <div class="col-md-2 d-flex gap-2">
+                    <button type="submit" class="btn btn-primary btn-sm flex-grow-1">
+                        <i class="fas fa-search me-1"></i>Filter
+                    </button>
+                    <a href="{% url 'token_report_list' %}" class="btn btn-outline-secondary btn-sm">
+                        <i class="fas fa-undo"></i>
+                    </a>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <!-- Report Table -->
+    <div class="report-card">
+        {% if reports %}
+        <div class="table-responsive">
+            <table class="table report-table mb-0">
+                <thead>
+                    <tr>
+                        <th style="width:4%;">#</th>
+                        <th style="width:25%;">Message</th>
+                        <th style="width:18%;">Received</th>
+                        <th style="width:18%;">Displayed</th>
+                        <th style="width:15%;">Customer ID</th>
+                        <th style="width:20%;">MAC Address</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for report in reports %}
+                    <tr>
+                        <!-- Row number (global across pages) -->
+                        <td class="text-muted" style="font-size:.75rem;">
+                            {{ forloop.counter0|add:reports.start_index }}
+                        </td>
+
+                        <!-- Message -->
+                        <td>
+                            <span class="msg-cell" title="{{ report.received_message }}">
+                                {{ report.received_message }}
+                            </span>
+                        </td>
+
+                        <!-- Received DateTime -->
+                        <td>
+                            <div class="time-primary">
+                                {{ report.received_dateTime|date:"d M Y" }}
+                            </div>
+                            <div class="time-secondary">
+                                {{ report.received_dateTime|time:"H:i:s" }}
+                            </div>
+                        </td>
+
+                        <!-- Displayed DateTime -->
+                        <td>
+                            {% if report.displayed_dateTime %}
+                                <div class="time-primary">
+                                    {{ report.displayed_dateTime|date:"d M Y" }}
+                                </div>
+                                <div class="time-secondary">
+                                    {{ report.displayed_dateTime|time:"H:i:s" }}
+                                </div>
+                            {% else %}
+                                <span class="time-null">— not set —</span>
+                            {% endif %}
+                        </td>
+
+                        <!-- Customer ID -->
+                        <td>
+                            <span class="chip chip-customer">
+                                <i class="fas fa-building" style="font-size:.65rem;"></i>
+                                {{ report.customerId }}
+                            </span>
+                        </td>
+
+                        <!-- MAC Address -->
+                        <td>
+                            <span class="chip chip-mac">
+                                <i class="fas fa-wifi" style="font-size:.65rem;"></i>
+                                {{ report.mac_address }}
+                            </span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Pagination -->
+        {% if reports.paginator.num_pages > 1 %}
+        <div class="pagination-wrapper">
+            <span class="pagination-info">
+                Showing {{ reports.start_index }}–{{ reports.end_index }} of {{ total_count }}
+            </span>
+            <nav>
+                <ul class="pagination pagination-sm mb-0 gap-1">
+                    {% if reports.has_previous %}
+                    <li class="page-item">
+                        <a class="page-link" href="?{% if filter_customer %}customer_id={{ filter_customer }}&{% endif %}{% if filter_mac %}mac_address={{ filter_mac }}&{% endif %}{% if filter_date_from %}date_from={{ filter_date_from }}&{% endif %}{% if filter_date_to %}date_to={{ filter_date_to }}&{% endif %}page={{ reports.previous_page_number }}">
+                            <i class="fas fa-chevron-left" style="font-size:.7rem;"></i>
+                        </a>
+                    </li>
+                    {% endif %}
+
+                    {% for num in reports.paginator.page_range %}
+                        {% if reports.number == num %}
+                        <li class="page-item active"><span class="page-link">{{ num }}</span></li>
+                        {% elif num > reports.number|add:'-3' and num < reports.number|add:'3' %}
+                        <li class="page-item">
+                            <a class="page-link" href="?{% if filter_customer %}customer_id={{ filter_customer }}&{% endif %}{% if filter_mac %}mac_address={{ filter_mac }}&{% endif %}{% if filter_date_from %}date_from={{ filter_date_from }}&{% endif %}{% if filter_date_to %}date_to={{ filter_date_to }}&{% endif %}page={{ num }}">{{ num }}</a>
+                        </li>
+                        {% endif %}
+                    {% endfor %}
+
+                    {% if reports.has_next %}
+                    <li class="page-item">
+                        <a class="page-link" href="?{% if filter_customer %}customer_id={{ filter_customer }}&{% endif %}{% if filter_mac %}mac_address={{ filter_mac }}&{% endif %}{% if filter_date_from %}date_from={{ filter_date_from }}&{% endif %}{% if filter_date_to %}date_to={{ filter_date_to }}&{% endif %}page={{ reports.next_page_number }}">
+                            <i class="fas fa-chevron-right" style="font-size:.7rem;"></i>
+                        </a>
+                    </li>
+                    {% endif %}
+                </ul>
+            </nav>
+        </div>
+        {% endif %}
+
+        {% else %}
+        <!-- Empty state -->
+        <div class="empty-state">
+            <div class="icon-ring">
+                <i class="fas fa-inbox"></i>
+            </div>
+            {% if filter_customer or filter_mac or filter_date_from or filter_date_to %}
+                <p>No records match your current filters.</p>
+                <a href="{% url 'token_report_list' %}" class="btn btn-sm btn-outline-primary">
+                    <i class="fas fa-undo me-1"></i>Clear Filters
+                </a>
+            {% else %}
+                <p>No token reports have been received yet.</p>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+
+</div>
+{% endblock %}

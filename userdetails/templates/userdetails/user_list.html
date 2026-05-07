@@ -1,0 +1,198 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}Users{% endblock %}
+{% block page_title %}Users{% endblock %}
+{% block content %}
+<div class="mb-4">
+    <h2 class="h3 fw-bold mb-1">Users</h2>
+    <p class="text-secondary mb-0">Manage user accounts and permissions</p>
+</div>
+
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <form method="GET" class="d-flex gap-3 flex-wrap flex-grow-1">
+        <div class="position-relative" style="width: 280px;">
+            <span class="position-absolute ms-3 translate-middle-y top-50 text-muted">
+                <i class="fas fa-search"></i>
+            </span>
+            <input type="text" name="search" value="{{ search_query }}"
+                class="form-control ps-5 bg-light border-0 rounded-3" placeholder="Search by name or email...">
+        </div>
+        <div style="width: 180px;">
+            <select name="role" class="form-select bg-light border-0 rounded-3">
+                <option value="">All Roles</option>
+                {% for role_val, role_name in available_roles %}
+                <option value="{{ role_val }}" {% if role_filter == role_val %}selected{% endif %}>
+                    {{ role_name }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        {% if branches %}
+        <div style="width: 200px;">
+            <select name="branch" class="form-select bg-light border-0 rounded-3">
+                <option value="">All Branches</option>
+                {% for branch in branches %}
+                <option value="{{ branch.id }}" {% if branch_filter == branch.id|stringformat:"s" %}selected{% endif %}>
+                    {{ branch.branch_name }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        {% endif %}
+        <button type="submit" class="btn btn-secondary rounded-3">Filter</button>
+        {% if search_query or role_filter or branch_filter %}
+        <a href="{% url 'user_list' %}" class="btn btn-link text-secondary">Clear</a>
+        {% endif %}
+    </form>
+    <a href="{% url 'user_create' %}" class="btn btn-primary rounded-3"><i class="fas fa-plus me-2"></i>Add User</a>
+</div>
+
+<div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0" id="companyUserTable">
+            <thead class="bg-white border-bottom">
+                <tr>
+                    <th class="ps-4 py-3 text-secondary fw-medium">User</th>
+                    <th class="py-3 text-secondary fw-medium">Role</th>
+                    <th class="py-3 text-secondary fw-medium">Company</th>
+                    <th class="py-3 text-secondary fw-medium">Last Login</th>
+                    <th class="py-3 text-secondary fw-medium">Status</th>
+                    <th class="pe-4 py-3 text-end text-secondary fw-medium">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for u in users %}
+                <tr class="border-bottom">
+                    <td class="ps-4 py-3">
+                        <div class="d-flex flex-column">
+                            <span class="fw-medium text-dark">
+                                {{ u.display_name|default:u.username }}
+                            </span>
+                            <small class="text-muted">
+                                {{ u.email }}
+                            </small>
+                        </div>
+                    </td>
+                    <td class="py-3">
+                        {% if u.role == "SUPER_ADMIN" %}
+                        <span class="badge bg-danger text-white px-2 py-1 rounded-pill">Super Admin</span>
+                        {% elif u.role == "ADMIN" %}
+                        <span class="badge bg-primary text-white px-2 py-1 rounded-pill">Admin</span>
+                        {% elif u.role == "DEALER_ADMIN" %}
+                        <span class="badge bg-info text-dark px-2 py-1 rounded-pill">Dealer Admin</span>
+                        {% elif u.role == "COMPANY_ADMIN" %}
+                        <span class="badge bg-success text-white px-2 py-1 rounded-pill">Company Admin</span>
+                        {% elif u.role == "BRANCH_ADMIN" %}
+                        <span class="badge bg-warning text-dark px-2 py-1 rounded-pill">Branch Admin</span>
+                        {% elif u.role == "COMPANY_EMPLOYEE" %}
+                        <span class="badge bg-info text-white px-2 py-1 rounded-pill">Company Employee</span>
+                        {% elif u.role == "EMPLOYEE" %}
+                        <span class="badge bg-secondary text-white px-2 py-1 rounded-pill">Employee</span>
+                        {% elif u.role == "PRODUCTION_ADMIN" %}
+                        <span class="badge bg-dark text-white px-2 py-1 rounded-pill">Production Admin</span>
+                        {% else %}
+                        <span class="badge bg-light text-dark px-2 py-1 rounded-pill border">
+                            {{ u.get_role_display }}
+                        </span>
+                        {% endif %}
+                    </td>
+                    <td class="py-3">
+                        {% if u.company_relation %}
+                        <span class="text-dark">
+                            <i class="fas fa-building text-muted me-1"></i>
+                            {{ u.company_relation.company_name }}
+                        </span>
+                        {% elif u.branch_relation and u.branch_relation.company %}
+                        <span class="text-dark">
+                            <i class="fas fa-building text-muted me-1"></i>
+                            {{ u.branch_relation.company.company_name }}
+                        </span>
+                        {% else %}
+                        <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                    <td class="py-3">
+                        {% if u.last_login %}
+                        <div class="d-flex flex-column">
+                            <span class="text-dark small fw-medium">
+                                {{ u.last_login|date:"d M Y" }}
+                            </span>
+                            <small class="text-muted">
+                                {{ u.last_login|time:"H:i" }}
+                            </small>
+                        </div>
+                        {% else %}
+                        <span class="text-muted small">Never</span>
+                        {% endif %}
+                    </td>
+                    <td class="py-3">
+                        <div class="d-flex align-items-center gap-2">
+                            <form action="{% url 'user_toggle_status' u.id %}" method="post" class="d-inline">
+                                {% csrf_token %}
+                                <input class="form-check-input" type="checkbox" onchange="this.form.submit()"
+                                    style="cursor:pointer" {% if u.is_active %}checked{% endif %}>
+                            </form>
+                            {% if u.is_active %}
+                            <span class="badge bg-success text-white px-2 py-1 rounded-pill small">Active</span>
+                            {% else %}
+                            <span class="badge bg-secondary text-white px-2 py-1 rounded-pill small">Inactive</span>
+                            {% endif %}
+                        </div>
+                    </td>
+                    <td class="pe-4 py-3 text-end">
+                        <a href="{% url 'user_edit' u.id %}" class="btn btn-sm btn-link text-secondary p-1"
+                            title="Edit"><i class="fas fa-pen"></i></a>
+                        <button type="button" class="btn btn-sm btn-link text-danger p-1" title="Delete"
+                            onclick="confirmDelete('{{ u.id }}', '{{ u.email }}')">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="6" class="text-center py-5">
+                        <div class="text-muted opacity-50 mb-3"><i class="fas fa-users fa-3x"></i></div>
+                        <p class="h6 text-secondary">No users found</p>
+                        <a href="{% url 'user_create' %}" class="btn btn-primary mt-3">Add First User</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="modal fade" id="deleteModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg rounded-4">
+            <div class="modal-header border-0 pb-0">
+                <h5 class="modal-title fw-bold">Confirm Delete</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body py-4">
+                <p class="text-secondary mb-0">
+                    Are you sure you want to delete user
+                    <span id="deleteUserEmail" class="fw-bold text-dark"></span>?
+                    This action cannot be undone.
+                </p>
+            </div>
+            <div class="modal-footer border-0 pt-0">
+                <button type="button" class="btn btn-light rounded-3 px-4" data-bs-dismiss="modal">Cancel</button>
+                <form id="deleteForm" method="POST">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-danger rounded-3 px-4">Delete</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function confirmDelete(userId, userEmail) {
+        document.getElementById('deleteUserEmail').textContent = userEmail;
+        let url = "{% url 'user_delete' pk=0 %}".replace('0', userId);
+        document.getElementById('deleteForm').action = url;
+        new bootstrap.Modal(document.getElementById('deleteModal')).show();
+    }
+</script>
+{% endblock %}

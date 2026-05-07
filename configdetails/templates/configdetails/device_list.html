@@ -1,0 +1,467 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Devices{% endblock %}
+{% block page_title %}Devices{% endblock %}
+
+{% block extra_css %}
+<!-- Batch styles removed -->
+{% endblock %}
+
+{% block content %}
+<!-- Action Bar -->
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+        <h2 class="h4 fw-bold mb-1">Devices</h2>
+        <p class="text-secondary mb-0">Monitor and configure connected displays and hardware.</p>
+    </div>
+    <div class="d-flex gap-3 align-items-center">
+        <a href="{% url 'device_approval_list' %}" class="btn btn-outline-warning">
+            <i class="fas fa-tasks me-2"></i>Pending Requests
+        </a>
+        {% if request.user.role == 'DEALER_ADMIN' %}
+        <a href="{% url 'map_device_to_customer' %}" class="btn btn-outline-info">
+            <i class="fas fa-user-tag me-2"></i>Map to Customer
+        </a>
+        {% endif %}
+        {% if request.user.role == 'SUPER_ADMIN' %}
+        <a href="{% url 'device_register' %}" class="btn btn-primary">
+            <i class="fas fa-plus me-2"></i>Register Device
+        </a>
+        {% elif not request.user.dealer_customer_relation %}
+        {% if request.user.company_relation %}
+        {% if not request.user.company_relation.is_dealer_created %}
+        {% if request.user.role in 'COMPANY_ADMIN,DEALER_ADMIN,PRODUCTION_ADMIN' %}
+        <a href="{% url 'device_register' %}" class="btn btn-primary">
+            <i class="fas fa-plus me-2"></i>Register Device
+        </a>
+        {% endif %}
+        {% endif %}
+        {% endif %}
+        {% endif %}
+    </div>
+</div>
+<!-- Filters Row -->
+<form method="get" action="" id="deviceFilterForm">
+<div class="row mb-4 g-3">
+    <div class="col-md-4">
+        <div class="search-wrapper">
+            <i class="fas fa-search text-muted"></i>
+            <input type="text" name="search" id="searchInput" class="search-input form-control ps-5"
+                placeholder="Search devices..." value="{{ search_query }}">
+        </div>
+    </div>
+    <div class="col-md-4">
+        <select name="type" id="typeFilter" class="form-select border-0 shadow-sm bg-light" onchange="this.form.submit()">
+            <option value="">All Types</option>
+            <option value="BROKER" {% if type_filter == 'BROKER' %}selected{% endif %}>Broker</option>
+            <option value="TV" {% if type_filter == 'TV' %}selected{% endif %}>TV</option>
+            <option value="TOKEN_DISPENSER" {% if type_filter == 'TOKEN_DISPENSER' %}selected{% endif %}>Dispenser</option>
+            <option value="KEYPAD" {% if type_filter == 'KEYPAD' %}selected{% endif %}>Keypad</option>
+            <option value="LED" {% if type_filter == 'LED' %}selected{% endif %}>LED</option>
+        </select>
+    </div>
+    <div class="col-md-4">
+        <select name="status" id="statusFilter" class="form-select border-0 shadow-sm bg-light" onchange="this.form.submit()">
+            <option value="">All Status</option>
+            <option value="True" {% if status_filter == 'True' %}selected{% endif %}>Active</option>
+            <option value="False" {% if status_filter == 'False' %}selected{% endif %}>Inactive</option>
+            <option value="Expired" {% if status_filter == 'Expired' %}selected{% endif %}>Expired</option>
+        </select>
+    </div>
+</div>
+</form>
+
+<!-- Flat Device Table -->
+{% if devices %}
+<div class="card shadow-sm border-0">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0 device-table">
+                <thead class="bg-light">
+                    <tr>
+                        <th class="ps-4">Serial / MAC</th>
+                        <th>Device Type</th>
+                        <th>Model</th>
+                        <th>Company</th>
+                        <th>Branch</th>
+                        <th>Status</th>
+                        <th class="text-end pe-4">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for device in devices %}
+                    <tr data-type="{{ device.device_type }}" data-status="{{ device.is_active|yesno:'True,False' }}"
+                        data-expired="{% if device.is_expired %}True{% else %}False{% endif %}">
+                        <td class="ps-4">
+                            <div class="fw-semibold text-dark">
+                                {{ device.get_display_identifier }}
+                            </div>
+                            {% if device.display_name %}
+                            <small class="text-muted font-monospace">
+                                {{ device.serial_number }}
+                            </small>
+                            {% endif %}
+                            {% if device.mac_address %}
+                            {% if device.mac_address != device.serial_number %}
+                            <small class="text-muted font-monospace d-block">
+                                {{ device.mac_address }}
+                            </small>
+                            {% endif %}
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="d-flex align-items-center">
+                                {% if device.device_type == 'TV' %}
+                                <div
+                                    class="avatar-sm bg-light-primary text-primary rounded d-flex align-items-center justify-content-center me-2">
+                                    <i class="fas fa-tv"></i>
+                                </div>
+                                {% elif device.device_type == 'TOKEN_DISPENSER' %}
+                                <div
+                                    class="avatar-sm bg-light-success text-success rounded d-flex align-items-center justify-content-center me-2">
+                                    <i class="fas fa-ticket-alt"></i>
+                                </div>
+                                {% elif device.device_type == 'KEYPAD' %}
+                                <div
+                                    class="avatar-sm bg-light-warning text-warning rounded d-flex align-items-center justify-content-center me-2">
+                                    <i class="fas fa-keyboard"></i>
+                                </div>
+                                {% elif device.device_type == 'BROKER' %}
+                                <div
+                                    class="avatar-sm bg-light-info text-info rounded d-flex align-items-center justify-content-center me-2">
+                                    <i class="fas fa-broadcast-tower"></i>
+                                </div>
+                                {% else %}
+                                <div
+                                    class="avatar-sm bg-light-danger text-danger rounded d-flex align-items-center justify-content-center me-2">
+                                    <i class="fas fa-lightbulb"></i>
+                                </div>
+                                {% endif %}
+                                <span class="fw-medium">{{ device.get_device_type_display }}</span>
+                            </div>
+                        </td>
+                        <td>{{ device.model_name|default:"-" }}</td>
+                        <td>
+                            {% if device.company %}
+                            <div class="d-flex align-items-center">
+                                <i class="fas fa-building text-secondary me-2 small"></i>
+                                <span>{{ device.company.company_name }}</span>
+                            </div>
+                            {% else %}
+                            <span class="text-warning small">Unassigned</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if device.branch %}
+                            <div class="d-flex align-items-center">
+                                <i class="fas fa-code-branch text-secondary me-2 small"></i>
+                                <span>{{ device.branch.branch_name }}</span>
+                            </div>
+                            {% else %}
+                            <span class="text-warning small">Unassigned</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if device.is_expired %}
+                            <span class="badge bg-danger text-white"
+                                title="License expired on {{ device.licence_active_to }}">Expired</span>
+                            {% elif device.is_expiring_soon %}
+                            <span class="badge bg-warning text-dark" title="Expires on {{ device.licence_active_to }}">
+                                <i class="fas fa-exclamation-triangle me-1"></i>{{ device.days_until_expiry }} days left
+                            </span>
+                            {% elif device.is_active %}
+                            <span class="badge bg-success text-white">Active</span>
+                            {% else %}
+                            <span class="badge bg-secondary text-white">Inactive</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end pe-4">
+                            <!-- Authentication/Sync Buttons -->
+                            {% if request.user.role == 'SUPER_ADMIN' %}
+                            {% if not device.device_registration_id %}
+                            <button class="btn btn-sm btn-outline-success ms-1" type="button" title="Authenticate"
+                                onclick="authenticateDevice({{ device.id }})">
+                                <i class="fas fa-key"></i>
+                            </button>
+                            {% else %}
+                            <button class="btn btn-sm btn-outline-info ms-1" type="button" title="Check Status"
+                                onclick="checkDeviceStatus({{ device.id }})">
+                                <i class="fas fa-sync-alt"></i>
+                            </button>
+                            {% endif %}
+                            {% elif request.user.role != 'BRANCH_ADMIN' and request.user.role != 'DEALER_CUSTOMER' %}
+                            {% if not request.user.dealer_customer_relation and request.user.company_relation %}
+                            {% if not request.user.company_relation.is_dealer_created %}
+                            {% if not device.device_registration_id %}
+                            <button class="btn btn-sm btn-outline-success ms-1" type="button" title="Authenticate"
+                                onclick="authenticateDevice({{ device.id }})">
+                                <i class="fas fa-key"></i>
+                            </button>
+                            {% else %}
+                            <button class="btn btn-sm btn-outline-info ms-1" type="button" title="Check Status"
+                                onclick="checkDeviceStatus({{ device.id }})">
+                                <i class="fas fa-sync-alt"></i>
+                            </button>
+                            {% endif %}
+                            {% endif %}
+                            {% endif %}
+                            {% endif %}
+
+                            <!-- Configure Button -->
+                            <a href="{% url 'device_config' device.id %}" class="btn btn-sm btn-outline-primary ms-1"
+                                title="Configure">
+                                <i class="fas fa-cog"></i>
+                            </a>
+
+                            <!-- Delete Button -->
+                            {% if request.user.role == 'SUPER_ADMIN' %}
+                            <form method="post" action="{% url 'device_delete' device.id %}" style="display:inline;"
+                                onsubmit="return confirm('Are you sure?');">
+                                {% csrf_token %}
+                                <button class="btn btn-sm btn-outline-danger ms-1" type="submit" title="Delete">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </form>
+                            {% elif request.user.role != 'BRANCH_ADMIN' and request.user.role != 'DEALER_CUSTOMER' %}
+                            {% if not request.user.dealer_customer_relation and request.user.company_relation %}
+                            {% if not request.user.company_relation.is_dealer_created %}
+                            <form method="post" action="{% url 'device_delete' device.id %}" style="display:inline;"
+                                onsubmit="return confirm('Are you sure?');">
+                                {% csrf_token %}
+                                <button class="btn btn-sm btn-outline-danger ms-1" type="submit" title="Delete">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </form>
+                            {% endif %}
+                            {% endif %}
+                            {% endif %}
+
+                            <!-- Change Branch/Owner Buttons -->
+                            {% if request.user.role == 'COMPANY_ADMIN' %}
+                            <button class="btn btn-sm btn-outline-warning ms-1" type="button" title="Change Branch"
+                                onclick="openChangeBranchModal('{% url 'change_device_branch' device.id %}', '{{ device.branch.id|default:'' }}')">
+                                <i class="fas fa-exchange-alt"></i>
+                            </button>
+                            {% elif request.user.role == 'SUPER_ADMIN' %}
+                            <button class="btn btn-sm btn-outline-warning ms-1" type="button" title="Change Owner"
+                                onclick="openChangeOwnerModal('{% url 'change_device_owner' device.id %}', '{{ device.company.id|default:'' }}', '{{ device.branch.id|default:'' }}')">
+                                <i class="fas fa-user-edit"></i>
+                            </button>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% else %}
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <tbody>
+                    <tr>
+                        <td colspan="6" class="text-center py-5">
+                            <div class="text-muted opacity-50 mb-3"><i class="fas fa-tv fa-3x"></i></div>
+                            <p class="text-muted">No devices found. Click "Register Device" to add one.</p>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Pagination -->
+{% if devices %}
+{% with items=devices %}
+{% include 'companydetails/partials/pagination.html' %}
+{% endwith %}
+{% endif %}
+
+<!-- Change Branch Modal -->
+<div class="modal fade" id="changeBranchModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Change Device Branch</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="changeBranchForm" method="POST" action="">
+                {% csrf_token %}
+                <div class="modal-body">
+                    <p class="text-muted small mb-3">Select a new branch for this device.</p>
+                    <div class="mb-3">
+                        <label for="branchSelect" class="form-label">Select Branch</label>
+                        <select class="form-select" id="branchSelect" name="branch_id" required>
+                            <option value="" selected disabled>Choose a branch...</option>
+                            {% for branch in branches %}
+                            <option value="{{ branch.id }}">{{ branch.branch_name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="changeBranchBtn">Change Branch</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Change Owner Modal (Super Admin Only) -->
+{% if request.user.role == 'SUPER_ADMIN' %}
+<div class="modal fade" id="changeOwnerModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Change Device Ownership</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="changeOwnerForm" method="POST" action="">
+                {% csrf_token %}
+                <div class="modal-body">
+                    <p class="text-muted small mb-3">Reassign this device to a different company and branch.</p>
+                    <div class="mb-3">
+                        <label for="ownerCompanySelect" class="form-label">Select Company</label>
+                        <select class="form-select" id="ownerCompanySelect" name="company_id">
+                            <option value="">No Company (Unassigned)</option>
+                            {% for company in companies %}
+                            <option value="{{ company.id }}">{{ company.company_name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="ownerBranchSelect" class="form-label">Select Branch</label>
+                        <select class="form-select" id="ownerBranchSelect" name="branch_id">
+                            <option value="">No Branch (Unassigned)</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="changeOwnerBtn">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'root/js/pages/device_list.js' %}?v=1.3"></script>
+<script>
+    // Submit filter form on Enter key in search input
+    document.getElementById('searchInput')?.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            document.getElementById('deviceFilterForm').submit();
+        }
+    });
+
+    function authenticateDevice(deviceId) {
+        if (!confirm('Register this device with the license server?')) { return; }
+        const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || document.cookie.split('; ').find(row => row.startsWith('csrftoken='))?.split('=')[1];
+        fetch('/CallQ/config/api/device/' + deviceId + '/authenticate/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken }
+        })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') { alert('Success: ' + data.message); location.reload(); }
+                else { alert('Error: ' + data.message); }
+            })
+            .catch(error => { alert('Error: ' + error); });
+    }
+
+    function checkDeviceStatus(deviceId) {
+        const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || document.cookie.split('; ').find(row => row.startsWith('csrftoken='))?.split('=')[1];
+        fetch('/CallQ/config/api/device/' + deviceId + '/check-status/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken }
+        })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    let msg = 'License Status: ' + data.licence_status;
+                    if (data.licence_active_to) { msg += '\nValid Until: ' + data.licence_active_to; }
+                    if (data.expiry_warning) { msg += '\n\n⚠️ ' + data.expiry_warning; }
+                    alert(msg); location.reload();
+                } else { alert('Error: ' + data.message); }
+            })
+            .catch(error => { alert('Error: ' + error); });
+    }
+
+    function openChangeBranchModal(actionUrl, currentBranchId) {
+        const form = document.getElementById('changeBranchForm');
+        form.action = actionUrl;
+        const select = document.getElementById('branchSelect');
+        if (currentBranchId) { select.value = currentBranchId; } else { select.value = ''; }
+        const modal = new bootstrap.Modal(document.getElementById('changeBranchModal'));
+        modal.show();
+    }
+
+    function openChangeOwnerModal(actionUrl, currentCompanyId, currentBranchId) {
+        const form = document.getElementById('changeOwnerForm');
+        form.action = actionUrl;
+        const companySelect = document.getElementById('ownerCompanySelect');
+        const branchSelect = document.getElementById('ownerBranchSelect');
+
+        companySelect.value = currentCompanyId || '';
+
+        // Load branches for current company or just clear
+        if (currentCompanyId) {
+            fetch(`/CallQ/api/company-branches/${currentCompanyId}/`)
+                .then(response => response.json())
+                .then(data => {
+                    branchSelect.innerHTML = '<option value="">No Branch (Unassigned)</option>';
+                    if (data.branches) {
+                        data.branches.forEach(b => {
+                            const opt = document.createElement('option');
+                            opt.value = b.id;
+                            opt.textContent = b.branch_name;
+                            if (b.id == currentBranchId) opt.selected = true;
+                            branchSelect.appendChild(opt);
+                        });
+                    }
+                });
+        } else {
+            branchSelect.innerHTML = '<option value="">No Branch (Unassigned)</option>';
+        }
+
+        const modal = new bootstrap.Modal(document.getElementById('changeOwnerModal'));
+        modal.show();
+    }
+
+    // Add change event for ownerCompanySelect
+    document.getElementById('ownerCompanySelect')?.addEventListener('change', function () {
+        const companyId = this.value;
+        const branchSelect = document.getElementById('ownerBranchSelect');
+        branchSelect.innerHTML = '<option value="">Loading...</option>';
+
+        if (companyId) {
+            fetch(`/CallQ/api/company-branches/${companyId}/`)
+                .then(response => response.json())
+                .then(data => {
+                    branchSelect.innerHTML = '<option value="">No Branch (Unassigned)</option>';
+                    if (data.branches) {
+                        data.branches.forEach(b => {
+                            const opt = document.createElement('option');
+                            opt.value = b.id;
+                            opt.textContent = b.branch_name;
+                            branchSelect.appendChild(opt);
+                        });
+                    }
+                });
+        } else {
+            branchSelect.innerHTML = '<option value="">No Branch (Unassigned)</option>';
+        }
+    });
+</script>
+{% endblock %}

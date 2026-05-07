@@ -1,0 +1,82 @@
+/* ===== INPUTS & FORMS ===== */
+.form-control,
+.form-select {
+    display: block;
+    width: 100%;
+    padding: 10px 12px;
+    font-size: 0.875rem;
+    color: var(--text-primary);
+    background-color: white;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    transition: border-color var(--transition), box-shadow var(--transition);
+}
+
+.form-control:focus,
+.form-select:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+/* Auto-width for filter selects */
+.form-select.w-auto {
+    width: auto;
+    min-width: 120px;
+}
+
+/* ===== SEARCH WRAPPER ===== */
+.search-wrapper {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+}
+
+.search-wrapper i,
+.search-wrapper .fa-search {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted, #9CA3AF);
+    pointer-events: none;
+    z-index: 1;
+}
+
+.search-wrapper .search-input,
+.search-wrapper .form-control {
+    padding-left: 40px !important;
+    width: 100%;
+}
+
+/* ===== ACTION BAR ALIGNMENT ===== */
+.action-bar,
+.d-flex.justify-content-between.align-items-center {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+/* Filter Controls Row */
+.filter-controls,
+.d-flex.gap-3.align-items-center {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+/* Ensure filter dropdowns align properly with search */
+.filter-controls .form-select,
+.d-flex.gap-3 .form-select {
+    height: 42px;
+    padding: 8px 12px;
+    padding-right: 32px;
+}
+
+/* Search input height to match filters */
+.search-wrapper .form-control,
+.search-wrapper .search-input {
+    height: 42px;
+}

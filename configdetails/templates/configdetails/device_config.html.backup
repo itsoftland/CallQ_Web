@@ -1,0 +1,425 @@
+{% extends 'base.html' %} {% load static %} {% block title %}Device Configuration{% endblock %} {% block content %}
+<div class="container py-4">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="h4 fw-bold mb-1">Device Configuration</h2>
+            <div class="d-flex align-items-center gap-2">
+                <span class="text-secondary small">Serial: <span class="fw-bold text-dark">{{ device.serial_number
+                        }}</span></span>
+                <span class="badge bg-light text-dark border border-light">{{ device.get_device_type_display }}</span>
+            </div>
+        </div>
+        <a href="{% url 'device_list' %}" class="btn btn-outline-secondary btn-sm">
+            <i class="fas fa-arrow-left me-1"></i> Back to List
+        </a>
+    </div>
+
+    <!-- Config Form Card -->
+    <div class="card">
+        <div class="card-body p-4">
+            <form method="POST" enctype="multipart/form-data">
+                {% csrf_token %}
+
+                {% if device.device_type == 'BROKER' %}
+                <h5 class="text-dark fw-bold mb-4 border-bottom pb-2">Network Settings</h5>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label text-secondary small fw-bold">WiFi SSID</label>
+                        <div class="input-group">
+                            <span class="input-group-text bg-light border-end-0"><i
+                                    class="fas fa-wifi text-muted"></i></span>
+                            <input type="text" name="ssid" class="form-control border-start-0 ps-0"
+                                value="{{ config.config_json.ssid|default:'' }}" placeholder="Enter network name">
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Password</label>
+                        <input type="text" name="password" class="form-control"
+                            value="{{ config.config_json.password|default:'' }}" placeholder="WiFi Password">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Host</label>
+                        <input type="text" name="host" class="form-control"
+                            value="{{ config.config_json.host|default:'' }}" placeholder="Server Host IP/URL">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Port</label>
+                        <input type="number" name="port" class="form-control"
+                            value="{{ config.config_json.port|default:'8000' }}">
+                    </div>
+                </div>
+
+                {% elif device.device_type == 'TOKEN_DISPENSER' %}
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Company Name</label>
+                        <input type="text" name="company_name" class="form-control"
+                            value="{{ config.config_json.company_name|default:'' }}" placeholder="Your Company Name">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Location</label>
+                        <input type="text" name="location" class="form-control"
+                            value="{{ config.config_json.location|default:'' }}" placeholder="Branch Location">
+                    </div>
+                    <div class="col-md-12">
+                        <label class="form-label fw-bold">Footer Text</label>
+                        <input type="text" name="footer_text" class="form-control"
+                            value="{{ config.config_json.footer_text|default:'Thank you, visit again' }}">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Token Dispenser ID</label>
+                        <input type="number" name="dispenser_id" class="form-control"
+                            value="{{ config.config_json.dispenser_id|default:'1' }}">
+                    </div>
+                </div>
+
+                {% elif device.device_type == 'KEYPAD' %}
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Keypad Device Text</label>
+                        <input type="text" name="keypad_device_text" class="form-control"
+                            value="{{ config.config_json.keypad_device_text|default:'' }}"
+                            placeholder="Enter device text">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Counter No</label>
+                        <input type="number" name="counter_no" class="form-control"
+                            value="{{ config.config_json.counter_no|default:'' }}" placeholder="1">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Keypad Serial Number</label>
+                        <input type="text" name="keypad_sl_no" class="form-control"
+                            value="{{ config.config_json.keypad_sl_no|default:device.serial_number }}" readonly>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Dispenser Serial Number</label>
+                        <input type="text" name="dispenser_sl_no" class="form-control"
+                            value="{{ config.config_json.dispenser_sl_no|default:'' }}"
+                            placeholder="Linked dispenser S/N">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">No. of Keypad Dev</label>
+                        <input type="number" name="no_of_keypad_dev" class="form-control"
+                            value="{{ config.config_json.no_of_keypad_dev|default:'1' }}">
+                    </div>
+
+                    <div class="col-12 mt-4">
+                        <h5 class="text-muted mb-3"><i class="fas fa-sliders-h me-2"></i>Advanced Settings</h5>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold">Keypad Pool Mode</label>
+                        <select name="keypad_pool_mode" class="form-select">
+                            <option value="0" {% if config.config_json.keypad_pool_mode=='0' %}selected{% endif %}>
+                                Normal</option>
+                            <option value="1" {% if config.config_json.keypad_pool_mode=='1' %}selected{% endif %}>Pool
+                            </option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold">Serving Mode</label>
+                        <select name="single_multiple" class="form-select">
+                            <option value="0" {% if config.config_json.single_multiple=='0' %}selected{% endif %}>Single
+                                Service</option>
+                            <option value="1" {% if config.config_json.single_multiple=='1' %}selected{% endif %}>
+                                Multiple Service</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="form-check form-switch mt-4">
+                            <input class="form-check-input" type="checkbox" name="logo_enable" id="logo_enable" {% if config.config_json.logo_enable=='1' %}checked{% endif %}>
+
+                            <label class="form-check-label fw-bold" for="logo_enable">Logo Enable</label>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" name="skip_enable" id="skip_enable" {% if config.config_json.skip_enable=='1' %}checked{% endif %}>
+
+                            <label class="form-check-label fw-bold" for="skip_enable">Skip Enable</label>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" name="transfer_enable" id="transfer_enable"
+                                {% if config.config_json.transfer_enable=='1' %}checked{% endif %}>
+                            <label class="form-check-label fw-bold" for="transfer_enable">Transfer Enable</label>
+                        </div>
+                    </div>
+                    <div class="col-12 mt-4">
+                        <h5 class="text-muted mb-3"><i class="fas fa-star me-2"></i>VIP Settings</h5>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" name="vip_enable" id="vip_enable" {% if config.config_json.vip_enable=='1' %}checked{% endif %}>
+
+                            <label class="form-check-label fw-bold" for="vip_enable">VIP Enable</label>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold">VIP From</label>
+                        <input type="number" name="vip_from" id="vip_from" class="form-control"
+                            value="{{ config.config_json.vip_from|default:'' }}" placeholder="Start range">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold">VIP To</label>
+                        <input type="number" name="vip_to" id="vip_to" class="form-control"
+                            value="{{ config.config_json.vip_to|default:'' }}" placeholder="End range">
+                    </div>
+                </div>
+                {% elif device.device_type == 'TV' %}
+                <div class="row g-3">
+                    <div class="col-12">
+                        <h5 class="text-muted mb-3"><i class="fas fa-tv me-2"></i>Display Settings</h5>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Orientation</label>
+                        <select name="orientation" class="form-select">
+                            <option value="landscape" {% if tv_config.orientation=='landscape' %}selected{% endif %}>
+                                Landscape
+                            </option>
+                            <option value="portrait" {% if tv_config.orientation=='portrait' %}selected{% endif %}>
+                                Portrait
+                            </option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold">Display Rows</label>
+                        <input type="number" name="display_rows" class="form-control"
+                            value="{{ tv_config.display_rows|default:'3' }}" min="1" max="20">
+                    </div>
+
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold">Display Columns</label>
+                        <input type="number" name="display_columns" class="form-control"
+                            value="{{ tv_config.display_columns|default:'4' }}" min="1" max="20">
+                    </div>
+
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Counter Text Color</label>
+                        <input type="color" name="counter_text_color" class="form-control form-control-color w-100"
+                            value="{{ tv_config.counter_text_color|default:'#000000' }}"
+                            title="Choose counter text color">
+                    </div>
+
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Token Text Color</label>
+                        <input type="color" name="token_text_color" class="form-control form-control-color w-100"
+                            value="{{ tv_config.token_text_color|default:'#000000' }}" title="Choose token text color">
+                    </div>
+
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Tokens per Counter</label>
+                        <input type="number" name="tokens_per_counter" class="form-control"
+                            value="{{ tv_config.tokens_per_counter|default:'5' }}" min="1" max="20">
+                    </div>
+
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">No of Counters</label>
+                        <input type="number" name="no_of_counters" class="form-control"
+                            value="{{ tv_config.no_of_counters|default:'1' }}" min="1" max="4">
+                    </div>
+
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Ad Interval (minutes)</label>
+                        <input type="number" name="ad_interval" class="form-control"
+                            value="{{ tv_config.ad_interval|default:'5' }}">
+                    </div>
+
+                    <div class="col-md-6">
+                        <div class="form-check form-switch mt-4">
+                            <input class="form-check-input" type="checkbox" name="show_ads" id="show_ads" {% if tv_config.show_ads %}checked{% endif %}>
+                            <label class="form-check-label fw-bold" for="show_ads">Show Ads</label>
+                        </div>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Ad Placement</label>
+                        <select name="ad_placement" class="form-select">
+                            <option value="right" {% if tv_config.ad_placement=='right' %}selected{% endif %}>Right Side
+                            </option>
+                            <option value="left" {% if tv_config.ad_placement=='left' %}selected{% endif %}>Left Side
+                            </option>
+                        </select>
+                    </div>
+
+                    <div class="col-12">
+                        <label class="form-label fw-bold">Advertisement Files</label>
+                        <input type="file" name="ad_files" class="form-control" multiple accept="image/*,video/*">
+                        {% if ads %}
+                        <div class="table-responsive mt-3">
+                            <table class="table table-sm table-hover">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>#</th>
+                                        <th>File Name</th>
+                                        <th>Uploaded</th>
+                                        <th class="text-end">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for ad in ads %}
+                                    <tr>
+                                        <td>{{ forloop.counter }}</td>
+                                        <td><i class="fas fa-file me-1 text-muted"></i>{{ ad.file.name|slice:"-30:" }}
+                                        </td>
+                                        <td><small class="text-muted">{{ ad.created_at|date:"d M Y" }}</small></td>
+                                        <td class="text-end">
+                                            <a href="{{ ad.file.url }}" target="_blank"
+                                                class="btn btn-sm btn-outline-primary" title="View">
+                                                <i class="fas fa-eye"></i>
+                                            </a>
+                                            <a href="{% url 'delete_ad' ad.id %}" class="btn btn-sm btn-outline-danger"
+                                                title="Delete"
+                                                onclick="return confirm('Are you sure you want to delete this ad?')">
+                                                <i class="fas fa-trash"></i>
+                                            </a>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <!-- AUDIO SETTINGS -->
+                    <div class="col-12 mt-4">
+                        <h5 class="text-muted mb-3"><i class="fas fa-volume-up me-2"></i>Audio Settings</h5>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Audio Language</label>
+                        <select name="audio_language" class="form-select">
+                            <option value="en" {% if tv_config.audio_language=='en' %}selected{% endif %}>English
+                            </option>
+                            <option value="hi" {% if tv_config.audio_language=='hi' %}selected{% endif %}>Hindi
+                            </option>
+                            <option value="ml" {% if tv_config.audio_language=='ml' %}selected{% endif %}>Malayalam
+                            </option>
+                            <option value="ta" {% if tv_config.audio_language=='ta' %}selected{% endif %}>Tamil</option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-6">
+                        <div class="form-check mt-4">
+                            <input class="form-check-input" type="checkbox" name="save_audio_external"
+                                id="save_audio_external" {% if tv_config.save_audio_external %}checked{% endif %}>
+                            <label class="form-check-label" for="save_audio_external">Save audio to external
+                                storage</label>
+                        </div>
+                    </div>
+
+                    <div class="col-md-6">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="enable_counter_announcement"
+                                id="enable_counter_announcement" {% if tv_config.enable_counter_announcement %}checked{% endif %}>
+                            <label class="form-check-label fw-bold" for="enable_counter_announcement">Enable Counter
+                                Announcement</label>
+                        </div>
+                    </div>
+
+                    <div class="col-md-6">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="enable_token_announcement"
+                                id="enable_token_announcement" {% if tv_config.enable_token_announcement %}checked{% endif %}>
+                            <label class="form-check-label fw-bold" for="enable_token_announcement">Enable Token
+                                Announcement</label>
+                        </div>
+                    </div>
+
+                    <!-- Token Audio Group -->
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Token Audio</label>
+                        <input type="file" name="token_audio_file" class="form-control">
+                        {% if tv_config.token_audio_file %}<div class="form-text text-success">Set:
+                            {{tv_config.token_audio_file.name }}</div>{% endif %}
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Token Music</label>
+                        <input type="file" name="token_music_file" class="form-control">
+                        {% if tv_config.token_music_file %}<div class="form-text text-success">Set:
+                            {{tv_config.token_music_file.name }}</div>{% endif %}
+                    </div>
+
+                    <!-- COUNTER CARDS -->
+                    <div class="col-12 mt-4">
+                        <h5 class="text-muted mb-3"><i class="fas fa-list-ol me-2"></i>Counters Configuration</h5>
+                    </div>
+
+                    {% for c in counters %}
+                    <div class="col-md-6">
+                        <div class="card bg-light border">
+                            <div class="card-body">
+                                <h6 class="card-title text-primary">{{ c.default_name }}</h6>
+                                <div class="row g-2">
+                                    <div class="col-6">
+                                        <label class="small fw-bold">Name</label>
+                                        <input type="text" name="counter_name_{{ c.counter_id }}"
+                                            class="form-control form-control-sm" value="{{ c.name }}">
+                                    </div>
+                                    <div class="col-6">
+                                        <label class="small fw-bold">Code</label>
+                                        <input type="text" name="counter_code_{{ c.counter_id }}"
+                                            class="form-control form-control-sm" value="{{ c.code }}">
+                                    </div>
+                                    <div class="col-6">
+                                        <label class="small fw-bold">Rows</label>
+                                        <input type="number" name="row_span_{{ c.counter_id }}"
+                                            class="form-control form-control-sm" value="{{ c.row_span }}">
+                                    </div>
+                                    <div class="col-6">
+                                        <label class="small fw-bold">Cols</label>
+                                        <input type="number" name="col_span_{{ c.counter_id }}"
+                                            class="form-control form-control-sm" value="{{ c.col_span }}">
+                                    </div>
+                                    <div class="col-12">
+                                        <label class="small fw-bold">Audio</label>
+                                        <input type="file" name="counter_audio_{{ c.counter_id }}"
+                                            class="form-control form-control-sm">
+                                        {% if c.audio_name %}
+                                        <small class="text-success d-block">File: {{ c.audio_name }}</small>
+                                        {% endif %}
+                                    </div>
+                                    <div class="col-12">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox"
+                                                name="enable_c_{{ c.counter_id }}" {% if c.is_enabled %}checked{% endif %}>
+                                            <label class="form-check-label small">Enable Counter</label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% empty %}
+                    <div class="col-12">
+                        <div class="alert alert-warning">No counters found. Map a Token Dispenser to this TV first.
+                        </div>
+                    </div>
+                    {% endfor %}
+
+                </div>
+                {% endif %}
+
+                <hr class="my-4">
+
+                <input type="hidden" name="next" value="{{ next|default:'' }}">
+                <div class="d-flex justify-content-end gap-2">
+                    <a href="{{ next|default:request.META.HTTP_REFERER|default:'/config/devices/' }}"
+                        class="btn btn-light text-secondary border">Cancel</a>
+                    <button type="submit" class="btn btn-primary px-4 fw-medium">
+                        <i class="fas fa-save me-2"></i>Save Configuration
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{% block extra_js %}
+<script src="{% static 'root/js/pages/device_config.js' %}"></script>
+{% endblock %}
+{% endblock %}

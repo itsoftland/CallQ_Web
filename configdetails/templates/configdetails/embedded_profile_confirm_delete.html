@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Delete Profile Template{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card shadow-sm border-0">
+                <div class="card-body text-center p-5">
+                    <div class="mb-4">
+                        <i class="fas fa-exclamation-triangle text-warning fa-4x"></i>
+                    </div>
+                    <h3 class="mb-3">Delete Profile Template</h3>
+                    <p class="text-muted mb-4">
+                        Are you sure you want to delete the profile <strong>"{{ profile.name }}"</strong>?
+                    </p>
+
+                    {% if device_count > 0 %}
+                    <div class="alert alert-warning mb-4">
+                        <i class="fas fa-info-circle me-2"></i>
+                        This profile is currently assigned to <strong>{{ device_count }} device(s)</strong>.
+                        Deleting it will remove the profile from all these devices.
+                    </div>
+                    {% endif %}
+
+                    <form method="POST">
+                        {% csrf_token %}
+                        <div class="d-flex justify-content-center gap-3">
+                            <a href="{% url 'embedded_profile_list' %}" class="btn btn-secondary px-4">Cancel</a>
+                            <button type="submit" class="btn btn-danger px-4">
+                                <i class="fas fa-trash me-1"></i> Delete Profile
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
