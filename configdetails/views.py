@@ -1335,7 +1335,10 @@ def _get_tv_flag_config(request, device, company, dealer_customer, is_dealer_cus
 
     # ---------------------------------------------------------------
     # Helper: build a list of counter dicts for a given dispenser.
-    # Source of truth: GroupCounterButtonMapping (not legacy CTDM).
+    # Source of truth: GroupCounterButtonMapping scoped to the
+    # group that THIS TV belongs to (via GroupDispenserMapping).
+    # Filtering by dispenser alone causes duplicates when stale
+    # GCBM rows from old group assignments still exist in the DB.
     # ---------------------------------------------------------------
     def _build_counters_for_dispenser(dispenser, keypad_index):
         """
@@ -1345,7 +1348,7 @@ def _get_tv_flag_config(request, device, company, dealer_customer, is_dealer_cus
           - button_index            : same as dispenser_index
           - dispenser_button_number : 1-based physical button position on the dispenser
                                      (derived from GCBM order by button_index)
-        Source: GroupCounterButtonMapping — the canonical counter-per-dispenser mapping.
+        Source: GroupCounterButtonMapping scoped to the dispenser's current group.
         """
         results = []
         if dispenser is None:
@@ -1360,29 +1363,45 @@ def _get_tv_flag_config(request, device, company, dealer_customer, is_dealer_cus
         except Exception:
             dispenser_index = None
 
-        # Fetch counters from GroupCounterButtonMapping ordered by button_index
+        # Resolve the group this dispenser belongs to (via GroupDispenserMapping).
+        # This is the only authoritative group for this dispenser — dispensers can
+        # only be in ONE group (enforced at view level). Scoping GCBM to this group
+        # prevents stale rows from old group assignments causing duplicate counters.
         try:
-            gcbms = list(
-                GroupCounterButtonMapping.objects.filter(
-                    dispenser=dispenser
-                ).select_related('counter').order_by('button_index')
-            )
+            gdm = GroupDispenserMapping.objects.filter(
+                dispenser=dispenser
+            ).select_related('group').first()
+            dispenser_group = gdm.group if gdm else None
+        except Exception:
+            dispenser_group = None
+
+        # Fetch counters from GroupCounterButtonMapping scoped to the correct group
+        try:
+            gcbm_qs = GroupCounterButtonMapping.objects.filter(
+                dispenser=dispenser
+            ).select_related('counter').order_by('button_index')
+
+            # Always scope to the group when available to avoid cross-group duplicates
+            if dispenser_group:
+                gcbm_qs = gcbm_qs.filter(group=dispenser_group)
+
+            gcbms = list(gcbm_qs)
             for btn_num, gcbm in enumerate(gcbms, start=1):
                 c = gcbm.counter
                 results.append({
-                    'counter_id':             c.counter_name,
-                    'default_code':           c.counter_prefix_code,
-                    'keypad_index':           keypad_index,
-                    'dispenser_index':        dispenser_index,
-                    'button_index':           dispenser_index,
+                    'counter_id':              c.counter_name,
+                    'default_code':            c.counter_prefix_code,
+                    'keypad_index':            keypad_index,
+                    'dispenser_index':         dispenser_index,
+                    'button_index':            dispenser_index,
                     'dispenser_button_number': btn_num,
-                    'name':                   c.counter_display_name,
-                    'code':                   c.counter_prefix_code,
-                    'row_span':               1,
-                    'col_span':               1,
-                    'is_enabled':             c.status,
-                    'counter_config_id':      c.id,
-                    'max_token_number':       c.max_token_number,
+                    'name':                    c.counter_display_name,
+                    'code':                    c.counter_prefix_code,
+                    'row_span':                1,
+                    'col_span':                1,
+                    'is_enabled':              c.status,
+                    'counter_config_id':       c.id,
+                    'max_token_number':        c.max_token_number,
                 })
         except Exception:
             pass
