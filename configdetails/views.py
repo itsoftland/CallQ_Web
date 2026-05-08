@@ -174,21 +174,36 @@ def generate_tv_counters_data(device, tv_config=None):
         configured_count = 1
 
     counters = []
-    
-    # 1. Fetch from Group Logic
-    from configdetails.models import GroupMapping, GroupCounterButtonMapping
-    
+
+    # 1. Fetch ONLY counters from dispensers explicitly mapped to this TV via TVKeypadMapping.
+    #    Chain: TV → TVKeypadMapping.dispenser → GroupCounterButtonMapping → counter
+    #    This guarantees we never show counters from unrelated groups or dispensers.
     mapped_counters = {}
-    groups = GroupMapping.objects.filter(tvs=device)
-    
-    if groups.exists():
-        gcbms = GroupCounterButtonMapping.objects.filter(group__in=groups).select_related('dispenser', 'counter')
+
+    # Collect all dispensers wired to this TV through keypad slots (skip slots with no dispenser)
+    tv_keypad_mappings = TVKeypadMapping.objects.filter(tv=device).select_related('dispenser')
+    tv_dispenser_ids = [
+        kpm.dispenser_id
+        for kpm in tv_keypad_mappings
+        if kpm.dispenser_id is not None
+    ]
+
+    if tv_dispenser_ids:
+        from configdetails.models import GroupCounterButtonMapping
+        gcbms = (
+            GroupCounterButtonMapping.objects
+            .filter(dispenser_id__in=tv_dispenser_ids)
+            .select_related('dispenser', 'counter')
+            .order_by('button_index')
+        )
         for gcbm in gcbms:
             try:
                 # Convert ASCII button_index (e.g., '1' = 0x31) to 1-based integer
                 idx = ord(gcbm.button_index) - 0x31 + 1
                 if 1 <= idx <= 8:
-                    mapped_counters[idx] = gcbm
+                    # First mapping wins; later ones (same slot) are ignored
+                    if idx not in mapped_counters:
+                        mapped_counters[idx] = gcbm
             except Exception:
                 pass
 
