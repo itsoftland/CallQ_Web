@@ -7375,23 +7375,32 @@ def token_report_list(request):
     # Scope by company / dealer customer if not super-admin / admin
     if hasattr(user, 'role'):
         if user.role not in ('SUPER_ADMIN', 'ADMIN'):
-            scoped_ids = []
+            scoped_ids = set()
             if hasattr(user, 'dealer_customer_relation') and user.dealer_customer_relation:
                 dc = user.dealer_customer_relation
-                scoped_ids.append(dc.customer_id)
+                raw = dc.customer_id
+                scoped_ids.add(raw)
+                try:
+                    scoped_ids.add(str(int(raw)))   # strip leading zeros: "0166" → "166"
+                except (ValueError, TypeError):
+                    pass
             elif hasattr(user, 'company_relation') and user.company_relation:
                 c = user.company_relation
+                # Collect raw candidate IDs (company_id CharField + DB primary key)
+                raw_candidates = []
                 if c.company_id:
-                    scoped_ids.append(c.company_id)
-                # Include plain and zero-padded variants of the DB primary key
-                # because embedded devices may send the ID with leading zeros
-                # (e.g. device sends "0166" while c.id == 166).
-                scoped_ids.append(str(c.id))
-                scoped_ids.append(str(c.id).zfill(4))   # "0166"
-                scoped_ids.append(str(c.id).zfill(3))   # "166" / "016"
-                scoped_ids.append(str(c.id).lstrip('0') or '0')  # strip any leading zeros
+                    raw_candidates.append(c.company_id)
+                raw_candidates.append(str(c.id))
+                # For each candidate, add both the raw value AND its int-normalised form
+                # so "0166" and "166" both resolve to the same match.
+                for raw in raw_candidates:
+                    scoped_ids.add(raw)
+                    try:
+                        scoped_ids.add(str(int(raw)))   # "0166" → "166"
+                    except (ValueError, TypeError):
+                        pass
             if scoped_ids:
-                qs = qs.filter(customerId__in=scoped_ids)
+                qs = qs.filter(customerId__in=list(scoped_ids))
 
     # --- Filters ---
     filter_customer = request.GET.get('customer_id', '').strip()
