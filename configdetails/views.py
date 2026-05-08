@@ -175,74 +175,40 @@ def generate_tv_counters_data(device, tv_config=None):
 
     counters = []
     
-    # 1. Prepare candidate data sources
-    branch_counters = {}
-    if device.branch:
-        branch_counters = {bc.counter_number: bc for bc in Counter.objects.filter(branch=device.branch)}
-
-    # Direct Mappings (TD -> TV)
-    direct_mappings = {}
-    m_objs = Mapping.objects.filter(tv=device)
-    for m in m_objs:
-        if m.token_dispenser:
-            td = m.token_dispenser
-            num_buttons = 1
-            if td.token_type:
-                try: num_buttons = int(td.token_type.split('_')[0])
-                except: num_buttons = 1
-            for i in range(1, num_buttons + 1):
-                direct_mappings[i] = td
-
-    # Transitive Mappings (TD -> Keypad/TV)
-    transitive_mappings = {}
-    bm_objs = ButtonMapping.objects.filter(target_device=device)
-    for bm in bm_objs:
-        try:
-             button_num = int(bm.source_button.replace('Button', '').strip())
-        except:
-            button_num = 1
-        transitive_mappings[button_num] = bm.source_device
+    # 1. Fetch from Group Logic
+    from configdetails.models import GroupMapping, GroupCounterButtonMapping
+    
+    mapped_counters = {}
+    groups = GroupMapping.objects.filter(tvs=device)
+    
+    if groups.exists():
+        gcbms = GroupCounterButtonMapping.objects.filter(group__in=groups).select_related('dispenser', 'counter')
+        for gcbm in gcbms:
+            try:
+                # Convert ASCII button_index (e.g., '1' = 0x31) to 1-based integer
+                idx = ord(gcbm.button_index) - 0x31 + 1
+                if 1 <= idx <= 8:
+                    mapped_counters[idx] = gcbm
+            except Exception:
+                pass
 
     # 2. Iterate and Fill Slots (Always 8 slots for real-time frontend toggling)
-    # The dropdown on the frontend restricted to 1-8 will control visibility
     for i in range(1, 9):
         counter_data = None
         
-        # Priority A: Branch Counter
-        if i in branch_counters:
-            bc = branch_counters[i]
-            source_device = "System"
-            if bc.assigned_device:
-                bm = ButtonMapping.objects.filter(target_device=bc.assigned_device).first()
-                if bm: source_device = bm.source_device.serial_number
-            
+        if i in mapped_counters:
+            gcbm = mapped_counters[i]
             counter_data = {
-                'counter_id': f"BC-{bc.id}",
-                'default_name': bc.counter_name,
-                'default_code': f"C{i:02d}",
-                'source_device': source_device,
+                'counter_id': f"{gcbm.dispenser.serial_number}-C{i}",
+                'default_name': gcbm.counter.counter_name,
+                'default_code': gcbm.counter.counter_prefix_code or f"C{i:02d}",
+                'source_device': gcbm.dispenser.serial_number,
                 'button_index': i,
-                'name': bc.counter_name,
-                'code': f"C{i:02d}",
-                'is_live': True
+                'name': gcbm.counter.counter_name,
+                'code': gcbm.counter.counter_prefix_code or f"C{i:02d}",
+                'is_live': False
             }
-
-        # Priority B: Hardware Mapping (Direct or Transitive)
-        if not counter_data:
-            td = direct_mappings.get(i) or transitive_mappings.get(i)
-            if td:
-                counter_data = {
-                    'counter_id': f"{td.serial_number}-C{i}",
-                    'default_name': f"Counter {i}",
-                    'default_code': f"C{i:02d}",
-                    'source_device': td.serial_number,
-                    'button_index': i,
-                    'name': f"Counter {i}",
-                    'code': f"C{i:02d}",
-                    'is_live': False
-                }
-
-        # Priority C: Placeholder
+            
         if not counter_data:
             counter_data = {
                 'counter_id': f"Counter-{i}",
@@ -6120,32 +6086,17 @@ def swap_counters_api(request):
                 # ending up with 6 counters after partial swaps).
                 # ----------------------------------------------------------------
 
-                # Remember which counters are being REMOVED so we can clean CTDM.
-                new_counter_ids = {
-                    ctr.id for ctr in desired_map.values() if ctr is not None
-                }
-                removed_counters = [
-                    ctr for btn_idx, ctr in current_map.items()
-                    if ctr is not None and ctr.id not in new_counter_ids
-                ]
-
                 # Wipe every existing GCBM row for this dispenser.
                 GroupCounterButtonMapping.objects.filter(
                     group=group,
                     dispenser=dispenser,
                 ).delete()
 
-                # Clean up CTDM for counters no longer on this dispenser.
-                for removed_ctr in removed_counters:
-                    CounterTokenDispenserMapping.objects.filter(
-                        counter=removed_ctr, dispenser=dispenser
-                    ).delete()
-                    results.append({
-                        'button_index': None,
-                        'operation': 'unmap',
-                        'unmapped_counter_id': removed_ctr.id,
-                        'unmapped_counter_name': removed_ctr.counter_name,
-                    })
+                # Wipe ALL CTDM rows for this dispenser atomically.
+                # This replaces the old per-counter removed_counters loop and
+                # ensures stale rows that were never reflected in GCBM are also
+                # cleaned up, preventing counter count bloat after swaps.
+                CounterTokenDispenserMapping.objects.filter(dispenser=dispenser).delete()
 
                 # Now apply the desired state.
                 for btn_idx, new_ctr in desired_map.items():
@@ -6493,9 +6444,15 @@ def get_token_dispenser_config_api(request):
                 if _this_button_index or _this_keypad_index:
                     break
 
-            _disp_counter_mappings = CounterTokenDispenserMapping.objects.filter(
-                dispenser=_disp
-            ).select_related('counter').order_by('id')
+            # Use GCBM (true current state) for group dispensers; CTDM for singletons.
+            if _group_obj:
+                _disp_counter_mappings = GroupCounterButtonMapping.objects.filter(
+                    group=_group_obj, dispenser=_disp
+                ).select_related('counter').order_by('button_index')
+            else:
+                _disp_counter_mappings = CounterTokenDispenserMapping.objects.filter(
+                    dispenser=_disp
+                ).select_related('counter').order_by('id')
 
             for _fb_idx, _cm in enumerate(_disp_counter_mappings, start=1):
                 _counter = _cm.counter
@@ -6589,9 +6546,15 @@ def get_token_dispenser_config_api(request):
                 if fam_button_index or fam_keypad_index:
                     break
 
-            fam_counter_mappings = CounterTokenDispenserMapping.objects.filter(
-                dispenser=fam_dispenser
-            ).select_related('counter').order_by('id')
+            # Use GCBM (true current state) for group dispensers; CTDM for singletons.
+            if group_obj:
+                fam_counter_mappings = GroupCounterButtonMapping.objects.filter(
+                    group=group_obj, dispenser=fam_dispenser
+                ).select_related('counter').order_by('button_index')
+            else:
+                fam_counter_mappings = CounterTokenDispenserMapping.objects.filter(
+                    dispenser=fam_dispenser
+                ).select_related('counter').order_by('id')
 
             for fallback_index, cm in enumerate(fam_counter_mappings, start=1):
                 counter = cm.counter
