@@ -7287,6 +7287,13 @@ def token_report_api(request):
     customerId         = request.data.get('customerId')
     mac_address        = request.data.get('mac_address')
 
+    # If customerId is purely numeric (e.g. "0166"), convert to int to strip leading zeros
+    if customerId:
+        try:
+            customerId = int(customerId)
+        except (ValueError, TypeError):
+            pass
+
     # --- Validate required fields ---
     missing = [
         field for field, val in [
@@ -7381,7 +7388,10 @@ def token_report_list(request):
                 raw = dc.customer_id
                 scoped_ids.add(raw)
                 try:
-                    scoped_ids.add(str(int(raw)))   # strip leading zeros: "0166" → "166"
+                    num = int(raw)
+                    scoped_ids.add(str(num))         # strip leading zeros: "0166" → "166"
+                    scoped_ids.add(str(num).zfill(3))# "166" → "166" or "016"
+                    scoped_ids.add(str(num).zfill(4))# "166" → "0166"
                 except (ValueError, TypeError):
                     pass
             elif hasattr(user, 'company_relation') and user.company_relation:
@@ -7391,12 +7401,14 @@ def token_report_list(request):
                 if c.company_id:
                     raw_candidates.append(c.company_id)
                 raw_candidates.append(str(c.id))
-                # For each candidate, add both the raw value AND its int-normalised form
-                # so "0166" and "166" both resolve to the same match.
+                # For each candidate, add raw value, int-normalised form, and zero-padded forms
                 for raw in raw_candidates:
                     scoped_ids.add(raw)
                     try:
-                        scoped_ids.add(str(int(raw)))   # "0166" → "166"
+                        num = int(raw)
+                        scoped_ids.add(str(num))         # "166"
+                        scoped_ids.add(str(num).zfill(3))# "166" or "016"
+                        scoped_ids.add(str(num).zfill(4))# "0166"
                     except (ValueError, TypeError):
                         pass
             if scoped_ids:
@@ -7409,7 +7421,16 @@ def token_report_list(request):
     filter_date_to   = request.GET.get('date_to', '').strip()
 
     if filter_customer:
-        qs = qs.filter(customerId__icontains=filter_customer)
+        try:
+            # If user searches for '0166', also search for '166'
+            filter_customer_int = str(int(filter_customer))
+            qs = qs.filter(
+                Q(customerId__icontains=filter_customer) | 
+                Q(customerId__icontains=filter_customer_int)
+            )
+        except ValueError:
+            qs = qs.filter(customerId__icontains=filter_customer)
+
     if filter_mac:
         qs = qs.filter(mac_address__icontains=filter_mac)
     if filter_date_from:
