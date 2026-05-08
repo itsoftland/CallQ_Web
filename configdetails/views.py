@@ -7383,7 +7383,13 @@ def token_report_list(request):
                 c = user.company_relation
                 if c.company_id:
                     scoped_ids.append(c.company_id)
+                # Include plain and zero-padded variants of the DB primary key
+                # because embedded devices may send the ID with leading zeros
+                # (e.g. device sends "0166" while c.id == 166).
                 scoped_ids.append(str(c.id))
+                scoped_ids.append(str(c.id).zfill(4))   # "0166"
+                scoped_ids.append(str(c.id).zfill(3))   # "166" / "016"
+                scoped_ids.append(str(c.id).lstrip('0') or '0')  # strip any leading zeros
             if scoped_ids:
                 qs = qs.filter(customerId__in=scoped_ids)
 
