@@ -6139,10 +6139,12 @@ def swap_counters_api(request):
                             'unmapped_counter_id': prev_ctr.id if prev_ctr else None,
                         })
                     else:
-                        # Remove new counter from any OTHER dispenser's GCBM slot
+                        # Remove new counter from ANY existing GCBM slot (including this dispenser's
+                        # other slots). Step 1 already wiped the target button_index rows for this
+                        # dispenser, so this cannot delete the row we're about to create.
                         GroupCounterButtonMapping.objects.filter(
                             group=group, counter=new_ctr
-                        ).exclude(dispenser=dispenser).delete()
+                        ).delete()
 
                         # Ensure CTDM: new counter -> this dispenser
                         CounterTokenDispenserMapping.objects.filter(
@@ -6642,15 +6644,13 @@ def get_token_dispenser_config_api(request):
         unmapped_counters = []
 
     # -------------------------------------------------------------------------
-    # own_counters: ONLY the counters mapped directly to THIS dispenser.
-    # This is the per-dispenser view, as opposed to mapped_counters (whole group).
+    # own_counters: ONLY the counters whose GroupCounterButtonMapping row points
+    # to THIS dispenser.  A counter swapped to another dispenser is excluded even
+    # if a stale CTDM row still references this dispenser.
+    # For dispensers not in any group, falls back to CTDM order.
     # -------------------------------------------------------------------------
     own_counters = []
     try:
-        own_mappings = CounterTokenDispenserMapping.objects.filter(
-            dispenser=dispenser
-        ).select_related('counter').order_by('id')
-
         # Resolve TV-slot and keypad indices for this dispenser
         _own_btn_index = None
         _own_kp_index  = None
@@ -6664,63 +6664,72 @@ def get_token_dispenser_config_api(request):
             if _own_btn_index or _own_kp_index:
                 break
 
-        # Re-use the full group lookup already built by mapped_counters.
-        # This ensures own_counters reports the same group-wide dispenser_button_index
-        # as mapped_counters and group_counters for each counter.
-        # If the group lookup is empty (group not yet re-saved), compute the offset:
-        # count how many counters belong to dispensers that come BEFORE this one in
-        # the group ordering so the fallback starts at the right position.
         _own_gdm_row = GroupDispenserMapping.objects.filter(dispenser=dispenser).select_related('group').first()
         _own_group   = _own_gdm_row.group if _own_gdm_row else None
 
-        # _gcbm_lookup was built by the mapped_counters block above; reuse it.
-        # If mapped_counters failed for some reason, rebuild it here.
-        if '_gcbm_lookup' not in dir():
-            _gcbm_lookup = {}
-            if _own_group:
-                for _og in GroupCounterButtonMapping.objects.filter(group=_own_group):
-                    _gcbm_lookup[_og.counter_id] = _og.button_index
+        if _own_group:
+            # Source of truth: GCBM rows scoped to THIS dispenser only.
+            # Counters swapped away will have their GCBM row pointing to the new
+            # dispenser, so they won't appear here.
+            own_gcbm_rows = (
+                GroupCounterButtonMapping.objects
+                .filter(group=_own_group, dispenser=dispenser)
+                .select_related('counter')
+                .order_by('button_index')
+            )
+            for _gcbm_row in own_gcbm_rows:
+                _c   = _gcbm_row.counter
+                _odbi = str(_gcbm_row.button_index)
 
-        # Compute fallback starting offset = total counters on all preceding dispensers.
-        _own_offset = 0
-        if _own_group and not _gcbm_lookup:
-            for _prev_slot in _own_group.dispenser_slot_mappings.select_related('dispenser').order_by('dispenser_button_index'):
-                if _prev_slot.dispenser_id == dispenser.id:
-                    break
-                _own_offset += CounterTokenDispenserMapping.objects.filter(
-                    dispenser=_prev_slot.dispenser
-                ).count()
+                if _own_btn_index is not None:
+                    _obi = str(_own_btn_index)
+                else:
+                    try:
+                        _obi = get_button_index_char(int(_odbi))
+                    except (ValueError, TypeError):
+                        _obi = chr(0x31)
 
-        for _oi, _cm in enumerate(own_mappings, start=1):
-            _c = _cm.counter
-            # button_index: TV slot (same for all counters of this dispenser)
-            if _own_btn_index is not None:
-                _obi = str(_own_btn_index)
-            else:
+                own_counters.append({
+                    'counter_id': _c.id,
+                    'counter_name': _c.counter_name,
+                    'counter_display_name': _c.counter_display_name,
+                    'counter_prefix_code': _c.counter_prefix_code,
+                    'max_token_number': _c.max_token_number,
+                    'status': _c.status,
+                    'button_index': _obi,
+                    'dispenser_button_index': _odbi,
+                    'keypad_button_index': str(_own_kp_index) if _own_kp_index is not None else None,
+                })
+        else:
+            # No group: standalone dispenser — use CTDM order as before.
+            own_mappings = CounterTokenDispenserMapping.objects.filter(
+                dispenser=dispenser
+            ).select_related('counter').order_by('id')
+
+            for _oi, _cm in enumerate(own_mappings, start=1):
+                _c = _cm.counter
+                if _own_btn_index is not None:
+                    _obi = str(_own_btn_index)
+                else:
+                    try:
+                        _obi = get_button_index_char(_oi)
+                    except ValueError:
+                        _obi = chr(0x31)
                 try:
-                    _obi = get_button_index_char(_oi)
-                except ValueError:
-                    _obi = chr(0x31)
-            # dispenser_button_index: group-wide sequential index from DB (shared lookup).
-            # Fallback uses offset + per-dispenser position so index never restarts at 1.
-            if _c.id in _gcbm_lookup:
-                _odbi = str(_gcbm_lookup[_c.id])
-            else:
-                try:
-                    _odbi = get_button_index_char(_own_offset + _oi)
+                    _odbi = get_button_index_char(_oi)
                 except ValueError:
                     _odbi = chr(0x31)
-            own_counters.append({
-                'counter_id': _c.id,
-                'counter_name': _c.counter_name,
-                'counter_display_name': _c.counter_display_name,
-                'counter_prefix_code': _c.counter_prefix_code,
-                'max_token_number': _c.max_token_number,
-                'status': _c.status,
-                'button_index': _obi,
-                'dispenser_button_index': _odbi,
-                'keypad_button_index': str(_own_kp_index) if _own_kp_index is not None else None,
-            })
+                own_counters.append({
+                    'counter_id': _c.id,
+                    'counter_name': _c.counter_name,
+                    'counter_display_name': _c.counter_display_name,
+                    'counter_prefix_code': _c.counter_prefix_code,
+                    'max_token_number': _c.max_token_number,
+                    'status': _c.status,
+                    'button_index': _obi,
+                    'dispenser_button_index': _odbi,
+                    'keypad_button_index': str(_own_kp_index) if _own_kp_index is not None else None,
+                })
     except Exception:
         own_counters = []
 
