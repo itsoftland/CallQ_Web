@@ -1335,21 +1335,23 @@ def _get_tv_flag_config(request, device, company, dealer_customer, is_dealer_cus
 
     # ---------------------------------------------------------------
     # Helper: build a list of counter dicts for a given dispenser.
-    # button_index is the ASCII char that identifies this slot to the TV.
+    # Source of truth: GroupCounterButtonMapping (not legacy CTDM).
     # ---------------------------------------------------------------
     def _build_counters_for_dispenser(dispenser, keypad_index):
         """
         Build counter dicts for a given dispenser, attaching:
-          - keypad_index       : ASCII slot of the keypad on this TV (e.g. '1', '2')
-          - dispenser_index    : ASCII slot of the dispenser on this TV (TVDispenserMapping.button_index)
-          - button_index       : same as dispenser_index — the TV slot that holds this dispenser
-          - dispenser_button_number : 1-based physical button number on the dispenser for each counter
-                                     (e.g. a 4-button dispenser → counters get 1, 2, 3, 4)
+          - keypad_index            : ASCII slot of the keypad on this TV (e.g. '1', '2')
+          - dispenser_index         : ASCII slot of the dispenser on this TV (TVDispenserMapping.button_index)
+          - button_index            : same as dispenser_index
+          - dispenser_button_number : 1-based physical button position on the dispenser
+                                     (derived from GCBM order by button_index)
+        Source: GroupCounterButtonMapping — the canonical counter-per-dispenser mapping.
         """
         results = []
         if dispenser is None:
             return results
-        # Look up this dispenser's own slot index on the TV
+
+        # Look up this dispenser's TV-slot index (TVDispenserMapping)
         try:
             tdm = TVDispenserMapping.objects.filter(
                 tv=device, dispenser=dispenser
@@ -1357,31 +1359,30 @@ def _get_tv_flag_config(request, device, company, dealer_customer, is_dealer_cus
             dispenser_index = tdm.button_index if tdm else None
         except Exception:
             dispenser_index = None
+
+        # Fetch counters from GroupCounterButtonMapping ordered by button_index
         try:
-            counter_mappings = list(
-                CounterTokenDispenserMapping.objects.filter(
+            gcbms = list(
+                GroupCounterButtonMapping.objects.filter(
                     dispenser=dispenser
-                ).select_related('counter').order_by('id')
+                ).select_related('counter').order_by('button_index')
             )
-            for btn_num, cm in enumerate(counter_mappings, start=1):
-                c = cm.counter
+            for btn_num, gcbm in enumerate(gcbms, start=1):
+                c = gcbm.counter
                 results.append({
-                    'counter_id': c.counter_name,
-                    'default_code': c.counter_prefix_code,
-                    'keypad_index': keypad_index,
-                    'dispenser_index': dispenser_index,
-                    # button_index tells the TV which dispenser slot this counter belongs to.
-                    # For a 4-button dispenser, all 4 counters share the same button_index
-                    # but each has a unique dispenser_button_number (1-4).
-                    'button_index': dispenser_index,
+                    'counter_id':             c.counter_name,
+                    'default_code':           c.counter_prefix_code,
+                    'keypad_index':           keypad_index,
+                    'dispenser_index':        dispenser_index,
+                    'button_index':           dispenser_index,
                     'dispenser_button_number': btn_num,
-                    'name': c.counter_display_name,
-                    'code': c.counter_prefix_code,
-                    'row_span': 1,
-                    'col_span': 1,
-                    'is_enabled': c.status,
-                    'counter_config_id': c.id,
-                    'max_token_number': c.max_token_number,
+                    'name':                   c.counter_display_name,
+                    'code':                   c.counter_prefix_code,
+                    'row_span':               1,
+                    'col_span':               1,
+                    'is_enabled':             c.status,
+                    'counter_config_id':      c.id,
+                    'max_token_number':       c.max_token_number,
                 })
         except Exception:
             pass
