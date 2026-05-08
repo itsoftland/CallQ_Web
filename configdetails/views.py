@@ -1271,34 +1271,54 @@ def _get_tv_flag_config(request, device, company, dealer_customer, is_dealer_cus
     """Refactored helper for 'TV' flag in get_android_tv_config"""
 
     # ---------------------------------------------------------------
-    # Build connected_devices from:
-    #   1. All devices in the GroupMapping the TV belongs to
-    #   2. All keypads explicitly mapped via TVKeypadMapping for this TV
+    # Build connected_devices — scoped to THIS TV only:
+    #   1. Brokers from the GroupMapping the TV belongs to
+    #      (brokers are shared at group level, not per-TV)
+    #   2. Keypads explicitly mapped to this TV via TVKeypadMapping
+    #   3. Dispensers linked to those keypads (TVKeypadMapping.dispenser)
     # Only BROKER devices include their full config_json.
     # ---------------------------------------------------------------
     group = (
         GroupMapping.objects
         .filter(tvs=device)
-        .prefetch_related('dispensers', 'keypads', 'brokers', 'leds')
+        .prefetch_related('brokers')
         .first()
     )
 
-    # Collect group devices (exclude TV itself)
-    group_devices = []
-    if group:
-        group_devices += list(group.dispensers.all())
-        group_devices += list(group.keypads.all())
-        group_devices += list(group.brokers.all())
-        group_devices += list(group.leds.all())
+    # 1. Brokers — find only the broker(s) specifically mapped to THIS TV
+    #    via ButtonMapping (source=BROKER → target=TV).
+    #    Fall back to all group brokers only if no explicit mapping exists.
+    tv_scoped_devices = []
+    broker_ids_via_buttonmap = list(
+        ButtonMapping.objects.filter(
+            target_device=device,
+            source_device__device_type=Device.DeviceType.BROKER,
+        ).values_list('source_device_id', flat=True).distinct()
+    )
+    if broker_ids_via_buttonmap:
+        tv_scoped_devices += list(
+            Device.objects.filter(id__in=broker_ids_via_buttonmap)
+        )
+    elif group:
+        # No explicit ButtonMapping — fall back to group brokers
+        tv_scoped_devices += list(group.brokers.all())
 
-    # Keypads from TVKeypadMapping (may overlap with group keypads)
-    tv_kp_mapped = [
-        kpm.keypad
-        for kpm in TVKeypadMapping.objects.filter(tv=device).select_related('keypad')
-    ]
+    # 2 & 3. Keypads + their paired dispensers from TVKeypadMapping
+    tv_keypad_mappings = (
+        TVKeypadMapping.objects
+        .filter(tv=device)
+        .select_related('keypad', 'dispenser')
+    )
+    for kpm in tv_keypad_mappings:
+        tv_scoped_devices.append(kpm.keypad)
+        if kpm.dispenser:
+            tv_scoped_devices.append(kpm.dispenser)
 
-    # Merge into ordered dict keyed by device id to avoid duplicates
-    all_connected_map = {d.id: d for d in group_devices + tv_kp_mapped}
+    # Deduplicate preserving order (earlier entry wins)
+    all_connected_map = {}
+    for d in tv_scoped_devices:
+        if d.id not in all_connected_map:
+            all_connected_map[d.id] = d
 
     # Use current time/day for embedded-profile lookup
     from datetime import datetime
@@ -1785,8 +1805,8 @@ def device_config(request, device_id):
             tv_config.token_font_size = request.POST.get('token_font_size', 24)
             tv_config.counter_font_size = request.POST.get('counter_font_size', 24)
             tv_config.tokens_per_counter = request.POST.get('tokens_per_counter', 5)
-            tv_config.no_of_counters = request.POST.get('no_of_counters', 1)
-            tv_config.no_of_dispensers = int(request.POST.get('no_of_dispensers', request.POST.get('no_of_counters', 1)))
+            tv_config.no_of_counters = request.POST.get('no_of_counters', request.POST.get('no_of_keypads', 1))
+            tv_config.no_of_dispensers = int(request.POST.get('no_of_dispensers', request.POST.get('no_of_keypads', request.POST.get('no_of_counters', 1))))
             tv_config.ad_placement = request.POST.get('ad_placement', 'right')
             
             # Boolean fields
@@ -1878,6 +1898,8 @@ def device_config(request, device_id):
                     # Atomically replace keypad mappings for this TV
                     with transaction.atomic():
                         TVKeypadMapping.objects.filter(tv=device).delete()
+                        # Clear direct dispenser mappings to prevent stale data
+                        TVDispenserMapping.objects.filter(tv=device).delete()
                         for position, (kp_id, disp_id) in enumerate(selected_keypad_data, start=1):
                             try:
                                 kp = Device.objects.get(id=kp_id, device_type=Device.DeviceType.KEYPAD)
@@ -1895,10 +1917,11 @@ def device_config(request, device_id):
                                 pass
                 except Exception as e:
                     messages.error(request, f'Error mapping keypads: {e}')
-            elif no_of_keypads == 0 or request.POST.get('clear_keypad_mappings') == '1':
-                # Clear all keypad mappings if explicitly submitted with 0 keypads
+            elif 'no_of_keypads' in request.POST or request.POST.get('clear_keypad_mappings') == '1':
+                # Clear all keypad mappings if explicitly submitted with 0 keypads or no valid keypads
                 try:
                     TVKeypadMapping.objects.filter(tv=device).delete()
+                    TVDispenserMapping.objects.filter(tv=device).delete()
                 except Exception:
                     pass
 

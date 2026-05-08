@@ -62,4 +62,5 @@ htmlcov/
 ##################################
 *.bak
 *.tmp
-*.zip
+*.zipfirebase_credentials/
+.env
