@@ -6112,41 +6112,59 @@ def swap_counters_api(request):
         with transaction.atomic():
 
             if group:
-                # Delete existing GCBM rows for slots mentioned in the request
+                # ----------------------------------------------------------------
+                # "buttons" is the COMPLETE desired final state for this dispenser.
+                # Delete ALL existing GCBM rows for this dispenser first so that
+                # counters NOT included in the payload are automatically unmapped.
+                # This prevents stale rows accumulating (e.g. a 4-button dispenser
+                # ending up with 6 counters after partial swaps).
+                # ----------------------------------------------------------------
+
+                # Remember which counters are being REMOVED so we can clean CTDM.
+                new_counter_ids = {
+                    ctr.id for ctr in desired_map.values() if ctr is not None
+                }
+                removed_counters = [
+                    ctr for btn_idx, ctr in current_map.items()
+                    if ctr is not None and ctr.id not in new_counter_ids
+                ]
+
+                # Wipe every existing GCBM row for this dispenser.
                 GroupCounterButtonMapping.objects.filter(
                     group=group,
                     dispenser=dispenser,
-                    button_index__in=list(desired_map.keys()),
                 ).delete()
 
+                # Clean up CTDM for counters no longer on this dispenser.
+                for removed_ctr in removed_counters:
+                    CounterTokenDispenserMapping.objects.filter(
+                        counter=removed_ctr, dispenser=dispenser
+                    ).delete()
+                    results.append({
+                        'button_index': None,
+                        'operation': 'unmap',
+                        'unmapped_counter_id': removed_ctr.id,
+                        'unmapped_counter_name': removed_ctr.counter_name,
+                    })
+
+                # Now apply the desired state.
                 for btn_idx, new_ctr in desired_map.items():
                     prev_ctr = current_map.get(btn_idx)
 
                     if new_ctr is None:
-                        # Unmap: remove CTDM only if counter not kept in another slot
-                        if prev_ctr:
-                            still_needed = any(
-                                c is not None and c.id == prev_ctr.id
-                                for b, c in desired_map.items() if b != btn_idx
-                            )
-                            if not still_needed:
-                                CounterTokenDispenserMapping.objects.filter(
-                                    counter=prev_ctr, dispenser=dispenser
-                                ).delete()
+                        # Explicit unmap of this slot (counter_id: null in payload).
                         results.append({
                             'button_index': btn_idx,
                             'operation': 'unmap',
                             'unmapped_counter_id': prev_ctr.id if prev_ctr else None,
                         })
                     else:
-                        # Remove new counter from ANY existing GCBM slot (including this dispenser's
-                        # other slots). Step 1 already wiped the target button_index rows for this
-                        # dispenser, so this cannot delete the row we're about to create.
+                        # Remove this counter from any other dispenser's GCBM slot.
                         GroupCounterButtonMapping.objects.filter(
                             group=group, counter=new_ctr
                         ).delete()
 
-                        # Ensure CTDM: new counter -> this dispenser
+                        # Ensure CTDM: new counter -> this dispenser.
                         CounterTokenDispenserMapping.objects.filter(
                             counter=new_ctr
                         ).exclude(dispenser=dispenser).delete()
@@ -6154,7 +6172,7 @@ def swap_counters_api(request):
                             counter=new_ctr, dispenser=dispenser
                         )
 
-                        # Create new GCBM row
+                        # Create the new GCBM row.
                         GroupCounterButtonMapping.objects.create(
                             group=group,
                             dispenser=dispenser,
@@ -6162,7 +6180,7 @@ def swap_counters_api(request):
                             button_index=btn_idx,
                         )
 
-                        # Label operation for response
+                        # Label operation for response.
                         if prev_ctr is None:
                             op_name = 'remap'
                         elif prev_ctr.id == new_ctr.id:
@@ -6180,8 +6198,8 @@ def swap_counters_api(request):
                         })
 
             else:
-                # No group: CTDM insertion-order is the source of truth
-                # Merge current + desired, then recreate CTDM rows in index order
+                # No group: CTDM insertion-order is the source of truth.
+                # Merge current + desired, then recreate CTDM rows in index order.
                 merged = dict(current_map)
                 merged.update(desired_map)
 
