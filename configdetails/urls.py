@@ -41,6 +41,8 @@ urlpatterns = [
     path('api/branch/<int:branch_id>/group-mapping/', views.get_branch_group_mapping_api, name='get_branch_group_mapping_api'),
     path('api/mapping/button/<int:mapping_id>/delete/', views.delete_button_mapping_api, name='delete_button_mapping_api'),
     path('api/mapping/family/<int:family_id>/delete/', views.delete_family_mapping_api, name='delete_family_mapping_api'),
+    path('api/mapping/group/<int:group_id>/devices/', views.get_group_devices_api, name='get_group_devices_api'),
+    path('api/mapping/group/<int:group_id>/update-devices/', views.update_group_devices_api, name='update_group_devices_api'),
     
     # Dealer Customer APIs
     path('api/dealer-customer/<int:customer_id>/devices/', views.get_dealer_customer_devices_api, name='get_dealer_customer_devices_api'),

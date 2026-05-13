@@ -74,6 +74,11 @@
                                                 {% if group.group_mapping.no_of_brokers > 0 %}, {{ group.group_mapping.no_of_brokers }} Broker{{ group.group_mapping.no_of_brokers|pluralize }}{% endif %}
                                                 {% if group.group_mapping.no_of_tvs > 0 %}, {{ group.group_mapping.no_of_tvs }} TV{{ group.group_mapping.no_of_tvs|pluralize }}{% endif %}
                                             </span>
+                                            <button class="btn btn-sm btn-outline-primary edit-group-btn me-1"
+                                                    onclick="openEditGroupModal('{{ group.group_mapping.id }}', '{{ group.group_name|default:"Unnamed Group"|escapejs }}'); return false;"
+                                                    title="Edit Devices">
+                                                <i class="fas fa-pencil-alt"></i>
+                                            </button>
                                             <button class="btn btn-sm btn-outline-danger delete-group-btn" 
                                                     onclick="deleteGroup('{{ group.group_mapping.id }}', '{{ group.group_name|default:"Unnamed Group"|escapejs }}', event); return false;"
                                                     title="Delete Group">
@@ -846,7 +851,410 @@
             }
         }
     }
+    async function openEditGroupModal(groupId, groupName) {
+        const modal = new bootstrap.Modal(document.getElementById('editGroupDevicesModal'));
+        document.getElementById('editModalGroupName').textContent = groupName;
+        document.getElementById('editModalGroupId').value = groupId;
+
+        // Reset all panels
+        ['dispenser','keypad','led','broker','tv'].forEach(type => {
+            document.getElementById(`current-${type}-list`).innerHTML = '<div class="text-center text-muted py-2 small"><i class="fas fa-spinner fa-spin"></i> Loading…</div>';
+            document.getElementById(`available-${type}-list`).innerHTML = '';
+        });
+        document.getElementById('editModalSaveBtn').disabled = false;
+        document.getElementById('editModalSaveBtn').innerHTML = '<i class="fas fa-save me-1"></i>Save Changes';
+        document.getElementById('editModalIndexResult').classList.add('d-none');
+        document.getElementById('editModalAlert').classList.add('d-none');
+
+        modal.show();
+
+        try {
+            const resp = await fetch(`/CallQ/config/api/mapping/group/${groupId}/devices/`, {
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.message || 'Failed to load devices.');
+
+            window._editGroupState = {
+                groupId,
+                dispenser_ids: data.current.dispensers.map(d => d.id),
+                keypad_ids:    data.current.keypads.map(d => d.id),
+                led_ids:       data.current.leds.map(d => d.id),
+                broker_ids:    data.current.brokers.map(d => d.id),
+                tv_ids:        data.current.tvs.map(d => d.id),
+                available:     data.available,
+                current:       data.current,
+            };
+
+            renderEditModalType('dispenser', data.current.dispensers,  data.available.dispensers,  true,  '#1a73e8', 'fa-ticket-alt');
+            renderEditModalType('keypad',    data.current.keypads,     data.available.keypads,     true,  '#198754', 'fa-keyboard');
+            renderEditModalType('led',       data.current.leds,        data.available.leds,        true,  '#dc3545', 'fa-lightbulb');
+            renderEditModalType('broker',    data.current.brokers,     data.available.brokers,     false, '#fd7e14', 'fa-network-wired');
+            renderEditModalType('tv',        data.current.tvs,         data.available.tvs,         false, '#6f42c1', 'fa-tv');
+        } catch(e) {
+            console.error(e);
+            ['dispenser','keypad','led','broker','tv'].forEach(type => {
+                document.getElementById(`current-${type}-list`).innerHTML = `<div class="text-danger small p-2">${e.message}</div>`;
+            });
+        }
+    }
+
+    function renderEditModalType(type, currentList, availableList, exclusive, color, icon) {
+        const stateKey = `${type}_ids`;
+
+        // Current devices panel
+        const curEl = document.getElementById(`current-${type}-list`);
+        if (currentList.length === 0) {
+            curEl.innerHTML = '<div class="text-muted small text-center py-2">None assigned</div>';
+        } else {
+            curEl.innerHTML = currentList.map(d => `
+                <div class="d-flex align-items-center justify-content-between py-1 px-2 mb-1 rounded" 
+                     style="background:${color}18; border-left:3px solid ${color};" id="cur-${type}-${d.id}">
+                    <div>
+                        <i class="fas ${icon} me-1" style="color:${color}; font-size:0.75rem;"></i>
+                        <span class="small fw-semibold">${d.display_name}</span>
+                        ${type === 'dispenser' && d.dispenser_button_index ? `<span class="badge bg-secondary ms-1" style="font-size:0.65rem;">slot ${d.dispenser_button_index}</span>` : ''}
+                    </div>
+                    <button class="btn btn-link text-danger p-0" style="font-size:0.75rem;"
+                            onclick="editModalRemoveDevice('${type}', ${d.id}, '${(d.display_name||'').replace(/'/g,"\\'")}')"
+                            title="Remove">
+                        <i class="fas fa-times-circle"></i>
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        // Available devices panel
+        const avEl = document.getElementById(`available-${type}-list`);
+        if (availableList.length === 0) {
+            avEl.innerHTML = '<div class="text-muted small text-center py-2">No available devices</div>';
+        } else {
+            avEl.innerHTML = availableList.map(d => `
+                <div class="d-flex align-items-center justify-content-between py-1 px-2 mb-1 rounded border" 
+                     id="avail-${type}-${d.id}" style="background:#fff;">
+                    <div>
+                        <i class="fas ${icon} me-1" style="color:${color}; font-size:0.75rem;"></i>
+                        <span class="small">${d.display_name}</span>
+                    </div>
+                    <button class="btn btn-link text-success p-0" style="font-size:0.75rem;"
+                            onclick="editModalAddDevice('${type}', ${d.id}, '${(d.display_name||'').replace(/'/g,"\\'")}')"
+                            title="Add">
+                        <i class="fas fa-plus-circle"></i>
+                    </button>
+                </div>
+            `).join('');
+        }
+    }
+
+    function editModalRemoveDevice(type, deviceId, displayName) {
+        const state  = window._editGroupState;
+        const key    = `${type}_ids`;
+        state[key]   = state[key].filter(id => id !== deviceId);
+
+        // Move card from current → available list
+        const curEl = document.getElementById(`cur-${type}-${deviceId}`);
+        if (curEl) curEl.remove();
+
+        const avEl = document.getElementById(`available-${type}-list`);
+        const noDevMsg = avEl.querySelector('.text-muted');
+        if (noDevMsg) noDevMsg.remove();
+
+        // Determine icon and color from current rendered elements
+        const iconMap  = { dispenser:'fa-ticket-alt', keypad:'fa-keyboard', led:'fa-lightbulb', broker:'fa-network-wired', tv:'fa-tv' };
+        const colorMap = { dispenser:'#1a73e8', keypad:'#198754', led:'#dc3545', broker:'#fd7e14', tv:'#6f42c1' };
+        const icon  = iconMap[type];
+        const color = colorMap[type];
+
+        const div = document.createElement('div');
+        div.className = 'd-flex align-items-center justify-content-between py-1 px-2 mb-1 rounded border';
+        div.id = `avail-${type}-${deviceId}`;
+        div.style.background = '#fff';
+        div.innerHTML = `
+            <div>
+                <i class="fas ${icon} me-1" style="color:${color}; font-size:0.75rem;"></i>
+                <span class="small">${displayName}</span>
+            </div>
+            <button class="btn btn-link text-success p-0" style="font-size:0.75rem;"
+                    onclick="editModalAddDevice('${type}', ${deviceId}, '${displayName.replace(/'/g, "\\'")}')"  
+                    title="Add">
+                <i class="fas fa-plus-circle"></i>
+            </button>`;
+        avEl.appendChild(div);
+
+        // Update current list empty state
+        const curList = document.getElementById(`current-${type}-list`);
+        if (curList.children.length === 0) {
+            curList.innerHTML = '<div class="text-muted small text-center py-2">None assigned</div>';
+        }
+    }
+
+    function editModalAddDevice(type, deviceId, displayName) {
+        const state  = window._editGroupState;
+        const key    = `${type}_ids`;
+        if (state[key].includes(deviceId)) return;
+        state[key].push(deviceId);
+
+        // Move card from available → current list
+        const avEl = document.getElementById(`avail-${type}-${deviceId}`);
+        if (avEl) avEl.remove();
+
+        const iconMap  = { dispenser:'fa-ticket-alt', keypad:'fa-keyboard', led:'fa-lightbulb', broker:'fa-network-wired', tv:'fa-tv' };
+        const colorMap = { dispenser:'#1a73e8', keypad:'#198754', led:'#dc3545', broker:'#fd7e14', tv:'#6f42c1' };
+        const icon  = iconMap[type];
+        const color = colorMap[type];
+
+        const curList = document.getElementById(`current-${type}-list`);
+        const noDevMsg = curList.querySelector('.text-muted');
+        if (noDevMsg) noDevMsg.remove();
+
+        const div = document.createElement('div');
+        div.className = 'd-flex align-items-center justify-content-between py-1 px-2 mb-1 rounded';
+        div.id = `cur-${type}-${deviceId}`;
+        div.style.cssText = `background:${color}18; border-left:3px solid ${color};`;
+        div.innerHTML = `
+            <div>
+                <i class="fas ${icon} me-1" style="color:${color}; font-size:0.75rem;"></i>
+                <span class="small fw-semibold">${displayName}</span>
+            </div>
+            <button class="btn btn-link text-danger p-0" style="font-size:0.75rem;"
+                    onclick="editModalRemoveDevice('${type}', ${deviceId}, '${displayName.replace(/'/g, "\\'")}')" 
+                    title="Remove">
+                <i class="fas fa-times-circle"></i>
+            </button>`;
+        curList.appendChild(div);
+
+        // Update available list empty state
+        const avListEl = document.getElementById(`available-${type}-list`);
+        if (avListEl.children.length === 0) {
+            avListEl.innerHTML = '<div class="text-muted small text-center py-2">No available devices</div>';
+        }
+    }
+
+    async function saveEditGroupDevices() {
+        const state = window._editGroupState;
+        if (!state) return;
+
+        const btn = document.getElementById('editModalSaveBtn');
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Saving…';
+
+        const alertEl = document.getElementById('editModalAlert');
+        alertEl.classList.add('d-none');
+        document.getElementById('editModalIndexResult').classList.add('d-none');
+
+        try {
+            const resp = await fetch(`/CallQ/config/api/mapping/group/${state.groupId}/update-devices/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken'),
+                },
+                body: JSON.stringify({
+                    dispenser_ids: state.dispenser_ids,
+                    keypad_ids:    state.keypad_ids,
+                    led_ids:       state.led_ids,
+                    broker_ids:    state.broker_ids,
+                    tv_ids:        state.tv_ids,
+                }),
+            });
+
+            const data = await resp.json();
+
+            if (resp.ok && data.status === 'success') {
+                // Show index result
+                const indexEl = document.getElementById('editModalIndexResult');
+                indexEl.classList.remove('d-none');
+                let html = '';
+                if (data.dispenser_slots && data.dispenser_slots.length > 0) {
+                    html += '<div class="fw-semibold small mb-1 text-primary"><i class="fas fa-ticket-alt me-1"></i>Dispenser Button Indexes</div>';
+                    html += '<div class="d-flex flex-wrap gap-2 mb-2">' +
+                        data.dispenser_slots.map(s =>
+                            `<span class="badge" style="background:#1a73e820; color:#1a73e8; border:1px solid #1a73e8;">${s.display_name} → slot <strong>${s.dispenser_button_index}</strong></span>`
+                        ).join('') + '</div>';
+                }
+                if (data.keypad_slots && data.keypad_slots.length > 0) {
+                    html += '<div class="fw-semibold small mb-1 text-success"><i class="fas fa-keyboard me-1"></i>Keypad Indexes</div>';
+                    html += '<div class="d-flex flex-wrap gap-2">' +
+                        data.keypad_slots.map(s =>
+                            `<span class="badge" style="background:#19875420; color:#198754; border:1px solid #198754;">${s.display_name} → slot <strong>${s.keypad_index}</strong></span>`
+                        ).join('') + '</div>';
+                }
+                if (!html) html = '<span class="text-muted small">No slot assignments (no TVs in group).</span>';
+                indexEl.innerHTML = html;
+
+                btn.innerHTML = '<i class="fas fa-check me-1"></i>Saved!';
+                btn.classList.replace('btn-primary', 'btn-success');
+
+                // Reload page after brief delay so user sees the success state
+                setTimeout(() => location.reload(), 1200);
+            } else {
+                throw new Error(data.message || 'Save failed.');
+            }
+        } catch (e) {
+            console.error(e);
+            alertEl.textContent = e.message;
+            alertEl.classList.remove('d-none');
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-save me-1"></i>Save Changes';
+        }
+    }
 </script>
+
+<!-- ====================================================================
+     Edit Group Devices Modal
+     ==================================================================== -->
+<div class="modal fade" id="editGroupDevicesModal" tabindex="-1" aria-labelledby="editGroupDevicesModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content border-0 shadow">
+
+            <div class="modal-header" style="background: linear-gradient(135deg, #1a73e8 0%, #0d47a1 100%);">
+                <div>
+                    <h5 class="modal-title text-white fw-bold mb-0" id="editGroupDevicesModalLabel">
+                        <i class="fas fa-pencil-alt me-2"></i>Edit Devices
+                    </h5>
+                    <div class="text-white opacity-75 small" id="editModalGroupName"></div>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                <input type="hidden" id="editModalGroupId">
+            </div>
+
+            <div class="modal-body p-4">
+
+                <!-- Alert -->
+                <div class="alert alert-danger d-none" id="editModalAlert" role="alert"></div>
+
+                <!-- Index result (shown after save) -->
+                <div class="alert alert-info d-none p-3 mb-3" id="editModalIndexResult"></div>
+
+                <!-- Device type panels -->
+                <div class="row g-3">
+
+                    <!-- TOKEN DISPENSER -->
+                    <div class="col-12">
+                        <div class="card border-0 shadow-sm">
+                            <div class="card-header py-2 px-3" style="background:#1a73e810; border-left:4px solid #1a73e8;">
+                                <span class="fw-bold small" style="color:#1a73e8;">
+                                    <i class="fas fa-ticket-alt me-2"></i>Token Dispensers
+                                    <span class="text-muted fw-normal ms-1">(exclusive — each dispenser can only be in one group)</span>
+                                </span>
+                            </div>
+                            <div class="card-body p-3">
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <div class="small fw-semibold text-muted mb-2"><i class="fas fa-check-circle text-primary me-1"></i>Current in Group</div>
+                                        <div id="current-dispenser-list" class="edit-device-panel" style="min-height:60px; max-height:200px; overflow-y:auto;"></div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="small fw-semibold text-muted mb-2"><i class="fas fa-plus-circle text-success me-1"></i>Available to Add</div>
+                                        <div id="available-dispenser-list" class="edit-device-panel" style="min-height:60px; max-height:200px; overflow-y:auto;"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- KEYPAD -->
+                    <div class="col-md-6">
+                        <div class="card border-0 shadow-sm h-100">
+                            <div class="card-header py-2 px-3" style="background:#19875410; border-left:4px solid #198754;">
+                                <span class="fw-bold small" style="color:#198754;">
+                                    <i class="fas fa-keyboard me-2"></i>Keypads
+                                    <span class="text-muted fw-normal">(exclusive)</span>
+                                </span>
+                            </div>
+                            <div class="card-body p-3">
+                                <div class="small fw-semibold text-muted mb-2"><i class="fas fa-check-circle text-primary me-1"></i>Current</div>
+                                <div id="current-keypad-list" class="edit-device-panel mb-3" style="min-height:50px; max-height:150px; overflow-y:auto;"></div>
+                                <div class="small fw-semibold text-muted mb-2"><i class="fas fa-plus-circle text-success me-1"></i>Available</div>
+                                <div id="available-keypad-list" class="edit-device-panel" style="min-height:50px; max-height:150px; overflow-y:auto;"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- LED -->
+                    <div class="col-md-6">
+                        <div class="card border-0 shadow-sm h-100">
+                            <div class="card-header py-2 px-3" style="background:#dc354510; border-left:4px solid #dc3545;">
+                                <span class="fw-bold small" style="color:#dc3545;">
+                                    <i class="fas fa-lightbulb me-2"></i>LEDs
+                                    <span class="text-muted fw-normal">(exclusive)</span>
+                                </span>
+                            </div>
+                            <div class="card-body p-3">
+                                <div class="small fw-semibold text-muted mb-2"><i class="fas fa-check-circle text-primary me-1"></i>Current</div>
+                                <div id="current-led-list" class="edit-device-panel mb-3" style="min-height:50px; max-height:150px; overflow-y:auto;"></div>
+                                <div class="small fw-semibold text-muted mb-2"><i class="fas fa-plus-circle text-success me-1"></i>Available</div>
+                                <div id="available-led-list" class="edit-device-panel" style="min-height:50px; max-height:150px; overflow-y:auto;"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- BROKER -->
+                    <div class="col-md-6">
+                        <div class="card border-0 shadow-sm h-100">
+                            <div class="card-header py-2 px-3" style="background:#fd7e1410; border-left:4px solid #fd7e14;">
+                                <span class="fw-bold small" style="color:#fd7e14;">
+                                    <i class="fas fa-network-wired me-2"></i>Brokers
+                                    <span class="text-muted fw-normal">(shared)</span>
+                                </span>
+                            </div>
+                            <div class="card-body p-3">
+                                <div class="small fw-semibold text-muted mb-2"><i class="fas fa-check-circle text-primary me-1"></i>Current</div>
+                                <div id="current-broker-list" class="edit-device-panel mb-3" style="min-height:50px; max-height:150px; overflow-y:auto;"></div>
+                                <div class="small fw-semibold text-muted mb-2"><i class="fas fa-plus-circle text-success me-1"></i>Available</div>
+                                <div id="available-broker-list" class="edit-device-panel" style="min-height:50px; max-height:150px; overflow-y:auto;"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TV -->
+                    <div class="col-md-6">
+                        <div class="card border-0 shadow-sm h-100">
+                            <div class="card-header py-2 px-3" style="background:#6f42c110; border-left:4px solid #6f42c1;">
+                                <span class="fw-bold small" style="color:#6f42c1;">
+                                    <i class="fas fa-tv me-2"></i>TVs
+                                    <span class="text-muted fw-normal">(shared)</span>
+                                </span>
+                            </div>
+                            <div class="card-body p-3">
+                                <div class="small fw-semibold text-muted mb-2"><i class="fas fa-check-circle text-primary me-1"></i>Current</div>
+                                <div id="current-tv-list" class="edit-device-panel mb-3" style="min-height:50px; max-height:150px; overflow-y:auto;"></div>
+                                <div class="small fw-semibold text-muted mb-2"><i class="fas fa-plus-circle text-success me-1"></i>Available</div>
+                                <div id="available-tv-list" class="edit-device-panel" style="min-height:50px; max-height:150px; overflow-y:auto;"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div><!-- /row -->
+            </div><!-- /modal-body -->
+
+            <div class="modal-footer bg-light border-0">
+                <div class="me-auto text-muted small">
+                    <i class="fas fa-info-circle me-1"></i>
+                    Indexes are automatically recalculated after saving.
+                </div>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="editModalSaveBtn" onclick="saveEditGroupDevices()">
+                    <i class="fas fa-save me-1"></i>Save Changes
+                </button>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<style>
+.edit-device-panel .text-muted {
+    font-size: 0.8rem;
+}
+.edit-group-btn {
+    transition: all 0.2s;
+}
+.edit-group-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(26,115,232,0.3);
+}
+</style>
 
 <style>
     .avatar-sm {

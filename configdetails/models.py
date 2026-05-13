@@ -131,6 +131,7 @@ class ProductionBatch(models.Model):
 class ProductionSerialNumber(models.Model):
     batch = models.ForeignKey(ProductionBatch, on_delete=models.CASCADE, related_name='serial_numbers')
     serial_number = models.CharField(max_length=100, unique=True)
+    mac_address = models.CharField(max_length=100, null=True, blank=True, help_text="Physical MAC address of the device (optional)")
     device_type = models.CharField(max_length=50, choices=Device.DeviceType.choices, default=Device.DeviceType.TV)
     is_registered = models.BooleanField(default=False)
     

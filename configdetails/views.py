@@ -2018,16 +2018,21 @@ def device_config(request, device_id):
             elif selected_counter_ids:
                 try:
                     # Validate: Check if any selected counter is already mapped to another TV
+                    # Scope check to the same company — counters and TVs are company-specific,
+                    # so a mapping in a different company is never a conflict.
+                    device_company = device.company
                     duplicate_counters = []
                     for counter_id in selected_counter_ids:
                         try:
                             counter = CounterConfig.objects.get(id=counter_id, status=True)
-                            existing_mappings = TVCounterMapping.objects.filter(
+                            existing_qs = TVCounterMapping.objects.filter(
                                 counter=counter
                             ).exclude(tv=device)
+                            if device_company:
+                                existing_qs = existing_qs.filter(tv__company=device_company)
                             
-                            if existing_mappings.exists():
-                                other_tvs = [m.tv.serial_number for m in existing_mappings]
+                            if existing_qs.exists():
+                                other_tvs = [m.tv.serial_number for m in existing_qs]
                                 duplicate_counters.append({
                                     'counter': counter.counter_name,
                                     'other_tvs': other_tvs
@@ -2096,17 +2101,22 @@ def device_config(request, device_id):
             
             if selected_counter_ids:
                 try:
-                    # Validate: Check if any selected counter is already mapped to another dispenser
+                    # Validate: Check if any selected counter is already mapped to another dispenser.
+                    # Scope the check to the same company — counters and dispensers are
+                    # company-specific, so a mapping in a different company is never a conflict.
+                    device_company = device.company
                     duplicate_counters = []
                     for counter_id in selected_counter_ids:
                         try:
                             counter = CounterConfig.objects.get(id=counter_id, status=True)
-                            existing_mappings = CounterTokenDispenserMapping.objects.filter(
+                            existing_qs = CounterTokenDispenserMapping.objects.filter(
                                 counter=counter
                             ).exclude(dispenser=device)
+                            if device_company:
+                                existing_qs = existing_qs.filter(dispenser__company=device_company)
                             
-                            if existing_mappings.exists():
-                                other_dispensers = [m.dispenser.serial_number for m in existing_mappings]
+                            if existing_qs.exists():
+                                other_dispensers = [m.dispenser.serial_number for m in existing_qs]
                                 duplicate_counters.append({
                                     'counter': counter.counter_name,
                                     'other_dispensers': other_dispensers
@@ -2545,7 +2555,11 @@ def change_device_branch(request, device_id):
 
 @login_required
 def change_device_owner(request, device_id):
-    """Change the company and branch of a device. Super Admin only."""
+    """Change the company and branch of a device. Super Admin only.
+    
+    When the company changes, the device's configuration and all cross-company
+    mappings are cleared so the new company starts with a clean slate.
+    """
     if request.method != 'POST':
         return redirect('device_list')
     
@@ -2555,6 +2569,7 @@ def change_device_owner(request, device_id):
         return redirect('device_list')
     
     device = get_object_or_404(Device, id=device_id)
+    old_company_id = device.company_id
     company_id = request.POST.get('company_id')
     branch_id = request.POST.get('branch_id')
     
@@ -2571,9 +2586,57 @@ def change_device_owner(request, device_id):
         device.branch = branch
     else:
         device.branch = None
-        
-    device.save()
-    messages.success(request, f"Device {device.serial_number} ownership updated successfully.")
+    
+    new_company_id = device.company_id
+
+    # If the company actually changed, wipe all company-specific configs and mappings
+    # so the new company starts with a clean, uncontaminated device.
+    if old_company_id != new_company_id:
+        with transaction.atomic():
+            # 1. Reset device config (clear stored JSON)
+            if hasattr(device, 'config') and device.config:
+                device.config.config_json = {}
+                device.config.save()
+            
+            # 2. Detach from any config profile that belonged to the old company
+            device.config_profile = None
+            device.embedded_profile = None
+
+            # 3. Remove from all groups (GroupDispenserMapping & GroupMapping M2M keypads/leds)
+            if device.device_type == Device.DeviceType.TOKEN_DISPENSER:
+                # GroupDispenserMapping through-model rows
+                GroupDispenserMapping.objects.filter(dispenser=device).delete()
+                # GroupCounterButtonMapping rows for this dispenser
+                GroupCounterButtonMapping.objects.filter(dispenser=device).delete()
+                # Counter-Dispenser mappings
+                CounterTokenDispenserMapping.objects.filter(dispenser=device).delete()
+                # TV-Dispenser mappings
+                TVDispenserMapping.objects.filter(dispenser=device).delete()
+                # TVKeypadMapping dispenser references
+                TVKeypadMapping.objects.filter(dispenser=device).update(dispenser=None)
+
+            elif device.device_type == Device.DeviceType.KEYPAD:
+                device.group_keypads.clear()
+                TVKeypadMapping.objects.filter(keypad=device).delete()
+
+            elif device.device_type == Device.DeviceType.TV:
+                TVDispenserMapping.objects.filter(tv=device).delete()
+                TVKeypadMapping.objects.filter(tv=device).delete()
+                TVCounterMapping.objects.filter(tv=device).delete()
+
+            elif device.device_type == Device.DeviceType.LED:
+                device.group_leds.clear()
+
+            device.save()
+        messages.success(
+            request,
+            f"Device {device.serial_number} ownership updated. "
+            f"Configuration and mappings have been reset for the new company."
+        )
+    else:
+        device.save()
+        messages.success(request, f"Device {device.serial_number} ownership updated successfully.")
+    
     return redirect('device_list')
 
 @login_required
@@ -2636,11 +2699,12 @@ def device_register(request):
         errors = []
 
         for dev in devices_data:
-            mac = dev.get('mac_address')
+            mac = dev.get('mac_address')          # serial number (production batch SN)
             dtype = dev.get('device_type')
             model = dev.get('device_model') or dtype
-            token_type = dev.get('token_type') # New field
+            token_type = dev.get('token_type')     # No. of buttons for dispensers
             display_name = dev.get('display_name') # Customer-defined display name
+            device_mac = dev.get('device_mac_address') or None  # Physical MAC address
 
             # 1. Validation against Production Batch
             prod_sn = ProductionSerialNumber.objects.filter(serial_number=mac).first()
@@ -2715,7 +2779,8 @@ def device_register(request):
                         'display_name': display_name or None,
                         'device_type': dtype,
                         'device_model': model,
-                        'token_type': token_type, # Save token type
+                        'token_type': token_type,       # Save token type
+                        'mac_address': device_mac,      # Save physical MAC address
                         'device_registration_id': ext_id,
                         'product_type_id': prod_type_id,
                         'licence_status': 'Pending',
@@ -4744,14 +4809,14 @@ def production_batch_upload(request):
             batch_id=batch_id
         )
 
-        # List to store tuples of (serial_number, device_type)
+        # List to store tuples of (serial_number, device_type, mac_address)
         serial_data = []
         
-        # Handle manual entry (assumes default device type TV for manual entry)
+        # Handle manual entry (assumes default device type TV for manual entry, no MAC)
         if serial_numbers_text:
             for s in serial_numbers_text.split('\n'):
                 if s.strip():
-                    serial_data.append((s.strip(), 'TV'))
+                    serial_data.append((s.strip(), 'TV', None))
 
         # Handle File upload (Excel or CSV)
         if excel_file:
@@ -4776,6 +4841,7 @@ def production_batch_upload(request):
                     fieldnames_lower = {f.lower().strip(): f for f in fieldnames}
                     sn_col = fieldnames_lower.get('serial number') or fieldnames[0]
                     dt_col = fieldnames_lower.get('device type')
+                    mac_col = fieldnames_lower.get('mac address') or fieldnames_lower.get('mac_address')
                     
                     for row in csv_reader:
                         sn_value = row.get(sn_col, '').strip()
@@ -4795,7 +4861,9 @@ def production_batch_upload(request):
                                     'LED': 'LED',
                                 }
                                 device_type = dt_mapping.get(dt_value, 'TV')
-                            serial_data.append((sn_value, device_type))
+                            # Get optional MAC address
+                            mac_value = row.get(mac_col, '').strip() if mac_col else ''
+                            serial_data.append((sn_value, device_type, mac_value or None))
                             
                 elif ext in ['.xlsx', '.xls']:
                     from openpyxl import load_workbook
@@ -4808,12 +4876,15 @@ def production_batch_upload(request):
                     # Find column indices
                     sn_idx = 0
                     dt_idx = None
+                    mac_idx = None
                     
                     for i, h in enumerate(headers):
                         if 'serial' in h and 'number' in h:
                             sn_idx = i
                         elif 'device' in h and 'type' in h:
                             dt_idx = i
+                        elif 'mac' in h:
+                            mac_idx = i
                     
                     # Iterate from second row
                     for row in ws.iter_rows(min_row=2, values_only=True):
@@ -4832,7 +4903,9 @@ def production_batch_upload(request):
                                     'LED': 'LED',
                                 }
                                 device_type = dt_mapping.get(dt_value, 'TV')
-                            serial_data.append((sn_value, device_type))
+                            # Get optional MAC address
+                            mac_value = str(row[mac_idx]).strip() if mac_idx is not None and row[mac_idx] else None
+                            serial_data.append((sn_value, device_type, mac_value))
                     
                 else:
                     raise ValueError("Unsupported file format. Please upload .csv or .xlsx")
@@ -4841,12 +4914,19 @@ def production_batch_upload(request):
                 messages.error(request, f"Error processing file: {str(e)}")
                 return redirect('production_batch_upload')
 
-        # Save serial numbers with device types
+        # Save serial numbers with device types and optional MAC addresses
         created_count = 0
         duplicate_count = 0
-        for sn, device_type in serial_data:
+        for entry in serial_data:
+            sn, device_type = entry[0], entry[1]
+            mac = entry[2] if len(entry) > 2 else None
             if not ProductionSerialNumber.objects.filter(serial_number=sn).exists():
-                ProductionSerialNumber.objects.create(batch=batch, serial_number=sn, device_type=device_type)
+                ProductionSerialNumber.objects.create(
+                    batch=batch,
+                    serial_number=sn,
+                    device_type=device_type,
+                    mac_address=mac or None,
+                )
                 created_count += 1
             else:
                 duplicate_count += 1
@@ -4883,9 +4963,14 @@ def batch_download(request, batch_id, file_format):
         response['Content-Disposition'] = f'attachment; filename="Batch_{batch.batch_id}.csv"'
         
         writer = csv.writer(response)
-        writer.writerow(['Serial Number', 'Device Type', 'Status'])
+        writer.writerow(['Serial Number', 'MAC Address', 'Device Type', 'Status'])
         for item in items:
-            writer.writerow([item.serial_number, item.get_device_type_display(), 'Registered' if item.is_registered else 'Pending'])
+            writer.writerow([
+                item.serial_number,
+                item.mac_address or '',
+                item.get_device_type_display(),
+                'Registered' if item.is_registered else 'Pending',
+            ])
         return response
 
     elif file_format == 'pdf':
@@ -4918,17 +5003,19 @@ def batch_download(request, batch_id, file_format):
         document = Document()
         document.add_heading(f'Batch Report: {batch.batch_id}', 0)
         
-        table = document.add_table(rows=1, cols=3)
+        table = document.add_table(rows=1, cols=4)
         hdr_cells = table.rows[0].cells
         hdr_cells[0].text = 'Serial Number'
-        hdr_cells[1].text = 'Device Type'
-        hdr_cells[2].text = 'Status'
+        hdr_cells[1].text = 'MAC Address'
+        hdr_cells[2].text = 'Device Type'
+        hdr_cells[3].text = 'Status'
         
         for item in items:
             row_cells = table.add_row().cells
             row_cells[0].text = item.serial_number
-            row_cells[1].text = item.get_device_type_display()
-            row_cells[2].text = 'Registered' if item.is_registered else 'Pending'
+            row_cells[1].text = item.mac_address or ''
+            row_cells[2].text = item.get_device_type_display()
+            row_cells[3].text = 'Registered' if item.is_registered else 'Pending'
             
         buffer = io.BytesIO()
         document.save(buffer)
@@ -5125,6 +5212,7 @@ def get_available_serial_numbers_api(request):
     data = [
         {
             'serial_number': sn.serial_number,
+            'mac_address': sn.mac_address or '',
             'batch_id': sn.batch.batch_id,
             'device_type': sn.device_type
         }
@@ -5930,13 +6018,16 @@ def map_counter_dispenser_api(request, counter_id):
     
     dispenser = get_object_or_404(Device, id=dispenser_id, device_type=Device.DeviceType.TOKEN_DISPENSER)
     
-    # Validate: Check if counter is already mapped to another dispenser
-    existing_mappings = CounterTokenDispenserMapping.objects.filter(
+    # Validate: Check if counter is already mapped to another dispenser within the same company.
+    # Counters and dispensers are company-scoped, so cross-company mappings are not a conflict.
+    existing_qs = CounterTokenDispenserMapping.objects.filter(
         counter=counter
     ).exclude(dispenser=dispenser)
+    if dispenser.company:
+        existing_qs = existing_qs.filter(dispenser__company=dispenser.company)
     
-    if existing_mappings.exists():
-        other_dispensers = [m.dispenser.serial_number for m in existing_mappings]
+    if existing_qs.exists():
+        other_dispensers = [m.dispenser.serial_number for m in existing_qs]
         return Response({
             'status': 'error',
             'message': f'Counter "{counter.counter_name}" (ID: {counter.id}) is already mapped to dispenser(s): {", ".join(other_dispensers)}. One counter can only be mapped to one dispenser at a time.',
@@ -6456,7 +6547,6 @@ def get_token_dispenser_config_api(request):
             })()]
 
         _seen_mc = set()
-        _mc_fallback_pos = 0  # Group-wide fallback counter — never resets between dispensers
         for _slot in _all_gdm:
             _disp = _slot.dispenser
 
@@ -6494,7 +6584,6 @@ def get_token_dispenser_config_api(request):
                 if _counter.id in _seen_mc:
                     continue
                 _seen_mc.add(_counter.id)
-                _mc_fallback_pos += 1  # Always increment regardless of DB hit
 
                 # button_index: TV slot (same for all counters of this dispenser).
                 if _this_button_index is not None:
@@ -6505,16 +6594,10 @@ def get_token_dispenser_config_api(request):
                     except ValueError:
                         _final_bi = chr(0x31)
 
-                # dispenser_button_index: group-wide sequential index from DB.
-                # Fallback uses _mc_fallback_pos — a global counter that never
-                # resets between dispensers, so every counter gets a unique index.
-                if _counter.id in _gcbm_lookup:
-                    _dispenser_btn_idx = str(_gcbm_lookup[_counter.id])
-                else:
-                    try:
-                        _dispenser_btn_idx = get_button_index_char(_mc_fallback_pos)
-                    except ValueError:
-                        _dispenser_btn_idx = chr(0x31)
+                # dispenser_button_index: group-wide sequential index from DB only.
+                # No fallback — the DB (GroupCounterButtonMapping) is the single
+                # source of truth.  Returns None when no DB record exists.
+                _dispenser_btn_idx = str(_gcbm_lookup[_counter.id]) if _counter.id in _gcbm_lookup else None
 
                 mapped_counters.append({
                     'counter_id': _counter.id,
@@ -6558,7 +6641,6 @@ def get_token_dispenser_config_api(request):
             all_gdm = [gdm_self] if gdm_self else []
 
         seen_counter_ids = set()
-        group_fallback_pos = 0  # fallback only when no DB record exists
         for slot in all_gdm:
             fam_dispenser = slot.dispenser
 
@@ -6606,16 +6688,10 @@ def get_token_dispenser_config_api(request):
                     except ValueError:
                         final_bi = chr(0x31)
 
-                # dispenser_button_index: group-wide sequential index from DB.
-                # Falls back to a running group-wide counter when no DB record exists.
-                if counter.id in gcbm_lookup:
-                    fam_dispenser_btn_idx = str(gcbm_lookup[counter.id])
-                else:
-                    group_fallback_pos += 1
-                    try:
-                        fam_dispenser_btn_idx = get_button_index_char(group_fallback_pos)
-                    except ValueError:
-                        fam_dispenser_btn_idx = chr(0x31)
+                # dispenser_button_index: group-wide sequential index from DB only.
+                # No fallback — the DB (GroupCounterButtonMapping) is the single
+                # source of truth.  Returns None when no DB record exists.
+                fam_dispenser_btn_idx = str(gcbm_lookup[counter.id]) if counter.id in gcbm_lookup else None
 
                 group_counters.append({
                     'counter_id': counter.id,
@@ -6731,10 +6807,7 @@ def get_token_dispenser_config_api(request):
                         _obi = get_button_index_char(_oi)
                     except ValueError:
                         _obi = chr(0x31)
-                try:
-                    _odbi = get_button_index_char(_oi)
-                except ValueError:
-                    _odbi = chr(0x31)
+                _odbi = None  # No group → no DB-stored dispenser_button_index
                 own_counters.append({
                     'counter_id': _c.id,
                     'counter_name': _c.counter_name,
@@ -7469,3 +7542,345 @@ def token_report_list(request):
         'filter_date_to':   filter_date_to,
     }
     return render(request, 'configdetails/token_report_list.html', context)
+
+
+# ============================================================================
+# Group Device Edit APIs
+# ============================================================================
+
+@api_view(['GET'])
+@login_required
+def get_group_devices_api(request, group_id):
+    """
+    Returns:
+      - current devices in the group (by type)
+      - available (unallocated) devices of each type for the same company/branch
+        (dispensers/keypads/LEDs must not already belong to another group;
+         brokers/TVs can be in multiple groups so we show all company devices)
+    """
+    group = get_object_or_404(GroupMapping, id=group_id)
+
+    # --- Current devices ---
+    current_dispensers = list(
+        GroupDispenserMapping.objects.filter(group=group)
+        .select_related('dispenser')
+        .order_by('dispenser_button_index')
+    )
+    current_keypads  = list(group.keypads.all().order_by('id'))
+    current_leds     = list(group.leds.all().order_by('id'))
+    current_brokers  = list(group.brokers.all().order_by('id'))
+    current_tvs      = list(group.tvs.all().order_by('id'))
+
+    def device_dict(d):
+        return {
+            'id': d.id,
+            'serial_number': d.serial_number,
+            'display_name': d.display_name or d.serial_number,
+            'device_type': d.device_type,
+            'token_type': getattr(d, 'token_type', None),
+        }
+
+    current_dispenser_ids = {gdm.dispenser.id for gdm in current_dispensers}
+    current_keypad_ids    = {d.id for d in current_keypads}
+    current_led_ids       = {d.id for d in current_leds}
+    current_broker_ids    = {d.id for d in current_brokers}
+    current_tv_ids        = {d.id for d in current_tvs}
+
+    # Base queryset scoped to the group's company (and optionally branch)
+    company = group.company
+    branch  = group.branch
+    base_qs = Device.objects.filter(company=company, is_active=True)
+    if branch:
+        base_qs = base_qs.filter(branch=branch)
+
+    # Dispensers/Keypads/LEDs already claimed by ANY group
+    taken_dispenser_ids = set(
+        GroupDispenserMapping.objects.exclude(group=group)
+        .values_list('dispenser_id', flat=True)
+    )
+    taken_keypad_ids = set(
+        GroupMapping.objects.exclude(id=group_id)
+        .values_list('keypads__id', flat=True)
+    ) - {None}
+    taken_led_ids = set(
+        GroupMapping.objects.exclude(id=group_id)
+        .values_list('leds__id', flat=True)
+    ) - {None}
+
+    # Available = correct type + not taken by another group + not already in current group
+    avail_dispensers = list(
+        base_qs.filter(device_type=Device.DeviceType.TOKEN_DISPENSER)
+        .exclude(id__in=taken_dispenser_ids)
+        .exclude(id__in=current_dispenser_ids)
+        .order_by('display_name', 'serial_number')
+    )
+    avail_keypads = list(
+        base_qs.filter(device_type=Device.DeviceType.KEYPAD)
+        .exclude(id__in=taken_keypad_ids)
+        .exclude(id__in=current_keypad_ids)
+        .order_by('display_name', 'serial_number')
+    )
+    avail_leds = list(
+        base_qs.filter(device_type=Device.DeviceType.LED)
+        .exclude(id__in=taken_led_ids)
+        .exclude(id__in=current_led_ids)
+        .order_by('display_name', 'serial_number')
+    )
+    # Brokers/TVs — can be in multiple groups; show all not already in this group
+    avail_brokers = list(
+        base_qs.filter(device_type=Device.DeviceType.BROKER)
+        .exclude(id__in=current_broker_ids)
+        .order_by('display_name', 'serial_number')
+    )
+    avail_tvs = list(
+        base_qs.filter(device_type=Device.DeviceType.TV)
+        .exclude(id__in=current_tv_ids)
+        .order_by('display_name', 'serial_number')
+    )
+
+    return Response({
+        'group_id': group.id,
+        'group_name': group.group_name,
+        'current': {
+            'dispensers': [
+                {**device_dict(gdm.dispenser), 'dispenser_button_index': gdm.dispenser_button_index}
+                for gdm in current_dispensers
+            ],
+            'keypads':  [device_dict(d) for d in current_keypads],
+            'leds':     [device_dict(d) for d in current_leds],
+            'brokers':  [device_dict(d) for d in current_brokers],
+            'tvs':      [device_dict(d) for d in current_tvs],
+        },
+        'available': {
+            'dispensers': [device_dict(d) for d in avail_dispensers],
+            'keypads':    [device_dict(d) for d in avail_keypads],
+            'leds':       [device_dict(d) for d in avail_leds],
+            'brokers':    [device_dict(d) for d in avail_brokers],
+            'tvs':        [device_dict(d) for d in avail_tvs],
+        },
+    })
+
+
+@api_view(['POST'])
+@login_required
+def update_group_devices_api(request, group_id):
+    """
+    Accepts the DESIRED final device lists for the group:
+      {
+        "dispenser_ids": [...],
+        "keypad_ids":    [...],
+        "led_ids":       [...],
+        "broker_ids":    [...],
+        "tv_ids":        [...],
+      }
+
+    Validates exclusivity (dispenser/keypad/LED must not be in another group),
+    then atomically:
+      1. Removes devices that are no longer in the group
+      2. Adds new devices
+      3. Updates no_of_* counts
+      4. Rebuilds all slot-index rows via _create_tv_slot_mappings()
+    """
+    from django.db import transaction
+
+    group = get_object_or_404(GroupMapping, id=group_id)
+    user  = request.user
+
+    # Permission check
+    if user.role == 'BRANCH_ADMIN' and group.branch != user.branch_relation:
+        return Response({'status': 'error', 'message': 'Permission denied.'}, status=403)
+    if user.role == 'COMPANY_ADMIN' and group.company != user.company_relation:
+        return Response({'status': 'error', 'message': 'Permission denied.'}, status=403)
+
+    new_dispenser_ids = [int(x) for x in request.data.get('dispenser_ids', []) if x]
+    new_keypad_ids    = [int(x) for x in request.data.get('keypad_ids', []) if x]
+    new_led_ids       = [int(x) for x in request.data.get('led_ids', []) if x]
+    new_broker_ids    = [int(x) for x in request.data.get('broker_ids', []) if x]
+    new_tv_ids        = [int(x) for x in request.data.get('tv_ids', []) if x]
+
+    # ── Validate exclusivity for dispensers ─────────────────────────────────
+    errors = []
+    for d_id in new_dispenser_ids:
+        conflict = GroupDispenserMapping.objects.filter(
+            dispenser_id=d_id
+        ).exclude(group=group).first()
+        if conflict:
+            d = Device.objects.filter(id=d_id).first()
+            name = (d.display_name or d.serial_number) if d else str(d_id)
+            errors.append(f"Dispenser '{name}' is already in group '{conflict.group.group_name}'.")
+
+    for k_id in new_keypad_ids:
+        conflict_qs = GroupMapping.objects.filter(keypads__id=k_id).exclude(id=group_id)
+        if conflict_qs.exists():
+            d = Device.objects.filter(id=k_id).first()
+            name = (d.display_name or d.serial_number) if d else str(k_id)
+            errors.append(f"Keypad '{name}' is already in group '{conflict_qs.first().group_name}'.")
+
+    for l_id in new_led_ids:
+        conflict_qs = GroupMapping.objects.filter(leds__id=l_id).exclude(id=group_id)
+        if conflict_qs.exists():
+            d = Device.objects.filter(id=l_id).first()
+            name = (d.display_name or d.serial_number) if d else str(l_id)
+            errors.append(f"LED '{name}' is already in group '{conflict_qs.first().group_name}'.")
+
+    if errors:
+        return Response({'status': 'error', 'message': ' '.join(errors)}, status=400)
+
+    # ── Fetch device objects ─────────────────────────────────────────────────
+    new_dispensers = list(Device.objects.filter(id__in=new_dispenser_ids, device_type=Device.DeviceType.TOKEN_DISPENSER))
+    new_keypads    = list(Device.objects.filter(id__in=new_keypad_ids,    device_type=Device.DeviceType.KEYPAD))
+    new_leds       = list(Device.objects.filter(id__in=new_led_ids,       device_type=Device.DeviceType.LED))
+    new_brokers    = list(Device.objects.filter(id__in=new_broker_ids,    device_type=Device.DeviceType.BROKER))
+    new_tvs        = list(Device.objects.filter(id__in=new_tv_ids,        device_type=Device.DeviceType.TV))
+
+    if len(new_dispensers) != len(new_dispenser_ids):
+        return Response({'status': 'error', 'message': 'One or more dispenser IDs are invalid.'}, status=400)
+    if len(new_keypads) != len(new_keypad_ids):
+        return Response({'status': 'error', 'message': 'One or more keypad IDs are invalid.'}, status=400)
+
+    with transaction.atomic():
+        # ── Determine removed devices ────────────────────────────────────────
+        old_dispenser_ids = set(GroupDispenserMapping.objects.filter(group=group).values_list('dispenser_id', flat=True))
+        old_keypad_ids    = set(group.keypads.values_list('id', flat=True))
+        old_led_ids       = set(group.leds.values_list('id', flat=True))
+        old_broker_ids    = set(group.brokers.values_list('id', flat=True))
+        old_tv_ids        = set(group.tvs.values_list('id', flat=True))
+
+        removed_dispenser_ids = old_dispenser_ids - set(new_dispenser_ids)
+        removed_keypad_ids    = old_keypad_ids    - set(new_keypad_ids)
+        removed_led_ids       = old_led_ids       - set(new_led_ids)
+        removed_broker_ids    = old_broker_ids    - set(new_broker_ids)
+        removed_tv_ids        = old_tv_ids        - set(new_tv_ids)
+
+        removed_dispensers = Device.objects.filter(id__in=removed_dispenser_ids)
+        removed_keypads    = Device.objects.filter(id__in=removed_keypad_ids)
+        removed_tvs        = Device.objects.filter(id__in=removed_tv_ids)
+
+        # ── Clean up slot index rows for removed devices ─────────────────────
+        # Dispensers
+        if removed_dispenser_ids:
+            GroupDispenserMapping.objects.filter(group=group, dispenser__in=removed_dispensers).delete()
+            GroupCounterButtonMapping.objects.filter(group=group, dispenser__in=removed_dispensers).delete()
+            TVDispenserMapping.objects.filter(dispenser__in=removed_dispensers).delete()
+            # Null-out keypad→dispenser references where that dispenser is removed
+            TVKeypadMapping.objects.filter(dispenser__in=removed_dispensers).update(dispenser=None)
+            # ButtonMappings connecting removed dispensers to other group devices
+            all_group_device_ids = (
+                list(old_dispenser_ids - removed_dispenser_ids) +
+                list(old_keypad_ids) + list(old_led_ids) + list(old_broker_ids) + list(old_tv_ids)
+            )
+            ButtonMapping.objects.filter(
+                Q(source_device__in=removed_dispensers) | Q(target_device__in=removed_dispensers)
+            ).delete()
+
+        # Keypads
+        if removed_keypad_ids:
+            TVKeypadMapping.objects.filter(keypad__in=removed_keypads).delete()
+            ButtonMapping.objects.filter(
+                Q(source_device__in=removed_keypads) | Q(target_device__in=removed_keypads)
+            ).delete()
+            group.keypads.remove(*removed_keypads)
+
+        # LEDs
+        if removed_led_ids:
+            removed_leds = Device.objects.filter(id__in=removed_led_ids)
+            ButtonMapping.objects.filter(
+                Q(source_device__in=removed_leds) | Q(target_device__in=removed_leds)
+            ).delete()
+            group.leds.remove(*removed_leds)
+
+        # Brokers
+        if removed_broker_ids:
+            removed_brokers = Device.objects.filter(id__in=removed_broker_ids)
+            ButtonMapping.objects.filter(
+                Q(source_device__in=removed_brokers) | Q(target_device__in=removed_brokers)
+            ).delete()
+            group.brokers.remove(*removed_brokers)
+
+        # TVs
+        if removed_tv_ids:
+            TVDispenserMapping.objects.filter(tv__in=removed_tvs).delete()
+            TVKeypadMapping.objects.filter(tv__in=removed_tvs).delete()
+            ButtonMapping.objects.filter(
+                Q(source_device__in=removed_tvs) | Q(target_device__in=removed_tvs)
+            ).delete()
+            group.tvs.remove(*removed_tvs)
+
+        # ── Apply the new desired lists to the group ─────────────────────────
+        # Dispensers — managed through GroupDispenserMapping (through model)
+        # First remove old GroupDispenserMapping for devices still in group, then re-add all
+        GroupDispenserMapping.objects.filter(group=group).delete()
+        for d in new_dispensers:
+            GroupDispenserMapping.objects.get_or_create(
+                group=group,
+                dispenser=d,
+                defaults={'dispenser_button_index': chr(0x31)},
+            )
+
+        # Keypads (M2M direct)
+        group.keypads.set(new_keypads)
+        # LEDs
+        group.leds.set(new_leds)
+        # Brokers
+        group.brokers.set(new_brokers)
+        # TVs
+        group.tvs.set(new_tvs)
+
+        # ── Update no_of_* counts ────────────────────────────────────────────
+        group.no_of_dispensers = len(new_dispensers)
+        group.no_of_keypads    = len(new_keypads)
+        group.no_of_leds       = len(new_leds)
+        group.no_of_brokers    = len(new_brokers)
+        group.no_of_tvs        = len(new_tvs)
+        group.save(update_fields=[
+            'no_of_dispensers', 'no_of_keypads', 'no_of_leds',
+            'no_of_brokers', 'no_of_tvs', 'updated_at',
+        ])
+
+        # ── Rebuild all slot-index rows from scratch ─────────────────────────
+        # _create_tv_slot_mappings rebuilds GroupDispenserMapping, GroupCounterButtonMapping,
+        # TVDispenserMapping, and TVKeypadMapping compactly starting from slot '1'.
+        _create_tv_slot_mappings(group)
+
+        log_activity(
+            request.user, "Group Devices Updated",
+            f"Group '{group.group_name}' (ID: {group_id}) devices updated: "
+            f"{len(new_dispensers)} dispensers, {len(new_keypads)} keypads, "
+            f"{len(new_leds)} LEDs, {len(new_brokers)} brokers, {len(new_tvs)} TVs."
+        )
+
+    # ── Return updated slot assignments so UI can display them ───────────────
+    updated_gdm = (
+        GroupDispenserMapping.objects
+        .filter(group=group)
+        .select_related('dispenser')
+        .order_by('dispenser_button_index')
+    )
+    updated_tkm = (
+        TVKeypadMapping.objects
+        .filter(tv__in=new_tvs)
+        .select_related('keypad', 'tv')
+        .order_by('tv', 'keypad_index')
+    )
+
+    return Response({
+        'status': 'success',
+        'message': f"Group '{group.group_name}' devices updated successfully.",
+        'dispenser_slots': [
+            {
+                'dispenser_id': gdm.dispenser.id,
+                'display_name': gdm.dispenser.display_name or gdm.dispenser.serial_number,
+                'dispenser_button_index': gdm.dispenser_button_index,
+            }
+            for gdm in updated_gdm
+        ],
+        'keypad_slots': [
+            {
+                'keypad_id': tkm.keypad.id,
+                'display_name': tkm.keypad.display_name or tkm.keypad.serial_number,
+                'tv_id': tkm.tv.id,
+                'keypad_index': tkm.keypad_index,
+            }
+            for tkm in updated_tkm
+        ],
+    })
