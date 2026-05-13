@@ -22,6 +22,9 @@ urlpatterns = [
         path('api/counters/swap', config_views.swap_counters_api, name='swap_counters_api'),
         # Token Report API (at root level)
         path('api/external/token-report', config_views.token_report_api, name='token_report_api'),
+        # Android APK Mapped Counters API (at root level)
+        path('api/android/mapped-counters', config_views.get_android_mapped_counters, name='get_android_mapped_counters'),
+
 
         path('login/', views.CustomLoginView.as_view(), name='login'),
         path('logout/', auth_views.LogoutView.as_view(), name='logout'),

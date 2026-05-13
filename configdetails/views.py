@@ -7884,3 +7884,68 @@ def update_group_devices_api(request, group_id):
             for tkm in updated_tkm
         ],
     })
+
+@api_view(['POST', 'GET'])
+@permission_classes([AllowAny])
+def get_android_mapped_counters(request):
+    """
+    API for fetching all mapped counters for a given customer_id for Android APK.
+    Accepts: { "customer_id": "..." }
+    """
+    from companydetails.models import Company, DealerCustomer
+    
+    customer_id = request.data.get('customer_id') or request.GET.get('customer_id')
+    
+    if customer_id and str(customer_id).startswith('0'):
+        customer_id = str(customer_id)[1:]
+        
+    if not customer_id:
+        return Response({'error': 'customer_id is required'}, status=400)
+
+    company = None
+    if str(customer_id).isdigit():
+        company = Company.objects.filter(id=customer_id).first()
+    
+    if not company:
+        company = Company.objects.filter(company_id=customer_id).first()
+        
+    if not company:
+        dealer_customer = DealerCustomer.objects.filter(customer_id=customer_id).first()
+        if dealer_customer:
+            company = dealer_customer.dealer
+            
+    if not company:
+        return Response({'error': 'Invalid customer_id'}, status=404)
+        
+    counters = CounterConfig.objects.filter(company=company, status=True)
+    
+    mapped_counters = []
+    for counter in counters:
+        # Check mapping in GroupCounterButtonMapping
+        mapping = GroupCounterButtonMapping.objects.filter(counter=counter).first()
+        
+        mapped_dispenser_sn = None
+        button_index = None
+        
+        if mapping:
+            mapped_dispenser_sn = mapping.dispenser.serial_number
+            button_index = mapping.button_index
+        else:
+            # Fallback to old mapping
+            old_mapping = CounterTokenDispenserMapping.objects.filter(counter=counter).first()
+            if old_mapping:
+                mapped_dispenser_sn = old_mapping.dispenser.serial_number
+                button_index = '1'
+        
+        if mapped_dispenser_sn:
+            mapped_counters.append({
+                "id": counter.id,
+                "counter_name": counter.counter_name,
+                "counter_prefix_code": counter.counter_prefix_code,
+                "counter_display_name": counter.counter_display_name,
+                "max_token_number": counter.max_token_number,
+                "mapped_dispenser_sn": mapped_dispenser_sn,
+                "button_index": button_index
+            })
+            
+    return Response({"counters": mapped_counters})
