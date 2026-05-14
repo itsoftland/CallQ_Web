@@ -218,7 +218,7 @@ def generate_tv_counters_data(device, tv_config=None):
                 'default_name': gcbm.counter.counter_name,
                 'default_code': gcbm.counter.counter_prefix_code or f"C{i:02d}",
                 'source_device': gcbm.dispenser.serial_number,
-                'button_index': i,
+                'button_index': get_button_index_char(i),
                 'name': gcbm.counter.counter_name,
                 'code': gcbm.counter.counter_prefix_code or f"C{i:02d}",
                 'is_live': False
@@ -230,7 +230,7 @@ def generate_tv_counters_data(device, tv_config=None):
                 'default_name': f"Counter {i}",
                 'default_code': f"C{i:02d}",
                 'source_device': 'System',
-                'button_index': i,
+                'button_index': get_button_index_char(i),
                 'name': f"Counter {i}",
                 'code': f"C{i:02d}",
                 'is_live': False
@@ -1388,13 +1388,19 @@ def _get_tv_flag_config(request, device, company, dealer_customer, is_dealer_cus
             gcbms = list(gcbm_qs)
             for btn_num, gcbm in enumerate(gcbms, start=1):
                 c = gcbm.counter
+                # dispenser_button_number must be the ASCII char (e.g. '1', '2')
+                # not a Python int, because the APK uses ASCII-based indexing.
+                try:
+                    dispenser_button_number_char = get_button_index_char(btn_num)
+                except ValueError:
+                    dispenser_button_number_char = chr(0x31)
                 results.append({
                     'counter_id':              c.counter_name,
                     'default_code':            c.counter_prefix_code,
                     'keypad_index':            keypad_index,
                     'dispenser_index':         dispenser_index,
                     'button_index':            dispenser_index,
-                    'dispenser_button_number': btn_num,
+                    'dispenser_button_number': dispenser_button_number_char,
                     'name':                    c.counter_display_name,
                     'code':                    c.counter_prefix_code,
                     'row_span':                1,
@@ -3113,13 +3119,24 @@ def _create_tv_slot_mappings(group):
     # Step B: TVKeypadMapping — keypad slot on each TV, linked to dispenser
     # ---------------------------------------------------------------
     if keypads_list:
-        # Fresh per-group counter — always starts at position 1 (chr 0x31 = '1')
+        # Collect per-TV slot counters, seeded from any already-existing explicit mappings
+        # so new round-robin entries don't collide with manually assigned slot indices.
         tv_kp_positions = {tv.id: 1 for tv in tvs_list}
-        for idx, keypad in enumerate(keypads_list):
-            tv = tvs_list[idx % len(tvs_list)]
 
-            # Remove any pre-existing mapping for this keypad
-            TVKeypadMapping.objects.filter(keypad=keypad).delete()
+        # Pre-seed positions from existing explicit mappings so we don't reuse taken slots
+        for tv in tvs_list:
+            existing_count = TVKeypadMapping.objects.filter(tv=tv).count()
+            if existing_count > 0:
+                tv_kp_positions[tv.id] = existing_count + 1
+
+        for idx, keypad in enumerate(keypads_list):
+            # If an explicit TVKeypadMapping already exists for this keypad (set via the
+            # Group Editor UI), PRESERVE it — do NOT overwrite with round-robin logic.
+            if TVKeypadMapping.objects.filter(keypad=keypad).exists():
+                continue
+
+            # No explicit assignment — apply round-robin default
+            tv = tvs_list[idx % len(tvs_list)]
 
             # Link the corresponding dispenser (round-robin if fewer dispensers than keypads)
             dispenser = dispensers_list[idx % len(dispensers_list)] if dispensers_list else None
@@ -7987,14 +8004,20 @@ def update_group_devices_api(request, group_id):
             group.tvs.remove(*removed_tvs)
 
         # ── Apply the new desired lists to the group ─────────────────────────
-        # Dispensers — managed through GroupDispenserMapping (through model)
-        # First remove old GroupDispenserMapping for devices still in group, then re-add all
+        # Dispensers — managed through GroupDispenserMapping (through model).
+        # Assign proper sequential ASCII chars directly to avoid violating the
+        # unique_together constraint on (group, dispenser_button_index) which
+        # would IntegrityError when 2+ dispensers share the same default '1'.
         GroupDispenserMapping.objects.filter(group=group).delete()
-        for d in new_dispensers:
-            GroupDispenserMapping.objects.get_or_create(
+        for pos, d in enumerate(new_dispensers, start=1):
+            try:
+                btn_char = get_button_index_char(pos)
+            except ValueError:
+                btn_char = chr(0x31)
+            GroupDispenserMapping.objects.create(
                 group=group,
                 dispenser=d,
-                defaults={'dispenser_button_index': chr(0x31)},
+                dispenser_button_index=btn_char,
             )
 
         # Keypads (M2M direct)
@@ -8064,6 +8087,287 @@ def update_group_devices_api(request, group_id):
             for tkm in updated_tkm
         ],
     })
+
+
+# ============================================================================
+# Group Button-Wise Mapping APIs
+# ============================================================================
+
+@api_view(['GET'])
+@login_required
+def get_group_button_mappings_api(request, group_id):
+    """
+    GET /api/mapping/group/<group_id>/button-mappings/
+
+    Returns current explicit slot assignments for a group so the
+    "Button Mapping" tab can pre-populate itself.
+    """
+    group = get_object_or_404(GroupMapping, id=group_id)
+
+    def _d(dev):
+        return {
+            'id': dev.id,
+            'display_name': dev.display_name or dev.serial_number,
+            'serial_number': dev.serial_number,
+            'device_type': dev.device_type,
+        }
+
+    group_dispensers = list(group.dispensers.all().order_by('id'))
+    group_keypads    = list(group.keypads.all().order_by('id'))
+    group_tvs        = list(group.tvs.all().order_by('id'))
+
+    tv_name_map = {tv.id: (tv.display_name or tv.serial_number) for tv in group_tvs}
+
+    dispenser_slots = []
+    for tdm in (TVDispenserMapping.objects
+                .filter(dispenser__in=group_dispensers, tv__in=group_tvs)
+                .select_related('dispenser', 'tv')
+                .order_by('tv', 'button_index')):
+        dispenser_slots.append({
+            'dispenser_id':  tdm.dispenser.id,
+            'display_name':  tdm.dispenser.display_name or tdm.dispenser.serial_number,
+            'tv_id':         tdm.tv.id,
+            'tv_name':       tv_name_map.get(tdm.tv.id, tdm.tv.serial_number),
+            'button_index':  tdm.button_index,
+        })
+
+    keypad_slots = []
+    for tkm in (TVKeypadMapping.objects
+                .filter(keypad__in=group_keypads, tv__in=group_tvs)
+                .select_related('keypad', 'tv', 'dispenser')
+                .order_by('tv', 'keypad_index')):
+        keypad_slots.append({
+            'keypad_id':      tkm.keypad.id,
+            'display_name':   tkm.keypad.display_name or tkm.keypad.serial_number,
+            'tv_id':          tkm.tv.id,
+            'tv_name':        tv_name_map.get(tkm.tv.id, tkm.tv.serial_number),
+            'keypad_index':   tkm.keypad_index,
+            'dispenser_id':   tkm.dispenser.id if tkm.dispenser else None,
+            'dispenser_name': (tkm.dispenser.display_name or tkm.dispenser.serial_number) if tkm.dispenser else None,
+        })
+
+    return Response({
+        'group_id':         group.id,
+        'group_name':       group.group_name,
+        'dispenser_slots':  dispenser_slots,
+        'keypad_slots':     keypad_slots,
+        'group_dispensers': [_d(d) for d in group_dispensers],
+        'group_keypads':    [_d(d) for d in group_keypads],
+        'group_tvs':        [_d(d) for d in group_tvs],
+    })
+
+
+@api_view(['POST'])
+@login_required
+def save_group_button_mappings_api(request, group_id):
+    """
+    POST /api/mapping/group/<group_id>/button-mappings/save/
+
+    Accepts explicit user-defined slot assignments and atomically rewrites
+    TVDispenserMapping, TVKeypadMapping, GroupDispenserMapping, and
+    GroupCounterButtonMapping.
+
+    Request body:
+    {
+      "dispenser_slots": [
+        { "dispenser_id": 5, "tv_id": 3, "button_index": "1" }
+      ],
+      "keypad_slots": [
+        { "keypad_id": 7, "tv_id": 3, "keypad_index": "1", "dispenser_id": 5 }
+      ]
+    }
+    button_index / keypad_index may be omitted → auto-assigned by position.
+    """
+    from collections import defaultdict
+
+    group = get_object_or_404(GroupMapping, id=group_id)
+    user  = request.user
+
+    if user.role == 'BRANCH_ADMIN' and group.branch != user.branch_relation:
+        return Response({'status': 'error', 'message': 'Permission denied.'}, status=403)
+    if user.role == 'COMPANY_ADMIN' and group.company != user.company_relation:
+        return Response({'status': 'error', 'message': 'Permission denied.'}, status=403)
+
+    raw_disp_slots   = request.data.get('dispenser_slots', [])
+    raw_keypad_slots = request.data.get('keypad_slots', [])
+
+    group_dispenser_ids = set(group.dispensers.values_list('id', flat=True))
+    group_keypad_ids    = set(group.keypads.values_list('id', flat=True))
+    group_tv_ids        = set(group.tvs.values_list('id', flat=True))
+
+    errors = []
+    parsed_disp_slots = []
+    seen_disp_tv_btn  = set()
+
+    for i, row in enumerate(raw_disp_slots):
+        try:
+            d_id  = int(row.get('dispenser_id'))
+            tv_id = int(row.get('tv_id'))
+        except (TypeError, ValueError):
+            errors.append(f"Dispenser slot {i+1}: invalid dispenser_id or tv_id.")
+            continue
+        btn = row.get('button_index')
+
+        if d_id not in group_dispenser_ids:
+            errors.append(f"Dispenser slot {i+1}: dispenser ID {d_id} is not in this group.")
+        if tv_id not in group_tv_ids:
+            errors.append(f"Dispenser slot {i+1}: TV ID {tv_id} is not in this group.")
+        if btn is not None:
+            btn = str(btn)
+            if len(btn) != 1 or not (0x31 <= ord(btn) <= 0x7A):
+                errors.append(f"Dispenser slot {i+1}: button_index '{btn}' is not valid ('1'-'z').")
+            else:
+                key = (tv_id, btn)
+                if key in seen_disp_tv_btn:
+                    errors.append(f"Dispenser slot {i+1}: duplicate button_index '{btn}' for TV {tv_id}.")
+                seen_disp_tv_btn.add(key)
+
+        parsed_disp_slots.append({'dispenser_id': d_id, 'tv_id': tv_id, 'button_index': btn})
+
+    parsed_kp_slots = []
+    seen_kp_tv_idx  = set()
+
+    for i, row in enumerate(raw_keypad_slots):
+        try:
+            kp_id = int(row.get('keypad_id'))
+            tv_id = int(row.get('tv_id'))
+        except (TypeError, ValueError):
+            errors.append(f"Keypad slot {i+1}: invalid keypad_id or tv_id.")
+            continue
+        kp_idx  = row.get('keypad_index')
+        disp_id = row.get('dispenser_id')
+        if disp_id is not None:
+            try:
+                disp_id = int(disp_id)
+            except (TypeError, ValueError):
+                disp_id = None
+
+        if kp_id not in group_keypad_ids:
+            errors.append(f"Keypad slot {i+1}: keypad ID {kp_id} is not in this group.")
+        if tv_id not in group_tv_ids:
+            errors.append(f"Keypad slot {i+1}: TV ID {tv_id} is not in this group.")
+        if disp_id and disp_id not in group_dispenser_ids:
+            errors.append(f"Keypad slot {i+1}: dispenser ID {disp_id} is not in this group.")
+        if kp_idx is not None:
+            kp_idx = str(kp_idx)
+            if len(kp_idx) != 1 or not (0x31 <= ord(kp_idx) <= 0x7A):
+                errors.append(f"Keypad slot {i+1}: keypad_index '{kp_idx}' is not valid.")
+            else:
+                key = (tv_id, kp_idx)
+                if key in seen_kp_tv_idx:
+                    errors.append(f"Keypad slot {i+1}: duplicate keypad_index '{kp_idx}' for TV {tv_id}.")
+                seen_kp_tv_idx.add(key)
+
+        parsed_kp_slots.append({
+            'keypad_id': kp_id, 'tv_id': tv_id,
+            'keypad_index': kp_idx, 'dispenser_id': disp_id,
+        })
+
+    if errors:
+        return Response({'status': 'error', 'message': ' '.join(errors)}, status=400)
+
+    # Auto-assign missing indices (sequential within each TV)
+    def _auto_assign(slots, idx_key):
+        by_tv = defaultdict(list)
+        for row in slots:
+            by_tv[row['tv_id']].append(row)
+        result = []
+        for tv_id, rows in by_tv.items():
+            used = {row[idx_key] for row in rows if row[idx_key] is not None}
+            pos = 1
+            for row in rows:
+                if row[idx_key] is None:
+                    while True:
+                        try:
+                            ch = get_button_index_char(pos)
+                        except ValueError:
+                            ch = chr(0x31)
+                            break
+                        if ch not in used:
+                            break
+                        pos += 1
+                    row = dict(row)
+                    row[idx_key] = ch
+                    used.add(ch)
+                    pos += 1
+                result.append(row)
+        return result
+
+    parsed_disp_slots = _auto_assign(parsed_disp_slots, 'button_index')
+    parsed_kp_slots   = _auto_assign(parsed_kp_slots, 'keypad_index')
+
+    tv_map     = {d.id: d for d in Device.objects.filter(id__in=group_tv_ids)}
+    disp_map   = {d.id: d for d in Device.objects.filter(id__in=group_dispenser_ids)}
+    keypad_map = {d.id: d for d in Device.objects.filter(id__in=group_keypad_ids)}
+
+    with transaction.atomic():
+        # Rewrite TVDispenserMapping
+        TVDispenserMapping.objects.filter(dispenser__in=list(disp_map.values())).delete()
+        for row in parsed_disp_slots:
+            tv_obj   = tv_map.get(row['tv_id'])
+            disp_obj = disp_map.get(row['dispenser_id'])
+            if tv_obj and disp_obj:
+                TVDispenserMapping.objects.create(
+                    tv=tv_obj, dispenser=disp_obj, button_index=row['button_index'])
+
+        # Rewrite TVKeypadMapping
+        TVKeypadMapping.objects.filter(keypad__in=list(keypad_map.values())).delete()
+        for row in parsed_kp_slots:
+            tv_obj   = tv_map.get(row['tv_id'])
+            kp_obj   = keypad_map.get(row['keypad_id'])
+            disp_obj = disp_map.get(row['dispenser_id']) if row['dispenser_id'] else None
+            if tv_obj and kp_obj:
+                TVKeypadMapping.objects.create(
+                    tv=tv_obj, keypad=kp_obj, dispenser=disp_obj,
+                    keypad_index=row['keypad_index'])
+
+        # Rebuild GroupDispenserMapping ordered by button_index
+        GroupDispenserMapping.objects.filter(group=group).delete()
+        all_disp_sorted = sorted(parsed_disp_slots, key=lambda r: r['button_index'])
+        for pos, row in enumerate(all_disp_sorted, start=1):
+            disp_obj = disp_map.get(row['dispenser_id'])
+            if disp_obj:
+                try:
+                    grp_char = get_button_index_char(pos)
+                except ValueError:
+                    grp_char = chr(0x31)
+                GroupDispenserMapping.objects.get_or_create(
+                    group=group, dispenser=disp_obj,
+                    defaults={'dispenser_button_index': grp_char})
+
+        # Rebuild GroupCounterButtonMapping
+        GroupCounterButtonMapping.objects.filter(group=group).delete()
+        grp_btn_pos = 0
+        for row in all_disp_sorted:
+            disp_obj = disp_map.get(row['dispenser_id'])
+            if not disp_obj:
+                continue
+            for cm in (CounterTokenDispenserMapping.objects
+                       .filter(dispenser=disp_obj)
+                       .select_related('counter')
+                       .order_by('id')):
+                grp_btn_pos += 1
+                try:
+                    btn_char = get_button_index_char(grp_btn_pos)
+                except ValueError:
+                    btn_char = chr(0x31)
+                GroupCounterButtonMapping.objects.get_or_create(
+                    group=group, dispenser=disp_obj, counter=cm.counter,
+                    defaults={'button_index': btn_char})
+
+        log_activity(
+            request.user, "Group Button Mappings Saved",
+            f"Group '{group.group_name}' (ID: {group_id}) — "
+            f"{len(parsed_disp_slots)} dispenser slots, {len(parsed_kp_slots)} keypad slots configured."
+        )
+
+    return Response({
+        'status': 'success',
+        'message': f"Button mappings for group '{group.group_name}' saved successfully.",
+        'dispenser_slots': parsed_disp_slots,
+        'keypad_slots':    parsed_kp_slots,
+    })
+
 
 @api_view(['POST', 'GET'])
 @permission_classes([AllowAny])

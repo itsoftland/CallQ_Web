@@ -1098,6 +1098,421 @@
             btn.innerHTML = '<i class="fas fa-save me-1"></i>Save Changes';
         }
     }
+
+    // =========================================================================
+    // Button Mapping Tab Logic
+    // =========================================================================
+
+    // Cached data from the GET API
+    window._btnMapState = {
+        groupId: null,
+        groupDispensers: [],
+        groupKeypads: [],
+        groupTvs: [],
+        dispenserSlots: [],   // current rows being edited
+        keypadSlots: [],
+    };
+
+    function switchEditTab(tab) {
+        const isDevices = (tab === 'devices');
+
+        // Tab content panels
+        document.getElementById('editTabDevices').classList.toggle('d-none', !isDevices);
+        document.getElementById('editTabBtnmap').classList.toggle('d-none', isDevices);
+
+        // Footers
+        document.getElementById('editFooterDevices').classList.toggle('d-none', !isDevices);
+        document.getElementById('editFooterBtnmap').classList.toggle('d-none', isDevices);
+
+        // Tab button highlight
+        const devBtn = document.getElementById('tab-devices-btn');
+        const mapBtn = document.getElementById('tab-btnmap-btn');
+        if (isDevices) {
+            devBtn.style.background = 'rgba(255,255,255,0.18)';
+            devBtn.classList.add('fw-semibold');
+            mapBtn.style.background = 'rgba(255,255,255,0.08)';
+            mapBtn.classList.remove('fw-semibold');
+        } else {
+            mapBtn.style.background = 'rgba(255,255,255,0.18)';
+            mapBtn.classList.add('fw-semibold');
+            devBtn.style.background = 'rgba(255,255,255,0.08)';
+            devBtn.classList.remove('fw-semibold');
+            // Load data only once per modal open (or if group changed)
+            const gid = document.getElementById('editModalGroupId').value;
+            if (window._btnMapState.groupId !== gid) {
+                loadButtonMappingTab(gid);
+            }
+        }
+    }
+
+    async function loadButtonMappingTab(groupId) {
+        window._btnMapState.groupId = groupId;
+
+        document.getElementById('btnMapLoading').classList.remove('d-none');
+        document.getElementById('btnMapContent').classList.add('d-none');
+        document.getElementById('btnMapAlert').classList.add('d-none');
+        document.getElementById('btnMapSuccess').classList.add('d-none');
+
+        try {
+            const resp = await fetch(`/CallQ/config/api/mapping/group/${groupId}/button-mappings/`, {
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.message || 'Failed to load button mappings.');
+
+            window._btnMapState.groupDispensers = data.group_dispensers || [];
+            window._btnMapState.groupKeypads    = data.group_keypads    || [];
+            window._btnMapState.groupTvs        = data.group_tvs        || [];
+            window._btnMapState.dispenserSlots  = data.dispenser_slots  || [];
+            window._btnMapState.keypadSlots     = data.keypad_slots     || [];
+
+            renderBtnMapDispTable();
+            renderBtnMapKpTable();
+
+            document.getElementById('btnMapLoading').classList.add('d-none');
+            document.getElementById('btnMapContent').classList.remove('d-none');
+        } catch (e) {
+            document.getElementById('btnMapLoading').classList.add('d-none');
+            const alertEl = document.getElementById('btnMapAlert');
+            alertEl.textContent = e.message;
+            alertEl.classList.remove('d-none');
+        }
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    function _dispenserOptions(selectedId) {
+        const opts = window._btnMapState.groupDispensers.map(d =>
+            `<option value="${d.id}" ${d.id == selectedId ? 'selected' : ''}>${_escHtml(d.display_name)}</option>`
+        );
+        return `<option value="">— none —</option>` + opts.join('');
+    }
+
+    function _tvOptions(selectedId) {
+        return window._btnMapState.groupTvs.map(tv =>
+            `<option value="${tv.id}" ${tv.id == selectedId ? 'selected' : ''}>${_escHtml(tv.display_name)}</option>`
+        ).join('');
+    }
+
+    function _kpOptions(selectedId) {
+        return window._btnMapState.groupKeypads.map(k =>
+            `<option value="${k.id}" ${k.id == selectedId ? 'selected' : ''}>${_escHtml(k.display_name)}</option>`
+        ).join('');
+    }
+
+    function _escHtml(str) {
+        return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function _slotLabel(pos) {
+        // Convert 1-based position to slot char ('1','2',...,'9',':',...)
+        const code = 0x30 + pos;
+        return code <= 0x7A ? String.fromCharCode(code) : pos;
+    }
+
+    // ── Dispenser slot table ──────────────────────────────────────────────────
+
+    function renderBtnMapDispTable() {
+        const tbody  = document.getElementById('btnMapDispBody');
+        const empty  = document.getElementById('btnMapDispEmpty');
+        const slots  = window._btnMapState.dispenserSlots;
+
+        const hasTvs  = window._btnMapState.groupTvs.length > 0;
+        const hasDisp = window._btnMapState.groupDispensers.length > 0;
+
+        if (!hasDisp) {
+            tbody.innerHTML = '';
+            empty.style.display = 'block';
+            return;
+        }
+        empty.style.display = 'none';
+
+        // Count slots per TV to compute per-TV row order (slot number)
+        const tvSlotCount = {};
+
+        tbody.innerHTML = slots.map((row, i) => {
+            tvSlotCount[row.tv_id] = (tvSlotCount[row.tv_id] || 0) + 1;
+            const slotNum = tvSlotCount[row.tv_id];
+            return `
+            <tr class="btn-map-disp-row" data-idx="${i}" draggable="true"
+                ondragstart="btnMapDragStart(event,'disp',${i})"
+                ondragover="btnMapDragOver(event)"
+                ondrop="btnMapDrop(event,'disp',${i})">
+                <td class="text-muted ps-2" style="cursor:grab;">
+                    <i class="fas fa-grip-vertical"></i>
+                </td>
+                <td>
+                    <span class="badge" style="background:#1a73e820; color:#1a73e8; border:1px solid #1a73e840; min-width:32px;">
+                        ${_escHtml(row.button_index || slotNum)}
+                    </span>
+                </td>
+                <td>
+                    <select class="form-select form-select-sm" style="min-width:140px;"
+                            onchange="btnMapUpdateDisp(${i},'dispenser_id',this.value)">
+                        ${window._btnMapState.groupDispensers.map(d =>
+                            `<option value="${d.id}" ${d.id == row.dispenser_id ? 'selected':''}>
+                                ${_escHtml(d.display_name)}
+                            </option>`
+                        ).join('')}
+                    </select>
+                </td>
+                <td class="text-center text-muted"><i class="fas fa-long-arrow-alt-right"></i></td>
+                <td>
+                    <select class="form-select form-select-sm" style="min-width:160px;"
+                            onchange="btnMapUpdateDisp(${i},'tv_id',this.value)">
+                        ${_tvOptions(row.tv_id)}
+                    </select>
+                </td>
+                <td>
+                    <button class="btn btn-link text-danger p-0" title="Remove"
+                            onclick="removeDispenserSlotRow(${i})">
+                        <i class="fas fa-times-circle"></i>
+                    </button>
+                </td>
+            </tr>`;
+        }).join('');
+    }
+
+    function addDispenserSlotRow() {
+        const state = window._btnMapState;
+        if (!state.groupDispensers.length) {
+            alert('Add dispensers to the group first (Devices tab).');
+            return;
+        }
+        const defaultTv   = state.groupTvs[0]  || {};
+        const defaultDisp = state.groupDispensers[0] || {};
+        state.dispenserSlots.push({
+            dispenser_id: defaultDisp.id,
+            display_name: defaultDisp.display_name,
+            tv_id:        defaultTv.id,
+            tv_name:      defaultTv.display_name,
+            button_index: null,
+        });
+        renderBtnMapDispTable();
+    }
+
+    function removeDispenserSlotRow(idx) {
+        window._btnMapState.dispenserSlots.splice(idx, 1);
+        renderBtnMapDispTable();
+    }
+
+    function btnMapUpdateDisp(idx, field, value) {
+        window._btnMapState.dispenserSlots[idx][field] = field.endsWith('_id') ? parseInt(value) : value;
+        renderBtnMapDispTable();
+    }
+
+    // ── Keypad slot table ─────────────────────────────────────────────────────
+
+    function renderBtnMapKpTable() {
+        const tbody = document.getElementById('btnMapKpBody');
+        const empty = document.getElementById('btnMapKpEmpty');
+        const slots = window._btnMapState.keypadSlots;
+
+        const hasKp = window._btnMapState.groupKeypads.length > 0;
+        if (!hasKp) {
+            tbody.innerHTML = '';
+            empty.style.display = 'block';
+            return;
+        }
+        empty.style.display = 'none';
+
+        const tvSlotCount = {};
+        tbody.innerHTML = slots.map((row, i) => {
+            tvSlotCount[row.tv_id] = (tvSlotCount[row.tv_id] || 0) + 1;
+            const slotNum = tvSlotCount[row.tv_id];
+            return `
+            <tr class="btn-map-kp-row" data-idx="${i}" draggable="true"
+                ondragstart="btnMapDragStart(event,'kp',${i})"
+                ondragover="btnMapDragOver(event)"
+                ondrop="btnMapDrop(event,'kp',${i})">
+                <td class="text-muted ps-2" style="cursor:grab;">
+                    <i class="fas fa-grip-vertical"></i>
+                </td>
+                <td>
+                    <span class="badge" style="background:#19875420; color:#198754; border:1px solid #19875440; min-width:32px;">
+                        ${_escHtml(row.keypad_index || slotNum)}
+                    </span>
+                </td>
+                <td>
+                    <select class="form-select form-select-sm" style="min-width:140px;"
+                            onchange="btnMapUpdateKp(${i},'keypad_id',this.value)">
+                        ${window._btnMapState.groupKeypads.map(k =>
+                            `<option value="${k.id}" ${k.id == row.keypad_id ? 'selected':''}>
+                                ${_escHtml(k.display_name)}
+                            </option>`
+                        ).join('')}
+                    </select>
+                </td>
+                <td class="text-center text-muted"><i class="fas fa-long-arrow-alt-right"></i></td>
+                <td>
+                    <select class="form-select form-select-sm" style="min-width:150px;"
+                            onchange="btnMapUpdateKp(${i},'tv_id',this.value)">
+                        ${_tvOptions(row.tv_id)}
+                    </select>
+                </td>
+                <td>
+                    <select class="form-select form-select-sm" style="min-width:140px;"
+                            onchange="btnMapUpdateKp(${i},'dispenser_id',this.value)">
+                        <option value="">— none —</option>
+                        ${window._btnMapState.groupDispensers.map(d =>
+                            `<option value="${d.id}" ${d.id == row.dispenser_id ? 'selected':''}>
+                                ${_escHtml(d.display_name)}
+                            </option>`
+                        ).join('')}
+                    </select>
+                </td>
+                <td>
+                    <button class="btn btn-link text-danger p-0" title="Remove"
+                            onclick="removeKeypadSlotRow(${i})">
+                        <i class="fas fa-times-circle"></i>
+                    </button>
+                </td>
+            </tr>`;
+        }).join('');
+    }
+
+    function addKeypadSlotRow() {
+        const state = window._btnMapState;
+        if (!state.groupKeypads.length) {
+            alert('Add keypads to the group first (Devices tab).');
+            return;
+        }
+        const defaultTv  = state.groupTvs[0]    || {};
+        const defaultKp  = state.groupKeypads[0] || {};
+        const defaultDsp = state.groupDispensers[0] ? state.groupDispensers[0].id : null;
+        state.keypadSlots.push({
+            keypad_id:    defaultKp.id,
+            display_name: defaultKp.display_name,
+            tv_id:        defaultTv.id,
+            tv_name:      defaultTv.display_name,
+            keypad_index: null,
+            dispenser_id: defaultDsp,
+        });
+        renderBtnMapKpTable();
+    }
+
+    function removeKeypadSlotRow(idx) {
+        window._btnMapState.keypadSlots.splice(idx, 1);
+        renderBtnMapKpTable();
+    }
+
+    function btnMapUpdateKp(idx, field, value) {
+        window._btnMapState.keypadSlots[idx][field] = field.endsWith('_id') ? (value ? parseInt(value) : null) : value;
+        renderBtnMapKpTable();
+    }
+
+    // ── Drag-to-reorder ────────────────────────────────────────────────────────
+
+    let _dragSrc = { type: null, idx: null };
+
+    function btnMapDragStart(e, type, idx) {
+        _dragSrc = { type, idx };
+        e.dataTransfer.effectAllowed = 'move';
+    }
+
+    function btnMapDragOver(e) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+    }
+
+    function btnMapDrop(e, type, targetIdx) {
+        e.preventDefault();
+        if (_dragSrc.type !== type || _dragSrc.idx === targetIdx) return;
+
+        const arr = type === 'disp'
+            ? window._btnMapState.dispenserSlots
+            : window._btnMapState.keypadSlots;
+
+        const moved = arr.splice(_dragSrc.idx, 1)[0];
+        arr.splice(targetIdx, 0, moved);
+
+        // Clear cached button indices so they are re-computed on save
+        arr.forEach(r => {
+            if (type === 'disp') r.button_index = null;
+            else r.keypad_index = null;
+        });
+
+        if (type === 'disp') renderBtnMapDispTable();
+        else renderBtnMapKpTable();
+    }
+
+    // ── Save ───────────────────────────────────────────────────────────────────
+
+    async function saveButtonMappings() {
+        const state = window._btnMapState;
+        if (!state.groupId) return;
+
+        const saveBtn = document.getElementById('btnMapSaveBtn');
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Saving…';
+
+        const alertEl   = document.getElementById('btnMapAlert');
+        const successEl = document.getElementById('btnMapSuccess');
+        alertEl.classList.add('d-none');
+        successEl.classList.add('d-none');
+
+        // Build payload — strip button_index / keypad_index so backend auto-assigns by position
+        const dispPayload = state.dispenserSlots.map(r => ({
+            dispenser_id: r.dispenser_id,
+            tv_id:        r.tv_id,
+            button_index: null,   // let backend assign by row order
+        }));
+        const kpPayload = state.keypadSlots.map(r => ({
+            keypad_id:    r.keypad_id,
+            tv_id:        r.tv_id,
+            keypad_index: null,
+            dispenser_id: r.dispenser_id || null,
+        }));
+
+        try {
+            const resp = await fetch(`/CallQ/config/api/mapping/group/${state.groupId}/button-mappings/save/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken'),
+                },
+                body: JSON.stringify({
+                    dispenser_slots: dispPayload,
+                    keypad_slots:    kpPayload,
+                }),
+            });
+
+            const data = await resp.json();
+
+            if (resp.ok && data.status === 'success') {
+                // Refresh slot display with what the server returned
+                state.dispenserSlots = data.dispenser_slots || [];
+                state.keypadSlots    = data.keypad_slots    || [];
+                renderBtnMapDispTable();
+                renderBtnMapKpTable();
+
+                successEl.textContent = data.message;
+                successEl.classList.remove('d-none');
+                saveBtn.innerHTML = '<i class="fas fa-check me-1"></i>Saved!';
+                saveBtn.classList.replace('btn-success', 'btn-outline-success');
+                setTimeout(() => {
+                    saveBtn.innerHTML = '<i class="fas fa-save me-1"></i>Save Button Mappings';
+                    saveBtn.classList.replace('btn-outline-success', 'btn-success');
+                    saveBtn.disabled = false;
+                }, 2500);
+            } else {
+                throw new Error(data.message || 'Save failed.');
+            }
+        } catch (e) {
+            console.error(e);
+            alertEl.textContent = e.message;
+            alertEl.classList.remove('d-none');
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = '<i class="fas fa-save me-1"></i>Save Button Mappings';
+        }
+    }
+
+    // Reset button-mapping state when modal is re-opened for a new group
+    document.getElementById('editGroupDevicesModal').addEventListener('show.bs.modal', function () {
+        window._btnMapState.groupId = null;   // forces reload when tab is switched
+        switchEditTab('devices');             // always open on Devices tab
+    });
+
 </script>
 
 <!-- ====================================================================
@@ -1107,27 +1522,55 @@
     <div class="modal-dialog modal-xl modal-dialog-scrollable">
         <div class="modal-content border-0 shadow">
 
-            <div class="modal-header" style="background: linear-gradient(135deg, #1a73e8 0%, #0d47a1 100%);">
-                <div>
-                    <h5 class="modal-title text-white fw-bold mb-0" id="editGroupDevicesModalLabel">
-                        <i class="fas fa-pencil-alt me-2"></i>Edit Devices
-                    </h5>
-                    <div class="text-white opacity-75 small" id="editModalGroupName"></div>
+            <div class="modal-header pb-0" style="background: linear-gradient(135deg, #1a73e8 0%, #0d47a1 100%);">
+                <div class="w-100">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <div>
+                            <h5 class="modal-title text-white fw-bold mb-0" id="editGroupDevicesModalLabel">
+                                <i class="fas fa-pencil-alt me-2"></i>Edit Group
+                            </h5>
+                            <div class="text-white opacity-75 small" id="editModalGroupName"></div>
+                        </div>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+                    <!-- Tab Nav -->
+                    <ul class="nav nav-tabs border-0" id="editGroupTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active text-white fw-semibold px-4 py-2"
+                                    id="tab-devices-btn"
+                                    style="background:rgba(255,255,255,0.18); border-radius:8px 8px 0 0; border:none;"
+                                    onclick="switchEditTab('devices')">
+                                <i class="fas fa-server me-1"></i> Devices
+                            </button>
+                        </li>
+                        <li class="nav-item ms-1" role="presentation">
+                            <button class="nav-link text-white px-4 py-2"
+                                    id="tab-btnmap-btn"
+                                    style="background:rgba(255,255,255,0.08); border-radius:8px 8px 0 0; border:none;"
+                                    onclick="switchEditTab('btnmap')">
+                                <i class="fas fa-sitemap me-1"></i> Button Mapping
+                            </button>
+                        </li>
+                    </ul>
                 </div>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 <input type="hidden" id="editModalGroupId">
             </div>
 
-            <div class="modal-body p-4">
+            <div class="modal-body p-0">
 
-                <!-- Alert -->
-                <div class="alert alert-danger d-none" id="editModalAlert" role="alert"></div>
+                <!-- ============================================================
+                     TAB 1 — DEVICES
+                     ============================================================ -->
+                <div id="editTabDevices" class="p-4">
 
-                <!-- Index result (shown after save) -->
-                <div class="alert alert-info d-none p-3 mb-3" id="editModalIndexResult"></div>
+                    <!-- Alert -->
+                    <div class="alert alert-danger d-none" id="editModalAlert" role="alert"></div>
 
-                <!-- Device type panels -->
-                <div class="row g-3">
+                    <!-- Index result (shown after save) -->
+                    <div class="alert alert-info d-none p-3 mb-3" id="editModalIndexResult"></div>
+
+                    <!-- Device type panels -->
+                    <div class="row g-3">
 
                     <!-- TOKEN DISPENSER -->
                     <div class="col-12">
@@ -1225,10 +1668,112 @@
                         </div>
                     </div>
 
-                </div><!-- /row -->
+                    </div><!-- /row -->
+                </div><!-- /editTabDevices -->
+
+                <!-- ============================================================
+                     TAB 2 — BUTTON MAPPING
+                     ============================================================ -->
+                <div id="editTabBtnmap" class="p-4 d-none">
+
+                    <div class="alert alert-danger d-none" id="btnMapAlert" role="alert"></div>
+                    <div class="alert alert-success d-none" id="btnMapSuccess" role="alert"></div>
+
+                    <!-- Loading spinner -->
+                    <div id="btnMapLoading" class="text-center py-5">
+                        <i class="fas fa-spinner fa-spin fa-2x text-primary"></i>
+                        <div class="mt-2 text-muted small">Loading slot assignments…</div>
+                    </div>
+
+                    <div id="btnMapContent" class="d-none">
+
+                        <!-- ─── Dispenser → TV Slots ─── -->
+                        <div class="card border-0 shadow-sm mb-4">
+                            <div class="card-header py-2 px-3" style="background:#1a73e810; border-left:4px solid #1a73e8;">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <span class="fw-bold small" style="color:#1a73e8;">
+                                        <i class="fas fa-ticket-alt me-2"></i>Dispenser → TV Button Slots
+                                        <span class="text-muted fw-normal ms-1 small">Drag rows to reorder; slot number = row order per TV</span>
+                                    </span>
+                                    <button class="btn btn-sm btn-outline-primary" style="font-size:0.75rem;" onclick="addDispenserSlotRow()">
+                                        <i class="fas fa-plus me-1"></i>Add Slot
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="card-body p-3">
+                                <div class="table-responsive">
+                                    <table class="table table-sm align-middle mb-0" id="btnMapDispTable">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th style="width:32px;"></th>
+                                                <th>Slot</th>
+                                                <th>Dispenser</th>
+                                                <th><i class="fas fa-arrow-right text-muted mx-1"></i></th>
+                                                <th>TV</th>
+                                                <th style="width:50px;"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="btnMapDispBody">
+                                            <!-- rows injected by JS -->
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div class="text-muted small mt-2" id="btnMapDispEmpty" style="display:none;">
+                                    <i class="fas fa-info-circle me-1"></i>No dispensers in this group. Add dispensers in the <strong>Devices</strong> tab first.
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- ─── Keypad → TV Slots ─── -->
+                        <div class="card border-0 shadow-sm mb-3">
+                            <div class="card-header py-2 px-3" style="background:#19875410; border-left:4px solid #198754;">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <span class="fw-bold small" style="color:#198754;">
+                                        <i class="fas fa-keyboard me-2"></i>Keypad → TV Slots + Button A Dispenser
+                                    </span>
+                                    <button class="btn btn-sm btn-outline-success" style="font-size:0.75rem;" onclick="addKeypadSlotRow()">
+                                        <i class="fas fa-plus me-1"></i>Add Slot
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="card-body p-3">
+                                <div class="table-responsive">
+                                    <table class="table table-sm align-middle mb-0" id="btnMapKpTable">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th style="width:32px;"></th>
+                                                <th>Slot</th>
+                                                <th>Keypad</th>
+                                                <th><i class="fas fa-arrow-right text-muted mx-1"></i></th>
+                                                <th>TV</th>
+                                                <th>Button A → Dispenser</th>
+                                                <th style="width:50px;"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="btnMapKpBody">
+                                            <!-- rows injected by JS -->
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div class="text-muted small mt-2" id="btnMapKpEmpty" style="display:none;">
+                                    <i class="fas fa-info-circle me-1"></i>No keypads in this group.
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="text-muted small">
+                            <i class="fas fa-info-circle me-1"></i>
+                            Slot numbers are assigned by <strong>row order per TV</strong> (top row = slot 1). Drag to reorder.
+                        </div>
+
+                    </div><!-- /btnMapContent -->
+
+                </div><!-- /editTabBtnmap -->
+
             </div><!-- /modal-body -->
 
-            <div class="modal-footer bg-light border-0">
+            <!-- ── Contextual Footer ── -->
+            <div class="modal-footer bg-light border-0" id="editFooterDevices">
                 <div class="me-auto text-muted small">
                     <i class="fas fa-info-circle me-1"></i>
                     Indexes are automatically recalculated after saving.
@@ -1236,6 +1781,16 @@
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                 <button type="button" class="btn btn-primary" id="editModalSaveBtn" onclick="saveEditGroupDevices()">
                     <i class="fas fa-save me-1"></i>Save Changes
+                </button>
+            </div>
+            <div class="modal-footer bg-light border-0 d-none" id="editFooterBtnmap">
+                <div class="me-auto text-muted small">
+                    <i class="fas fa-info-circle me-1"></i>
+                    Slot order determines the button index sent to devices.
+                </div>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-success" id="btnMapSaveBtn" onclick="saveButtonMappings()">
+                    <i class="fas fa-save me-1"></i>Save Button Mappings
                 </button>
             </div>
 

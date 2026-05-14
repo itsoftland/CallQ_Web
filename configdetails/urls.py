@@ -23,8 +23,8 @@ urlpatterns = [
     path('mapping/list/', views.mapping_list_view, name='mapping_list'),
     # Wizard URLs commented out - using automatic button mapping instead
     # path('mapping/<int:group_id>/button-wizard/', views.button_mapping_wizard, name='button_mapping_wizard'),
-    # path('api/mapping/group/<int:group_id>/button-mappings/', views.get_group_button_mappings_api, name='get_group_button_mappings_api'),
-    # path('api/mapping/group/<int:group_id>/button-mappings/save/', views.save_group_button_mappings_api, name='save_group_button_mappings_api'),
+    path('api/mapping/group/<int:group_id>/button-mappings/', views.get_group_button_mappings_api, name='get_group_button_mappings_api'),
+    path('api/mapping/group/<int:group_id>/button-mappings/save/', views.save_group_button_mappings_api, name='save_group_button_mappings_api'),
     path('api/mapping/devices/', views.get_available_devices_api, name='get_available_devices_api'),
     # Device-to-Customer Mapping
     path('mapping/map-device/', views.map_device_to_customer, name='map_device_to_customer'),
