@@ -2183,12 +2183,74 @@ def device_config(request, device_id):
                             CounterTokenDispenserMapping.objects.get_or_create(dispenser=device, counter=counter)
                         except CounterConfig.DoesNotExist:
                             pass  # Skip invalid counter IDs
+
+                    # ── Sync GroupCounterButtonMapping (GCBM) for this dispenser only ──────
+                    # own_counters reads exclusively from GCBM for grouped dispensers.
+                    # Only touch rows for THIS dispenser — sibling dispensers are left alone.
+                    try:
+                        _gdm_for_device = GroupDispenserMapping.objects.filter(
+                            dispenser=device
+                        ).select_related('group').first()
+                        if _gdm_for_device:
+                            _grp = _gdm_for_device.group
+
+                            # Remove only this dispenser's existing GCBM rows.
+                            GroupCounterButtonMapping.objects.filter(
+                                group=_grp, dispenser=device
+                            ).delete()
+
+                            # Compute the correct starting button index for this dispenser.
+                            # Count how many GCBM slots are already occupied by dispensers
+                            # that come BEFORE this one in the group order.
+                            _all_grp_disp = list(
+                                _grp.dispenser_slot_mappings
+                                    .select_related('dispenser')
+                                    .order_by('dispenser_button_index')
+                            )
+                            _preceding_count = 0
+                            for _slot in _all_grp_disp:
+                                if _slot.dispenser_id == device.id:
+                                    break
+                                _preceding_count += GroupCounterButtonMapping.objects.filter(
+                                    group=_grp, dispenser=_slot.dispenser
+                                ).count()
+
+                            # Insert only the new rows for this dispenser.
+                            _new_ctdm = CounterTokenDispenserMapping.objects.filter(
+                                dispenser=device
+                            ).select_related('counter').order_by('id')
+                            for _local_idx, _cm in enumerate(_new_ctdm, start=1):
+                                _abs_pos = _preceding_count + _local_idx
+                                try:
+                                    _btn_char = get_button_index_char(_abs_pos)
+                                except ValueError:
+                                    _btn_char = chr(0x31)
+                                GroupCounterButtonMapping.objects.get_or_create(
+                                    group=_grp,
+                                    dispenser=device,
+                                    counter=_cm.counter,
+                                    defaults={'button_index': _btn_char},
+                                )
+                    except Exception:
+                        pass  # GCBM sync is best-effort; CTDM write already succeeded.
                 except Exception as e:
                     messages.error(request, f"Error mapping counters to dispenser: {e}")
             else:
                 # If no counters are selected, remove all existing mappings for this dispenser
                 try:
                     CounterTokenDispenserMapping.objects.filter(dispenser=device).delete()
+                    # Also clear GCBM rows for this dispenser if it belongs to a group.
+                    try:
+                        _gdm_empty = GroupDispenserMapping.objects.filter(
+                            dispenser=device
+                        ).select_related('group').first()
+                        if _gdm_empty:
+                            _grp_empty = _gdm_empty.group
+                            GroupCounterButtonMapping.objects.filter(
+                                group=_grp_empty, dispenser=device
+                            ).delete()
+                    except Exception:
+                        pass
                 except Exception:
                     pass
 
@@ -6227,6 +6289,7 @@ def swap_counters_api(request):
                 if i < len(BUTTON_INDEX_SEQUENCE)
             }
 
+
         # Collect displaced dispenser IDs BEFORE the transaction so we can
         # rebuild their GCBM after the payload dispenser's new state is committed.
         # A displaced dispenser is any group dispenser (other than the payload one)
@@ -6248,11 +6311,21 @@ def swap_counters_api(request):
             if group:
                 # ----------------------------------------------------------------
                 # "buttons" is the COMPLETE desired final state for this dispenser.
-                # Delete ALL existing GCBM rows for this dispenser first so that
-                # counters NOT included in the payload are automatically unmapped.
-                # This prevents stale rows accumulating (e.g. a 4-button dispenser
-                # ending up with 6 counters after partial swaps).
                 # ----------------------------------------------------------------
+
+                # Snapshot EVICTED counters BEFORE wiping CTDM.
+                # Evicted = currently on this dispenser's CTDM but NOT in the payload.
+                # These will be handed to the displaced dispenser to complete the swap.
+                # (e.g. D2 has Counter B; payload asks D2 to take Counter A instead;
+                #  Counter B is evicted → must go to D1 which lost Counter A)
+                incoming_counter_ids = {c.id for c in desired_map.values() if c is not None}
+                evicted_counter_objs = [
+                    row.counter
+                    for row in CounterTokenDispenserMapping.objects
+                        .filter(dispenser=dispenser)
+                        .exclude(counter_id__in=incoming_counter_ids)
+                        .select_related('counter')
+                ]
 
                 # Wipe every existing GCBM row for this dispenser.
                 GroupCounterButtonMapping.objects.filter(
@@ -6261,9 +6334,6 @@ def swap_counters_api(request):
                 ).delete()
 
                 # Wipe ALL CTDM rows for this dispenser atomically.
-                # This replaces the old per-counter removed_counters loop and
-                # ensures stale rows that were never reflected in GCBM are also
-                # cleaned up, preventing counter count bloat after swaps.
                 CounterTokenDispenserMapping.objects.filter(dispenser=dispenser).delete()
 
                 # Now apply the desired state.
@@ -6317,25 +6387,36 @@ def swap_counters_api(request):
                         })
 
                 # ----------------------------------------------------------------
-                # Rebuild GCBM for displaced dispensers.
-                # These are other group dispensers that previously held one of the
-                # incoming counters.  Their GCBM row for that counter was deleted
-                # above (line: GroupCounterButtonMapping.filter(counter=new_ctr).delete()).
-                # Without this rebuild, the previously-connected dispenser ends up
-                # with no GCBM rows — making it look like it has no counters.
-                # We re-read each dispenser's current CTDM state and create fresh
-                # sequential GCBM rows so button indices remain contiguous.
+                # Rebuild GCBM for displaced dispensers and complete the true swap.
+                #
+                # Root cause of the original bug:
+                #   - D2's CTDM was wiped (Counter B deleted from D2).
+                #   - Counter A's CTDM was removed from D1 (line above).
+                #   - D1's CTDM is now empty → rebuild gives D1 zero counters.
+                #
+                # Fix: Give D1 the evicted counter(s) from D2 (Counter B), then
+                # rebuild D1's GCBM so the swap is truly bidirectional.
                 # ----------------------------------------------------------------
                 for d_id in displaced_dispenser_ids:
                     try:
                         disp_obj = Device.objects.get(id=d_id)
-                        # Clear any stale GCBM rows (the displaced counter was
-                        # already removed above; other rows may still exist).
+
+                        # Step 1: Route evicted counters to the displaced dispenser.
+                        for ev_ctr in evicted_counter_objs:
+                            CounterTokenDispenserMapping.objects.filter(
+                                counter=ev_ctr
+                            ).exclude(dispenser=disp_obj).delete()
+                            CounterTokenDispenserMapping.objects.get_or_create(
+                                counter=ev_ctr, dispenser=disp_obj
+                            )
+
+                        # Step 2: Clear stale GCBM rows for displaced dispenser.
                         GroupCounterButtonMapping.objects.filter(
                             group=group, dispenser=disp_obj
                         ).delete()
-                        # Rebuild from current CTDM — counters that are genuinely
-                        # still mapped to this dispenser after the swap.
+
+                        # Step 3: Rebuild GCBM from post-swap CTDM state
+                        # (includes evicted counters added in step 1).
                         remaining = list(
                             CounterTokenDispenserMapping.objects
                             .filter(dispenser=disp_obj)
@@ -6355,6 +6436,7 @@ def swap_counters_api(request):
                             )
                     except Exception:
                         pass  # Never fail the whole swap due to displaced rebuild
+
 
             else:
                 # No group: CTDM insertion-order is the source of truth.
