@@ -1354,14 +1354,17 @@ def _get_tv_flag_config(request, device, company, dealer_customer, is_dealer_cus
         if dispenser is None:
             return results
 
-        # Look up this dispenser's TV-slot index (TVDispenserMapping)
+        # Look up this dispenser's TV-slot index (TVDispenserMapping).
+        # Fallback: when no TVDispenserMapping row exists (keypad-first config),
+        # use keypad_index as the dispenser slot identifier — each keypad slot
+        # maps 1-to-1 with a dispenser slot so the index is semantically identical.
         try:
             tdm = TVDispenserMapping.objects.filter(
                 tv=device, dispenser=dispenser
             ).only('button_index').first()
-            dispenser_index = tdm.button_index if tdm else None
+            dispenser_index = tdm.button_index if tdm else keypad_index
         except Exception:
-            dispenser_index = None
+            dispenser_index = keypad_index
 
         # Resolve the group this dispenser belongs to (via GroupDispenserMapping).
         # This is the only authoritative group for this dispenser — dispensers can
