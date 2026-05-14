@@ -2187,6 +2187,8 @@ def device_config(request, device_id):
                     # ── Sync GroupCounterButtonMapping (GCBM) for this dispenser only ──────
                     # own_counters reads exclusively from GCBM for grouped dispensers.
                     # Only touch rows for THIS dispenser — sibling dispensers are left alone.
+                    import logging as _gcbm_log
+                    _gcbm_logger = _gcbm_log.getLogger('actions')
                     try:
                         _gdm_for_device = GroupDispenserMapping.objects.filter(
                             dispenser=device
@@ -2215,7 +2217,9 @@ def device_config(request, device_id):
                                     group=_grp, dispenser=_slot.dispenser
                                 ).count()
 
-                            # Insert only the new rows for this dispenser.
+                            # Insert / update only the new rows for this dispenser.
+                            # Use update_or_create (not get_or_create) so button_index
+                            # is always written even if the row already existed.
                             _new_ctdm = CounterTokenDispenserMapping.objects.filter(
                                 dispenser=device
                             ).select_related('counter').order_by('id')
@@ -2225,14 +2229,26 @@ def device_config(request, device_id):
                                     _btn_char = get_button_index_char(_abs_pos)
                                 except ValueError:
                                     _btn_char = chr(0x31)
-                                GroupCounterButtonMapping.objects.get_or_create(
+                                GroupCounterButtonMapping.objects.update_or_create(
                                     group=_grp,
                                     dispenser=device,
                                     counter=_cm.counter,
                                     defaults={'button_index': _btn_char},
                                 )
-                    except Exception:
-                        pass  # GCBM sync is best-effort; CTDM write already succeeded.
+                            _gcbm_logger.info(
+                                f"GCBM synced for dispenser {device.serial_number} "
+                                f"in group '{_grp.group_name}': "
+                                f"{_new_ctdm.count()} counter(s) written starting at abs_pos {_preceding_count + 1}"
+                            )
+                        else:
+                            _gcbm_logger.info(
+                                f"Dispenser {device.serial_number} has no group — GCBM sync skipped (uses CTDM directly)"
+                            )
+                    except Exception as _gcbm_exc:
+                        _gcbm_logger.warning(
+                            f"GCBM sync failed for dispenser {device.serial_number}: {_gcbm_exc}"
+                        )
+                        # GCBM sync is best-effort; CTDM write already succeeded.
                 except Exception as e:
                     messages.error(request, f"Error mapping counters to dispenser: {e}")
             else:
