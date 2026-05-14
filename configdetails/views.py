@@ -1402,6 +1402,7 @@ def _get_tv_flag_config(request, device, company, dealer_customer, is_dealer_cus
                     'is_enabled':              c.status,
                     'counter_config_id':       c.id,
                     'max_token_number':        c.max_token_number,
+                    'dispenser_sn':            dispenser.serial_number,  # used by TV counter filter
                 })
         except Exception:
             pass
@@ -1493,6 +1494,33 @@ def _get_tv_flag_config(request, device, company, dealer_customer, is_dealer_cus
             mapped_counters_list.extend(
                 _build_counters_for_dispenser(tdm.dispenser, None)  # no keypad slot; dispenser_index resolved inside
             )
+
+    # ----------------------------------------------------------------
+    # Filter counters to only those from dispensers explicitly wired
+    # to THIS TV on the config page (via TVKeypadMapping.dispenser or
+    # TVDispenserMapping).  Without this, a dispenser that belongs to
+    # the same group but is NOT assigned to this TV would still
+    # contribute its counters via GCBM, sending the TV data it should
+    # not display.
+    #
+    # Priority: TVKeypadMapping.dispenser FK (one dispenser per keypad
+    # slot); fall back to TVDispenserMapping when no keypad mappings
+    # exist yet.
+    # ----------------------------------------------------------------
+    tv_wired_dispenser_sns = set()
+    for kpm in TVKeypadMapping.objects.filter(tv=device).select_related('dispenser'):
+        if kpm.dispenser:
+            tv_wired_dispenser_sns.add(kpm.dispenser.serial_number)
+    if not tv_wired_dispenser_sns:
+        for tdm in TVDispenserMapping.objects.filter(tv=device).select_related('dispenser'):
+            if tdm.dispenser:
+                tv_wired_dispenser_sns.add(tdm.dispenser.serial_number)
+
+    if tv_wired_dispenser_sns:
+        mapped_counters_list = [
+            c for c in mapped_counters_list
+            if c.get('dispenser_sn') in tv_wired_dispenser_sns
+        ]
 
     # Scroll Configuration Logic
     # Always use device's default config since profiles don't currently support scrolling text configuration
@@ -6199,6 +6227,20 @@ def swap_counters_api(request):
                 if i < len(BUTTON_INDEX_SEQUENCE)
             }
 
+        # Collect displaced dispenser IDs BEFORE the transaction so we can
+        # rebuild their GCBM after the payload dispenser's new state is committed.
+        # A displaced dispenser is any group dispenser (other than the payload one)
+        # that currently holds a GCBM row for a counter being moved into this
+        # dispenser's desired state.
+        displaced_dispenser_ids = set()
+        if group:
+            for incoming_ctr in desired_map.values():
+                if incoming_ctr is not None:
+                    for old_gcbm in GroupCounterButtonMapping.objects.filter(
+                        group=group, counter=incoming_ctr
+                    ).exclude(dispenser=dispenser):
+                        displaced_dispenser_ids.add(old_gcbm.dispenser_id)
+
         # apply atomically
         results = []
         with transaction.atomic():
@@ -6273,6 +6315,46 @@ def swap_counters_api(request):
                             'new_counter_name': new_ctr.counter_name,
                             'previous_counter_id': prev_ctr.id if prev_ctr else None,
                         })
+
+                # ----------------------------------------------------------------
+                # Rebuild GCBM for displaced dispensers.
+                # These are other group dispensers that previously held one of the
+                # incoming counters.  Their GCBM row for that counter was deleted
+                # above (line: GroupCounterButtonMapping.filter(counter=new_ctr).delete()).
+                # Without this rebuild, the previously-connected dispenser ends up
+                # with no GCBM rows — making it look like it has no counters.
+                # We re-read each dispenser's current CTDM state and create fresh
+                # sequential GCBM rows so button indices remain contiguous.
+                # ----------------------------------------------------------------
+                for d_id in displaced_dispenser_ids:
+                    try:
+                        disp_obj = Device.objects.get(id=d_id)
+                        # Clear any stale GCBM rows (the displaced counter was
+                        # already removed above; other rows may still exist).
+                        GroupCounterButtonMapping.objects.filter(
+                            group=group, dispenser=disp_obj
+                        ).delete()
+                        # Rebuild from current CTDM — counters that are genuinely
+                        # still mapped to this dispenser after the swap.
+                        remaining = list(
+                            CounterTokenDispenserMapping.objects
+                            .filter(dispenser=disp_obj)
+                            .select_related('counter')
+                            .order_by('id')
+                        )
+                        for pos, ctdm_row in enumerate(remaining, start=1):
+                            try:
+                                btn_char = get_button_index_char(pos)
+                            except ValueError:
+                                btn_char = chr(0x31)
+                            GroupCounterButtonMapping.objects.get_or_create(
+                                group=group,
+                                dispenser=disp_obj,
+                                counter=ctdm_row.counter,
+                                defaults={'button_index': btn_char},
+                            )
+                    except Exception:
+                        pass  # Never fail the whole swap due to displaced rebuild
 
             else:
                 # No group: CTDM insertion-order is the source of truth.
