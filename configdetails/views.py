@@ -8513,11 +8513,25 @@ def get_android_mapped_counters(request):
             mapped_dispenser_sn = mapping.dispenser.serial_number
             button_index = mapping.button_index
         else:
-            # Fallback to old mapping
+            # Fallback to CounterTokenDispenserMapping.
+            # Derive the button_index from the counter's position among all
+            # counters mapped to that dispenser (ordered by id), so multi-counter
+            # dispensers get '1','2','3'... instead of all returning '1'.
             old_mapping = CounterTokenDispenserMapping.objects.filter(counter=counter).first()
             if old_mapping:
                 mapped_dispenser_sn = old_mapping.dispenser.serial_number
-                button_index = '1'
+                # Find the 1-based position of this counter for this dispenser
+                all_ctdm = list(
+                    CounterTokenDispenserMapping.objects
+                    .filter(dispenser=old_mapping.dispenser)
+                    .order_by('id')
+                    .values_list('counter_id', flat=True)
+                )
+                try:
+                    pos = all_ctdm.index(counter.id) + 1  # 1-based
+                    button_index = get_button_index_char(pos)
+                except (ValueError, Exception):
+                    button_index = '1'
         
         if mapped_dispenser_sn:
             mapped_counters.append({
