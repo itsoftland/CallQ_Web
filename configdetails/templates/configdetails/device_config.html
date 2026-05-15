@@ -1136,7 +1136,12 @@
             const count = parseInt(noOfKeypadsSelect.value) || 1;
             keypadSlots.forEach(function (slot) {
                 const slotIndex = parseInt(slot.dataset.keypadSlot) || 0;
-                slot.style.display = slotIndex <= count ? 'block' : 'none';
+                const isVisible = slotIndex <= count;
+                slot.style.display = isVisible ? 'block' : 'none';
+                // Disable inputs in hidden slots so they are NOT submitted
+                slot.querySelectorAll('select, input').forEach(function (el) {
+                    el.disabled = !isVisible;
+                });
             });
         }
 
