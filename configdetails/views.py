@@ -3083,6 +3083,16 @@ def _create_tv_slot_mappings(group, new_dispenser_ids=None):
       - new_dispenser_ids: optional set of Device IDs that are brand-new additions
         to this group (used to skip TVDispenserMapping rebuild for existing ones).
     """
+    def _parse_pos(val):
+        try:
+            if isinstance(val, int) or (isinstance(val, str) and val.isdigit()):
+                return int(val)
+            elif isinstance(val, str) and len(val) == 1:
+                return ord(val) - 0x31 + 1
+        except Exception:
+            pass
+        return 0
+
     dispensers_list = list(group.dispensers.all().order_by('id'))
     keypads_list    = list(group.keypads.all().order_by('id'))
     tvs_list        = list(group.tvs.all().order_by('id'))
@@ -3103,7 +3113,7 @@ def _create_tv_slot_mappings(group, new_dispenser_ids=None):
         for tv in tvs_list:
             existing = TVDispenserMapping.objects.filter(tv=tv)
             for row in existing:
-                pos = ord(row.button_index) - 0x31 + 1  # '1'→1, '2'→2 …
+                pos = _parse_pos(row.button_index)
                 if pos > tv_max_pos[tv.id]:
                     tv_max_pos[tv.id] = pos
 
@@ -3132,7 +3142,7 @@ def _create_tv_slot_mappings(group, new_dispenser_ids=None):
         }
         max_disp_pos = 0
         for gdm in existing_gdm.values():
-            pos = ord(gdm.dispenser_button_index) - 0x31 + 1
+            pos = _parse_pos(gdm.dispenser_button_index)
             if pos > max_disp_pos:
                 max_disp_pos = pos
 
@@ -3158,7 +3168,7 @@ def _create_tv_slot_mappings(group, new_dispenser_ids=None):
         }
         max_btn_pos = 0
         for gcbm in existing_gcbm.values():
-            pos = ord(gcbm.button_index) - 0x31 + 1
+            pos = _parse_pos(gcbm.button_index)
             if pos > max_btn_pos:
                 max_btn_pos = pos
 
@@ -3188,7 +3198,7 @@ def _create_tv_slot_mappings(group, new_dispenser_ids=None):
         tv_kp_max = {tv.id: 0 for tv in tvs_list}
         for tv in tvs_list:
             for row in TVKeypadMapping.objects.filter(tv=tv):
-                pos = ord(row.keypad_index) - 0x31 + 1
+                pos = _parse_pos(row.keypad_index)
                 if pos > tv_kp_max[tv.id]:
                     tv_kp_max[tv.id] = pos
 
@@ -8067,6 +8077,29 @@ def update_group_devices_api(request, group_id):
         # Dispensers — only ADD new ones; existing rows are already intact.
         # We do NOT wipe GroupDispenserMapping here — indices are preserved.
         added_dispenser_ids = set(new_dispenser_ids) - old_dispenser_ids
+        if added_dispenser_ids:
+            existing_indices = set(GroupDispenserMapping.objects.filter(group=group).values_list('dispenser_button_index', flat=True))
+            pos = 1
+            dispensers_to_add = [d for d in new_dispensers if d.id in added_dispenser_ids]
+            
+            for disp in dispensers_to_add:
+                while True:
+                    try:
+                        ch = get_button_index_char(pos)
+                    except ValueError:
+                        ch = chr(0x31)  # Fallback to '1'
+                        break
+                    if ch not in existing_indices:
+                        break
+                    pos += 1
+                
+                GroupDispenserMapping.objects.create(
+                    group=group,
+                    dispenser=disp,
+                    dispenser_button_index=ch
+                )
+                existing_indices.add(ch)
+                pos += 1
 
         # Keypads: use explicit add-only (removals already handled above via
         # group.keypads.remove() so we must NOT call set() which could
@@ -8480,68 +8513,222 @@ def get_android_mapped_counters(request):
     
     if customer_id and str(customer_id).startswith('0'):
         customer_id = str(customer_id)[1:]
-        
+
     if not customer_id:
         return Response({'error': 'customer_id is required'}, status=400)
 
     company = None
     if str(customer_id).isdigit():
         company = Company.objects.filter(id=customer_id).first()
-    
+
     if not company:
         company = Company.objects.filter(company_id=customer_id).first()
-        
+
     if not company:
         dealer_customer = DealerCustomer.objects.filter(customer_id=customer_id).first()
         if dealer_customer:
             company = dealer_customer.dealer
-            
+
     if not company:
         return Response({'error': 'Invalid customer_id'}, status=404)
-        
+
     counters = CounterConfig.objects.filter(company=company, status=True)
-    
+
     mapped_counters = []
     for counter in counters:
-        # Check mapping in GroupCounterButtonMapping
-        mapping = GroupCounterButtonMapping.objects.filter(counter=counter).first()
-        
         mapped_dispenser_sn = None
-        button_index = None
-        
-        if mapping:
-            mapped_dispenser_sn = mapping.dispenser.serial_number
-            button_index = mapping.button_index
+        button_index        = None
+        dispenser_obj       = None
+
+        # Primary: GroupCounterButtonMapping
+        gcbm = GroupCounterButtonMapping.objects.filter(counter=counter).first()
+        if gcbm:
+            dispenser_obj       = gcbm.dispenser
+            mapped_dispenser_sn = dispenser_obj.serial_number
+            button_index        = gcbm.button_index
         else:
-            # Fallback to CounterTokenDispenserMapping.
-            # Derive the button_index from the counter's position among all
-            # counters mapped to that dispenser (ordered by id), so multi-counter
-            # dispensers get '1','2','3'... instead of all returning '1'.
-            old_mapping = CounterTokenDispenserMapping.objects.filter(counter=counter).first()
-            if old_mapping:
-                mapped_dispenser_sn = old_mapping.dispenser.serial_number
-                # Find the 1-based position of this counter for this dispenser
+            # Fallback: CounterTokenDispenserMapping.
+            # Derive button_index from the counter's position among all counters
+            # mapped to that dispenser (ordered by id).
+            ctdm = CounterTokenDispenserMapping.objects.filter(counter=counter).first()
+            if ctdm:
+                dispenser_obj       = ctdm.dispenser
+                mapped_dispenser_sn = dispenser_obj.serial_number
                 all_ctdm = list(
                     CounterTokenDispenserMapping.objects
-                    .filter(dispenser=old_mapping.dispenser)
+                    .filter(dispenser=dispenser_obj)
                     .order_by('id')
                     .values_list('counter_id', flat=True)
                 )
                 try:
-                    pos = all_ctdm.index(counter.id) + 1  # 1-based
+                    pos          = all_ctdm.index(counter.id) + 1  # 1-based
                     button_index = get_button_index_char(pos)
                 except (ValueError, Exception):
                     button_index = '1'
-        
-        if mapped_dispenser_sn:
-            mapped_counters.append({
-                "id": counter.id,
-                "counter_name": counter.counter_name,
-                "counter_prefix_code": counter.counter_prefix_code,
-                "counter_display_name": counter.counter_display_name,
-                "max_token_number": counter.max_token_number,
-                "mapped_dispenser_sn": mapped_dispenser_sn,
-                "button_index": button_index
-            })
-            
+        if not mapped_dispenser_sn:
+            continue  # counter not mapped to any dispenser — skip
+
+        # dispenser_button_index — the slot of this dispenser in its group
+        dispenser_button_index = None
+        if dispenser_obj:
+            gdm = GroupDispenserMapping.objects.filter(dispenser=dispenser_obj).first()
+            if gdm:
+                dispenser_button_index = gdm.dispenser_button_index
+
+        mapped_counters.append({
+            "id":                     counter.id,
+            "counter_name":           counter.counter_name,
+            "counter_prefix_code":    counter.counter_prefix_code,
+            "counter_display_name":   counter.counter_display_name,
+            "max_token_number":       counter.max_token_number,
+            "mapped_dispenser_sn":    mapped_dispenser_sn,
+            "button_index":           button_index,
+            "dispenser_button_index": dispenser_button_index,
+        })
+
     return Response({"counters": mapped_counters})
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def generate_vip_token_api(request):
+    """
+    Generate the next VIP token for a given counter + dispenser combination.
+
+    Payload:
+        {
+            "counter_id"            : <int>   — CounterConfig.id,
+            "dispenser_sn"          : <str>   — serial number of the dispenser,
+            "dispenser_button_index": <str>   — ASCII button index of the dispenser (e.g. '1')
+        }
+
+    Logic:
+        1. Resolve the dispenser and counter from the request payload.
+        2. Look up the keypad mapped to this dispenser via TVKeypadMapping to read
+           vip_from / vip_to from the keypad's config_json.
+        3. Find or create a VipTokenCounter row for (counter, dispenser).
+        4. Increment current_token by 1.  If it exceeds vip_to, wrap to vip_from.
+        5. Return the new token number.
+
+    Response:
+        {
+            "vip_token"     : <int>   — the newly issued VIP token number,
+            "vip_from"      : <int>,
+            "vip_to"        : <int>,
+            "counter_name"  : <str>,
+            "dispenser_sn"  : <str>
+        }
+    """
+    from configdetails.models import VipTokenCounter
+
+    counter_id             = request.data.get('counter_id')
+    dispenser_sn           = request.data.get('dispenser_sn')
+    dispenser_button_index = request.data.get('dispenser_button_index')  # informational / for validation
+
+    if not counter_id or not dispenser_sn:
+        return Response(
+            {'error': 'counter_id and dispenser_sn are required'},
+            status=400,
+        )
+
+    # ── Resolve counter ──────────────────────────────────────────────────────
+    counter = CounterConfig.objects.filter(id=counter_id).first()
+    if not counter:
+        return Response({'error': f'Counter {counter_id} not found'}, status=404)
+
+    # ── Resolve dispenser ────────────────────────────────────────────────────
+    dispenser = Device.objects.filter(
+        serial_number=dispenser_sn,
+        device_type=Device.DeviceType.TOKEN_DISPENSER,
+    ).first()
+    if not dispenser:
+        return Response({'error': f'Dispenser {dispenser_sn!r} not found'}, status=404)
+
+    # ── Fetch vip_from / vip_to from the keypad linked to this dispenser ─────
+    # Chain: dispenser → TVKeypadMapping.dispenser → TVKeypadMapping.keypad → config_json
+    vip_from = 1
+    vip_to   = 999
+
+    kp_mapping = TVKeypadMapping.objects.filter(dispenser=dispenser).select_related('keypad').first()
+    if kp_mapping and kp_mapping.keypad:
+        kp_config = {}
+        try:
+            kp_config = kp_mapping.keypad.config.config_json or {}
+        except Exception:
+            pass
+
+        # Keypad stores these as string integers: 'vip_from', 'vip_to'
+        # (older firmwares may use 'vip_count_from' / 'vip_count_to')
+        raw_from = (
+            kp_config.get('vip_from')
+            or kp_config.get('vip_count_from')
+            or str(vip_from)
+        )
+        raw_to = (
+            kp_config.get('vip_to')
+            or kp_config.get('vip_count_to')
+            or str(vip_to)
+        )
+        try:
+            vip_from = int(raw_from)
+        except (TypeError, ValueError):
+            vip_from = 1
+        try:
+            vip_to = int(raw_to)
+        except (TypeError, ValueError):
+            vip_to = 999
+
+    # Sanity-check the range
+    if vip_from <= 0:
+        vip_from = 1
+    if vip_to < vip_from:
+        vip_to = vip_from + 998  # fallback: 999-wide window
+
+    # ── Atomic increment with row-level lock ─────────────────────────────────
+    with transaction.atomic():
+        vtc = (
+            VipTokenCounter.objects
+            .select_for_update()
+            .filter(counter=counter, dispenser=dispenser)
+            .first()
+        )
+
+        if vtc is None:
+            # First ever VIP token for this (counter, dispenser) pair
+            vtc = VipTokenCounter(
+                counter=counter,
+                dispenser=dispenser,
+                vip_from=vip_from,
+                vip_to=vip_to,
+                current_token=vip_from - 1,  # will be incremented to vip_from below
+            )
+
+        # Always refresh vip_from / vip_to from the keypad config
+        vtc.vip_from = vip_from
+        vtc.vip_to   = vip_to
+
+        # Increment and wrap
+        next_token = vtc.current_token + 1
+        if next_token > vip_to:
+            next_token = vip_from
+
+        vtc.current_token = next_token
+        vtc.save()
+
+    log_api_response(
+        'generate_vip_token_api', 200,
+        {
+            'counter_id': counter_id,
+            'dispenser_sn': dispenser_sn,
+            'vip_token': next_token,
+        },
+    )
+
+    return Response({
+        'vip_token':    next_token,
+        'vip_from':     vip_from,
+        'vip_to':       vip_to,
+        'counter_name': counter.counter_name,
+        'counter_prefix_code': counter.counter_prefix_code,
+        'dispenser_sn': dispenser.serial_number,
+    })

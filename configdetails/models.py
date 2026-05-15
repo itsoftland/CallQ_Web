@@ -789,3 +789,53 @@ class TokenReport(models.Model):
 
     def __str__(self):
         return f"TokenReport [{self.customerId}] @ {self.received_dateTime}"
+
+
+class VipTokenCounter(models.Model):
+    """
+    Tracks the current (last issued) VIP token number for each counter.
+
+    VIP tokens use a separate numeric range defined on the keypad:
+      - vip_from : first number in the VIP range  (e.g. 901)
+      - vip_to   : last  number in the VIP range  (e.g. 999)
+
+    On every API call the counter is incremented by 1.
+    When it exceeds vip_to it wraps back to vip_from.
+
+    One row per (counter, dispenser) pair — the same counter can in theory be
+    mapped to different dispensers in different groups, each tracking its own
+    running position independently.
+    """
+    counter = models.ForeignKey(
+        'CounterConfig',
+        on_delete=models.CASCADE,
+        related_name='vip_token_counters',
+    )
+    dispenser = models.ForeignKey(
+        Device,
+        on_delete=models.CASCADE,
+        related_name='vip_token_counters',
+        limit_choices_to={'device_type': Device.DeviceType.TOKEN_DISPENSER},
+    )
+    # The VIP range — denormalised here so the API doesn't need to reach the
+    # keypad config every time.  Updated whenever the keypad config changes.
+    vip_from = models.IntegerField(default=1, help_text="First VIP token number (inclusive)")
+    vip_to   = models.IntegerField(default=999, help_text="Last VIP token number (inclusive)")
+    # The last number that was issued.  Next call returns current_token + 1.
+    # Initialised to vip_from - 1 so the very first call returns vip_from.
+    current_token = models.IntegerField(
+        default=0,
+        help_text="Last issued VIP token number (0 = none issued yet).",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('counter', 'dispenser')
+        verbose_name        = 'VIP Token Counter'
+        verbose_name_plural = 'VIP Token Counters'
+
+    def __str__(self):
+        return (
+            f"VIP [{self.counter.counter_name}] on {self.dispenser.serial_number} "
+            f"— current: {self.current_token} (range {self.vip_from}–{self.vip_to})"
+        )

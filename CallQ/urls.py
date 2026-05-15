@@ -24,6 +24,8 @@ urlpatterns = [
         path('api/external/token-report', config_views.token_report_api, name='token_report_api'),
         # Android APK Mapped Counters API (at root level)
         path('api/android/mapped-counters', config_views.get_android_mapped_counters, name='get_android_mapped_counters'),
+        # Android APK VIP Token Generation API (at root level)
+        path('api/android/vip-token', config_views.generate_vip_token_api, name='generate_vip_token_api'),
 
 
         path('login/', views.CustomLoginView.as_view(), name='login'),

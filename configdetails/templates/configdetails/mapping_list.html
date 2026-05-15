@@ -1279,13 +1279,13 @@
             alert('Add dispensers to the group first (Devices tab).');
             return;
         }
-        const defaultTv   = state.groupTvs[0]  || {};
+        const defaultTv   = state.groupTvs[0]  || null;
         const defaultDisp = state.groupDispensers[0] || {};
         state.dispenserSlots.push({
             dispenser_id: defaultDisp.id,
             display_name: defaultDisp.display_name,
-            tv_id:        defaultTv.id,
-            tv_name:      defaultTv.display_name,
+            tv_id:        defaultTv ? defaultTv.id : null,
+            tv_name:      defaultTv ? defaultTv.display_name : null,
             button_index: null,
         });
         renderBtnMapDispTable();
@@ -1297,11 +1297,17 @@
     }
 
     function btnMapUpdateDisp(idx, field, value) {
-        window._btnMapState.dispenserSlots[idx][field] = field.endsWith('_id') ? parseInt(value) : value;
+        const parsed = field.endsWith('_id') ? (value ? parseInt(value) : null) : value;
+        window._btnMapState.dispenserSlots[idx][field] = parsed;
         renderBtnMapDispTable();
     }
 
-    // ── Keypad slot table ─────────────────────────────────────────────────────
+    // ── Keypad → Level → Dispenser mapping ───────────────────────────────────
+    //
+    // Each row = one keypad LEVEL (button position mapped to a dispenser).
+    // A single physical keypad can have MULTIPLE rows — one per button level.
+    // Level 1 = first button, Level 2 = second button, etc.
+    // Each level independently maps to a dispenser and optionally a TV slot.
 
     function renderBtnMapKpTable() {
         const tbody = document.getElementById('btnMapKpBody');
@@ -1312,80 +1318,131 @@
         if (!hasKp) {
             tbody.innerHTML = '';
             empty.style.display = 'block';
+            renderKpSummaryPanel();
             return;
         }
         empty.style.display = 'none';
 
-        const tvSlotCount = {};
-        tbody.innerHTML = slots.map((row, i) => {
-            tvSlotCount[row.tv_id] = (tvSlotCount[row.tv_id] || 0) + 1;
-            const slotNum = tvSlotCount[row.tv_id];
-            return `
+        if (slots.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted small py-3">
+                <i class="fas fa-info-circle me-1"></i>No keypad levels defined.
+                Use the <strong>+ Add Level</strong> button above or click a keypad badge below.
+            </td></tr>`;
+            renderKpSummaryPanel();
+            return;
+        }
+
+        // Track level number per keypad (resets per keypad group)
+        const kpLevelCount = {};
+        const kpNameMap = {};
+        window._btnMapState.groupKeypads.forEach(k => { kpNameMap[k.id] = k.display_name; });
+
+        const rows = [];
+        slots.forEach((row, i) => {
+            kpLevelCount[row.keypad_id] = (kpLevelCount[row.keypad_id] || 0) + 1;
+            const levelNum = kpLevelCount[row.keypad_id];
+            const levelLabel = row.keypad_index || `${levelNum}`;
+            const kpName = _escHtml(kpNameMap[row.keypad_id] || `Keypad #${row.keypad_id}`);
+
+            // Visual separator before first row of each new keypad
+            const isFirstForKp = (i === 0) || (slots[i-1].keypad_id !== row.keypad_id);
+            if (isFirstForKp && i > 0) {
+                rows.push(`<tr><td colspan="7" style="padding:3px 0; background:#f8f9fa; border-top:2px dashed #dee2e6;"></td></tr>`);
+            }
+
+            const tvOpts = window._btnMapState.groupTvs.length
+                ? `<option value="">— none —</option>` + window._btnMapState.groupTvs.map(tv =>
+                    `<option value="${tv.id}" ${tv.id == row.tv_id ? 'selected':''}>${_escHtml(tv.display_name)}</option>`
+                  ).join('')
+                : '<option value="">— no TVs in group —</option>';
+
+            const dispOpts = `<option value="">— none —</option>` +
+                window._btnMapState.groupDispensers.map(d =>
+                    `<option value="${d.id}" ${d.id == row.dispenser_id ? 'selected':''}>${_escHtml(d.display_name)}</option>`
+                ).join('');
+
+            rows.push(`
             <tr class="btn-map-kp-row" data-idx="${i}" draggable="true"
                 ondragstart="btnMapDragStart(event,'kp',${i})"
                 ondragover="btnMapDragOver(event)"
-                ondrop="btnMapDrop(event,'kp',${i})">
-                <td class="text-muted ps-2" style="cursor:grab;">
-                    <i class="fas fa-grip-vertical"></i>
+                ondrop="btnMapDrop(event,'kp',${i})"
+                style="border-left:3px solid #19875430;">
+                <td class="text-muted ps-2" style="cursor:grab; width:24px;">
+                    <i class="fas fa-grip-vertical fa-xs"></i>
                 </td>
-                <td>
-                    <span class="badge" style="background:#19875420; color:#198754; border:1px solid #19875440; min-width:32px;">
-                        ${_escHtml(row.keypad_index || slotNum)}
-                    </span>
-                </td>
-                <td>
-                    <select class="form-select form-select-sm" style="min-width:140px;"
+                <td style="width:120px;">
+                    <select class="form-select form-select-sm" style="min-width:110px;"
                             onchange="btnMapUpdateKp(${i},'keypad_id',this.value)">
                         ${window._btnMapState.groupKeypads.map(k =>
-                            `<option value="${k.id}" ${k.id == row.keypad_id ? 'selected':''}>
-                                ${_escHtml(k.display_name)}
-                            </option>`
+                            `<option value="${k.id}" ${k.id == row.keypad_id ? 'selected':''}>${_escHtml(k.display_name)}</option>`
                         ).join('')}
                     </select>
                 </td>
-                <td class="text-center text-muted"><i class="fas fa-long-arrow-alt-right"></i></td>
+                <td style="width:80px; text-align:center;">
+                    <span class="badge" style="background:#19875420; color:#198754; border:1px solid #19875440; font-size:0.78rem; padding:4px 8px;">
+                        Level ${_escHtml(levelLabel)}
+                    </span>
+                </td>
+                <td class="text-center text-muted" style="width:24px;">
+                    <i class="fas fa-long-arrow-alt-right fa-xs"></i>
+                </td>
                 <td>
                     <select class="form-select form-select-sm" style="min-width:150px;"
-                            onchange="btnMapUpdateKp(${i},'tv_id',this.value)">
-                        ${_tvOptions(row.tv_id)}
-                    </select>
-                </td>
-                <td>
-                    <select class="form-select form-select-sm" style="min-width:140px;"
                             onchange="btnMapUpdateKp(${i},'dispenser_id',this.value)">
-                        <option value="">— none —</option>
-                        ${window._btnMapState.groupDispensers.map(d =>
-                            `<option value="${d.id}" ${d.id == row.dispenser_id ? 'selected':''}>
-                                ${_escHtml(d.display_name)}
-                            </option>`
-                        ).join('')}
+                        ${dispOpts}
                     </select>
                 </td>
                 <td>
-                    <button class="btn btn-link text-danger p-0" title="Remove"
+                    <select class="form-select form-select-sm" style="min-width:130px;"
+                            onchange="btnMapUpdateKp(${i},'tv_id',this.value)">
+                        ${tvOpts}
+                    </select>
+                </td>
+                <td style="width:40px;">
+                    <button class="btn btn-link text-danger p-0" title="Remove level"
                             onclick="removeKeypadSlotRow(${i})">
                         <i class="fas fa-times-circle"></i>
                     </button>
                 </td>
-            </tr>`;
+            </tr>`);
+        });
+
+        tbody.innerHTML = rows.join('');
+        renderKpSummaryPanel();
+    }
+
+    function renderKpSummaryPanel() {
+        const panel = document.getElementById('kpSummaryPanel');
+        if (!panel) return;
+        const state = window._btnMapState;
+        if (!state.groupKeypads.length) {
+            panel.innerHTML = '<span class="text-muted small">No keypads in group yet.</span>';
+            return;
+        }
+        panel.innerHTML = state.groupKeypads.map(k => {
+            const lc = state.keypadSlots.filter(s => s.keypad_id === k.id).length;
+            return `<span class="badge me-1 mb-1" style="background:#19875415; color:#198754; border:1px solid #19875440; font-size:0.78rem; cursor:pointer; padding:5px 10px;"
+                        onclick="addKeypadSlotRow(${k.id})" title="Add a level for ${_escHtml(k.display_name)}">
+                        <i class="fas fa-keyboard me-1"></i>${_escHtml(k.display_name)}
+                        <span class="badge bg-success ms-1" style="font-size:0.7rem;">${lc} lv${lc!==1?'s':''}</span>
+                        <i class="fas fa-plus-circle ms-1" style="font-size:0.7rem; opacity:0.7;"></i>
+                    </span>`;
         }).join('');
     }
 
-    function addKeypadSlotRow() {
+    function addKeypadSlotRow(presetKeypadId) {
         const state = window._btnMapState;
         if (!state.groupKeypads.length) {
             alert('Add keypads to the group first (Devices tab).');
             return;
         }
-        const defaultTv  = state.groupTvs[0]    || {};
-        const defaultKp  = state.groupKeypads[0] || {};
+        const defaultTv  = state.groupTvs[0] || null;
+        const kpId = presetKeypadId || (state.groupKeypads[0] ? state.groupKeypads[0].id : null);
         const defaultDsp = state.groupDispensers[0] ? state.groupDispensers[0].id : null;
         state.keypadSlots.push({
-            keypad_id:    defaultKp.id,
-            display_name: defaultKp.display_name,
-            tv_id:        defaultTv.id,
-            tv_name:      defaultTv.display_name,
+            keypad_id:    kpId,
             keypad_index: null,
+            tv_id:        defaultTv ? defaultTv.id : null,
             dispenser_id: defaultDsp,
         });
         renderBtnMapKpTable();
@@ -1397,7 +1454,8 @@
     }
 
     function btnMapUpdateKp(idx, field, value) {
-        window._btnMapState.keypadSlots[idx][field] = field.endsWith('_id') ? (value ? parseInt(value) : null) : value;
+        const parsed = field.endsWith('_id') ? (value ? parseInt(value) : null) : value;
+        window._btnMapState.keypadSlots[idx][field] = parsed;
         renderBtnMapKpTable();
     }
 
@@ -1451,18 +1509,28 @@
         alertEl.classList.add('d-none');
         successEl.classList.add('d-none');
 
-        // Build payload — strip button_index / keypad_index so backend auto-assigns by position
+        // Build payload — validate dispenser slots, TV optional for keypad levels
+        const incompleteDisp = state.dispenserSlots.filter(r => !r.tv_id);
+        if (incompleteDisp.length) {
+            alertEl.textContent = `${incompleteDisp.length} dispenser slot(s) have no TV selected. Please assign a TV or remove those rows.`;
+            alertEl.classList.remove('d-none');
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = '<i class="fas fa-save me-1"></i>Save Button Mappings';
+            return;
+        }
         const dispPayload = state.dispenserSlots.map(r => ({
             dispenser_id: r.dispenser_id,
             tv_id:        r.tv_id,
-            button_index: null,   // let backend assign by row order
+            button_index: null,
         }));
-        const kpPayload = state.keypadSlots.map(r => ({
-            keypad_id:    r.keypad_id,
-            tv_id:        r.tv_id,
-            keypad_index: null,
-            dispenser_id: r.dispenser_id || null,
-        }));
+        const kpPayload = state.keypadSlots
+            .filter(r => r.keypad_id && r.tv_id)   // TV is required by backend validator
+            .map(r => ({
+                keypad_id:    r.keypad_id,
+                tv_id:        r.tv_id,
+                keypad_index: null,
+                dispenser_id: r.dispenser_id || null,
+            }));
 
         try {
             const resp = await fetch(`/CallQ/config/api/mapping/group/${state.groupId}/button-mappings/save/`, {
@@ -1724,30 +1792,36 @@
                             </div>
                         </div>
 
-                        <!-- ─── Keypad → TV Slots ─── -->
+                        <!-- ─── Keypad → Level → Dispenser Mapping ─── -->
                         <div class="card border-0 shadow-sm mb-3">
                             <div class="card-header py-2 px-3" style="background:#19875410; border-left:4px solid #198754;">
                                 <div class="d-flex justify-content-between align-items-center">
                                     <span class="fw-bold small" style="color:#198754;">
-                                        <i class="fas fa-keyboard me-2"></i>Keypad → TV Slots + Button A Dispenser
+                                        <i class="fas fa-keyboard me-2"></i>Keypad → Level → Dispenser Mapping
+                                        <span class="text-muted fw-normal ms-1 small">Each level = one keypad button mapped to a dispenser</span>
                                     </span>
                                     <button class="btn btn-sm btn-outline-success" style="font-size:0.75rem;" onclick="addKeypadSlotRow()">
-                                        <i class="fas fa-plus me-1"></i>Add Slot
+                                        <i class="fas fa-plus me-1"></i>Add Level
                                     </button>
                                 </div>
                             </div>
                             <div class="card-body p-3">
+                                <!-- Quick-add per keypad summary -->
+                                <div class="mb-2 d-flex flex-wrap align-items-center gap-1">
+                                    <span class="text-muted small me-1"><i class="fas fa-mouse-pointer me-1"></i>Click to add a level:</span>
+                                    <div id="kpSummaryPanel" class="d-inline-flex flex-wrap gap-1"></div>
+                                </div>
                                 <div class="table-responsive">
                                     <table class="table table-sm align-middle mb-0" id="btnMapKpTable">
                                         <thead class="table-light">
                                             <tr>
-                                                <th style="width:32px;"></th>
-                                                <th>Slot</th>
+                                                <th style="width:24px;"></th>
                                                 <th>Keypad</th>
-                                                <th><i class="fas fa-arrow-right text-muted mx-1"></i></th>
-                                                <th>TV</th>
-                                                <th>Button A → Dispenser</th>
-                                                <th style="width:50px;"></th>
+                                                <th style="width:90px;">Level</th>
+                                                <th style="width:24px;"></th>
+                                                <th>→ Dispenser</th>
+                                                <th>TV Slot</th>
+                                                <th style="width:40px;"></th>
                                             </tr>
                                         </thead>
                                         <tbody id="btnMapKpBody">
@@ -1756,14 +1830,15 @@
                                     </table>
                                 </div>
                                 <div class="text-muted small mt-2" id="btnMapKpEmpty" style="display:none;">
-                                    <i class="fas fa-info-circle me-1"></i>No keypads in this group.
+                                    <i class="fas fa-info-circle me-1"></i>No keypads in this group. Add keypads in the <strong>Devices</strong> tab first.
                                 </div>
                             </div>
                         </div>
 
                         <div class="text-muted small">
                             <i class="fas fa-info-circle me-1"></i>
-                            Slot numbers are assigned by <strong>row order per TV</strong> (top row = slot 1). Drag to reorder.
+                            <strong>Keypad levels</strong> map each keypad button to a specific dispenser.
+                            Drag rows to reorder. Level number is assigned by order within each keypad.
                         </div>
 
                     </div><!-- /btnMapContent -->
