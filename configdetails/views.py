@@ -1985,11 +1985,12 @@ def device_config(request, device_id):
                                 pass
                 except Exception as e:
                     messages.error(request, f'Error mapping keypads: {e}')
-            elif request.POST.get('clear_keypad_mappings') == '1':
-                # Only clear all keypad mappings if explicitly requested.
-                # Do NOT clear just because no_of_keypads was posted with no valid
-                # selections — that would wipe existing mappings when the user only
-                # changed the count display without re-filling the slot dropdowns.
+            elif 'no_of_keypads' in request.POST or request.POST.get('clear_keypad_mappings') == '1':
+                # Clear all keypad mappings when the form is submitted but no valid
+                # keypad selections were made in the visible slots.
+                # NOTE: hidden slots are now disabled by JS (Bug 1 fix), so this
+                # only triggers when the user deliberately left all visible dropdowns
+                # empty — i.e., they want to remove all keypad mappings.
                 try:
                     TVKeypadMapping.objects.filter(tv=device).delete()
                     TVDispenserMapping.objects.filter(tv=device).delete()
