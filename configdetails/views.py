@@ -1424,7 +1424,7 @@ def _get_tv_flag_config(request, device, company, dealer_customer, is_dealer_cus
                         # button_index = per-counter group-wide ASCII index (unique per counter,
                         # NOT the dispenser slot). Matches GCBM.button_index semantics.
                         'button_index':            dispenser_button_number_char,
-                        'dispenser_button_number': dispenser_button_number_char,
+                        'dispenser_button_index':  dispenser_button_number_char,
                         'name':                    c.counter_display_name,
                         'code':                    c.counter_prefix_code,
                         'row_span':                1,
@@ -1449,7 +1449,7 @@ def _get_tv_flag_config(request, device, company, dealer_customer, is_dealer_cus
                         # button_index = per-counter group-wide ASCII index (unique per counter,
                         # NOT the dispenser slot). Matches GCBM.button_index semantics.
                         'button_index':            dispenser_button_number_char,
-                        'dispenser_button_number': dispenser_button_number_char,
+                        'dispenser_button_index':  dispenser_button_number_char,
                         'name':                    c.counter_display_name,
                         'code':                    c.counter_prefix_code,
                         'row_span':                1,
@@ -8472,32 +8472,43 @@ def save_group_button_mappings_api(request, group_id):
     if errors:
         return Response({'status': 'error', 'message': ' '.join(errors)}, status=400)
 
-    # Auto-assign missing indices — sequential across ALL slots in the group (not per-TV).
-    # Previously pos=1 reset for each TV, causing every TV to produce duplicate indices ('1','1',...).
-    # For dispenser button_index: seed from GroupDispenserMapping.dispenser_button_index so the
-    #   same DB field is used consistently across the keypad config string, TV config, and counter APIs.
-    # For keypad keypad_index: assign sequentially across the whole group.
-    def _auto_assign(slots, idx_key):
-        # Work on mutable copies so we can update in-place.
+    # Auto-assign missing indices.
+    # Dispenser button_index: sequentially per TV.
+    def _auto_assign_per_tv(slots, idx_key):
         slots = [dict(r) for r in slots]
+        used_per_tv = {}
+        for row in slots:
+            tv_id = row['tv_id']
+            if tv_id not in used_per_tv:
+                used_per_tv[tv_id] = set()
+            if row[idx_key] is not None:
+                used_per_tv[tv_id].add(row[idx_key])
 
-        # Seed used_global from already-assigned indices.
+        pos_per_tv = {}
+        result = []
+        for row in slots:
+            tv_id = row['tv_id']
+            if row[idx_key] is None:
+                pos = pos_per_tv.get(tv_id, 1)
+                while True:
+                    try:
+                        ch = get_button_index_char(pos)
+                    except ValueError:
+                        ch = chr(0x31)
+                        break
+                    if ch not in used_per_tv[tv_id]:
+                        break
+                    pos += 1
+                row[idx_key] = ch
+                used_per_tv[tv_id].add(ch)
+                pos_per_tv[tv_id] = pos + 1
+            result.append(row)
+        return result
+
+    # Keypad keypad_index: sequentially across the whole group.
+    def _auto_assign_group(slots, idx_key):
+        slots = [dict(r) for r in slots]
         used_global = {row[idx_key] for row in slots if row[idx_key] is not None}
-
-        # For dispenser button_index: pre-populate from GroupDispenserMapping so the
-        # index is consistent with GroupDispenserMapping.dispenser_button_index
-        # (the group-wide DB field used by the TV config and Android counter APIs).
-        if idx_key == 'button_index':
-            for row in slots:
-                if row[idx_key] is None:
-                    d_id = row.get('dispenser_id')
-                    if d_id:
-                        gdm = GroupDispenserMapping.objects.filter(
-                            dispenser_id=d_id, group=group
-                        ).first()
-                        if gdm and gdm.dispenser_button_index:
-                            row[idx_key] = gdm.dispenser_button_index
-                            used_global.add(gdm.dispenser_button_index)
 
         pos = 1
         result = []
@@ -8518,9 +8529,8 @@ def save_group_button_mappings_api(request, group_id):
             result.append(row)
         return result
 
-
-    parsed_disp_slots = _auto_assign(parsed_disp_slots, 'button_index')
-    parsed_kp_slots   = _auto_assign(parsed_kp_slots, 'keypad_index')
+    parsed_disp_slots = _auto_assign_per_tv(parsed_disp_slots, 'button_index')
+    parsed_kp_slots   = _auto_assign_group(parsed_kp_slots, 'keypad_index')
 
     tv_map     = {d.id: d for d in Device.objects.filter(id__in=group_tv_ids)}
     disp_map   = {d.id: d for d in Device.objects.filter(id__in=group_dispenser_ids)}
