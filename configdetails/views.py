@@ -8810,45 +8810,52 @@ def generate_vip_token_api(request):
     if not dispenser:
         return Response({'error': f'Dispenser {dispenser_sn!r} not found'}, status=404)
 
-    # ── Fetch vip_from / vip_to from the keypad linked to this dispenser ─────
-    # Chain: dispenser → TVKeypadMapping.dispenser → TVKeypadMapping.keypad → config_json
-    vip_from = 1
-    vip_to   = 999
+    # ── Fetch vip_from / vip_to ─────────────────────────────────────────────
+    # 1. Try to read from the Dispenser's config first.
+    # 2. Fall back to the Keypad mapped to this dispenser.
+    # 3. Default vip_to to the counter's max_token_number.
+    vip_from = 0
+    vip_to   = counter.max_token_number
 
-    kp_mapping = TVKeypadMapping.objects.filter(dispenser=dispenser).select_related('keypad').first()
-    if kp_mapping and kp_mapping.keypad:
-        kp_config = {}
-        try:
-            kp_config = kp_mapping.keypad.config.config_json or {}
-        except Exception:
-            pass
+    disp_config = {}
+    try:
+        if dispenser.config and dispenser.config.config_json:
+            disp_config = dispenser.config.config_json
+    except Exception:
+        pass
 
-        # Keypad stores these as string integers: 'vip_from', 'vip_to'
-        # (older firmwares may use 'vip_count_from' / 'vip_count_to')
-        raw_from = (
-            kp_config.get('vip_from')
-            or kp_config.get('vip_count_from')
-            or str(vip_from)
-        )
-        raw_to = (
-            kp_config.get('vip_to')
-            or kp_config.get('vip_count_to')
-            or str(vip_to)
-        )
-        try:
-            vip_from = int(raw_from)
-        except (TypeError, ValueError):
-            vip_from = 1
-        try:
-            vip_to = int(raw_to)
-        except (TypeError, ValueError):
-            vip_to = 999
+    raw_from = disp_config.get('vip_count_from') or disp_config.get('vip_from')
+    raw_to   = disp_config.get('vip_count_to') or disp_config.get('vip_to')
 
-    # Sanity-check the range
-    if vip_from <= 0:
-        vip_from = 1
+    if not raw_from or not raw_to:
+        kp_mapping = TVKeypadMapping.objects.filter(dispenser=dispenser).select_related('keypad').first()
+        if kp_mapping and kp_mapping.keypad:
+            kp_config = {}
+            try:
+                if kp_mapping.keypad.config and kp_mapping.keypad.config.config_json:
+                    kp_config = kp_mapping.keypad.config.config_json
+            except Exception:
+                pass
+            raw_from = raw_from or kp_config.get('vip_from') or kp_config.get('vip_count_from')
+            raw_to   = raw_to or kp_config.get('vip_to') or kp_config.get('vip_count_to')
+
+    raw_from = raw_from or str(vip_from)
+    raw_to   = raw_to or str(vip_to)
+
+    try:
+        vip_from = int(raw_from)
+    except (TypeError, ValueError):
+        vip_from = 0
+    try:
+        vip_to = int(raw_to)
+    except (TypeError, ValueError):
+        vip_to = counter.max_token_number
+
+    # Sanity-check the range (allow 0 as a valid starting token)
+    if vip_from < 0:
+        vip_from = 0
     if vip_to < vip_from:
-        vip_to = vip_from + 998  # fallback: 999-wide window
+        vip_to = counter.max_token_number if counter.max_token_number >= vip_from else (vip_from + 998)
 
     # ── Atomic increment with row-level lock ─────────────────────────────────
     with transaction.atomic():
