@@ -8427,7 +8427,13 @@ def save_group_button_mappings_api(request, group_id):
     # Auto-assign sequentially across the whole group.
     def _auto_assign_group(slots, idx_key):
         slots = [dict(r) for r in slots]
-        used_global = {row[idx_key] for row in slots if row[idx_key] is not None}
+        
+        def _norm(v):
+            if isinstance(v, int):
+                return chr(0x31 + v - 1)
+            return str(v)
+
+        used_global = { _norm(row[idx_key]) for row in slots if row[idx_key] is not None }
 
         result = []
         for row in slots:
@@ -8435,6 +8441,8 @@ def save_group_button_mappings_api(request, group_id):
                 ch = get_next_available_index(used_global)
                 row[idx_key] = ch
                 used_global.add(ch)
+            else:
+                row[idx_key] = _norm(row[idx_key])
             result.append(row)
         return result
 
