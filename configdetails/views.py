@@ -21,6 +21,22 @@ import os
 from pathlib import Path
 from datetime import datetime, timedelta
 
+def get_safe_button_index_char(pos):
+    """Safely get button index char, falling back to '1' (0x31) if out of range."""
+    try:
+        return get_button_index_char(pos)
+    except (ValueError, TypeError):
+        return chr(0x31)
+
+def get_next_available_index(used_indices):
+    """Find the next available sequential button index not in the used set."""
+    pos = 1
+    while True:
+        ch = get_safe_button_index_char(pos)
+        if ch not in used_indices:
+            return ch
+        pos += 1
+
 # --- API VIEWS ---
 class DeviceViewSet(viewsets.ModelViewSet):
     queryset = Device.objects.all()
@@ -218,7 +234,7 @@ def generate_tv_counters_data(device, tv_config=None):
                 'default_name': gcbm.counter.counter_name,
                 'default_code': gcbm.counter.counter_prefix_code or f"C{i:02d}",
                 'source_device': gcbm.dispenser.serial_number,
-                'button_index': get_button_index_char(i),
+                'button_index': get_safe_button_index_char(i),
                 'name': gcbm.counter.counter_name,
                 'code': gcbm.counter.counter_prefix_code or f"C{i:02d}",
                 'is_live': False
@@ -230,7 +246,7 @@ def generate_tv_counters_data(device, tv_config=None):
                 'default_name': f"Counter {i}",
                 'default_code': f"C{i:02d}",
                 'source_device': 'System',
-                'button_index': get_button_index_char(i),
+                'button_index': get_safe_button_index_char(i),
                 'name': f"Counter {i}",
                 'code': f"C{i:02d}",
                 'is_live': False
@@ -565,27 +581,14 @@ def get_embedded_config(request):
             password = 'XXXX'
             text = config.get('keypad_device_text') or 'Welcome'
             logo_enable = config.get('logo_enable') or '0'
-            # Counter Number → use GroupCounterButtonMapping.button_index for the first counter
-            # mapped to the keypad's linked dispenser.  This is the group-wide sequential index
-            # (same DB field used by the TV config API) and does NOT reset per-TV.
-            # TVKeypadMapping.keypad_index is per-TV and resets to '1' for every TV in the group,
-            # which causes index mismatches when the group contains multiple TVs.
-            # Fall back to the manually configured counter_no, or '1' if neither exists.
+            # Keypad Index is stored in TVKeypadMapping.keypad_index, which is globally
+            # sequential per group.
             counter_num = None
             kp_mapping = TVKeypadMapping.objects.filter(keypad=device).select_related('dispenser').first()
-            if kp_mapping and kp_mapping.dispenser:
-                # Look up the first GroupCounterButtonMapping for this dispenser (group-wide index)
-                gcbm = GroupCounterButtonMapping.objects.filter(
-                    dispenser=kp_mapping.dispenser
-                ).order_by('button_index').first()
-                if gcbm and gcbm.button_index:
-                    counter_num = gcbm.button_index
-            if not counter_num:
-                # Fallback: use TVKeypadMapping.keypad_index if no group counter mapping exists
-                if kp_mapping and kp_mapping.keypad_index:
-                    counter_num = kp_mapping.keypad_index
-                else:
-                    counter_num = config.get('counter_no') or '1'
+            if kp_mapping and kp_mapping.keypad_index:
+                counter_num = kp_mapping.keypad_index
+            else:
+                counter_num = config.get('counter_no') or '1'
             # Convert old values (0/1) to new values (1/2) for backward compatibility
             single_multiple_raw = config.get('single_multiple')
             if single_multiple_raw == '0':
@@ -1412,18 +1415,12 @@ def _get_tv_flag_config(request, device, company, dealer_customer, is_dealer_cus
                 ).select_related('counter').order_by('id')
                 for btn_num, ctdm in enumerate(ctdm_qs, start=1):
                     c = ctdm.counter
-                    try:
-                        dispenser_button_number_char = get_button_index_char(btn_num)
-                    except ValueError:
-                        dispenser_button_number_char = chr(0x31)
+                    dispenser_button_number_char = get_safe_button_index_char(btn_num)
                     results.append({
                         'counter_id':              c.counter_name,
                         'default_code':            c.counter_prefix_code,
                         'keypad_index':            keypad_index,
-                        'dispenser_index':         dispenser_index,
-                        # button_index = per-counter group-wide ASCII index (unique per counter,
-                        # NOT the dispenser slot). Matches GCBM.button_index semantics.
-                        'button_index':            dispenser_button_number_char,
+                        'button_index':            dispenser_index,
                         'dispenser_button_index':  dispenser_button_number_char,
                         'name':                    c.counter_display_name,
                         'code':                    c.counter_prefix_code,
@@ -1445,10 +1442,7 @@ def _get_tv_flag_config(request, device, company, dealer_customer, is_dealer_cus
                         'counter_id':              c.counter_name,
                         'default_code':            c.counter_prefix_code,
                         'keypad_index':            keypad_index,
-                        'dispenser_index':         dispenser_index,
-                        # button_index = per-counter group-wide ASCII index (unique per counter,
-                        # NOT the dispenser slot). Matches GCBM.button_index semantics.
-                        'button_index':            dispenser_button_number_char,
+                        'button_index':            dispenser_index,
                         'dispenser_button_index':  dispenser_button_number_char,
                         'name':                    c.counter_display_name,
                         'code':                    c.counter_prefix_code,
@@ -2000,7 +1994,7 @@ def device_config(request, device_id):
                                 dispenser = Device.objects.get(id=disp_id, device_type=Device.DeviceType.TOKEN_DISPENSER) if disp_id else None
                                 # Remove any existing mapping of this keypad to another TV
                                 TVKeypadMapping.objects.filter(keypad=kp).exclude(tv=device).delete()
-                                ascii_idx = get_button_index_char(position)
+                                ascii_idx = get_safe_button_index_char(position)
                                 TVKeypadMapping.objects.create(
                                     tv=device,
                                     keypad=kp,
@@ -2106,7 +2100,7 @@ def device_config(request, device_id):
                             TVDispenserMapping.objects.create(
                                 tv=device,
                                 dispenser=dispenser,
-                                button_index=get_button_index_char(position)  # '1','2',... (ASCII 0x31+)
+                                button_index=get_safe_button_index_char(position)  # '1','2',... (ASCII 0x31+)
                             )
                         except Device.DoesNotExist:
                             pass  # Skip invalid dispenser IDs
@@ -2294,10 +2288,7 @@ def device_config(request, device_id):
                             ).select_related('counter').order_by('id')
                             for _local_idx, _cm in enumerate(_new_ctdm, start=1):
                                 _abs_pos = _preceding_count + _local_idx
-                                try:
-                                    _btn_char = get_button_index_char(_abs_pos)
-                                except ValueError:
-                                    _btn_char = chr(0x31)
+                                _btn_char = get_safe_button_index_char(_abs_pos)
                                 GroupCounterButtonMapping.objects.update_or_create(
                                     group=_grp,
                                     dispenser=device,
@@ -3148,24 +3139,19 @@ def _create_tv_slot_mappings(group, new_dispenser_ids=None):
     # Step A: TVDispenserMapping — dispenser slot on each TV
     # ---------------------------------------------------------------
     if dispensers_list:
-        # Build per-TV max position so new dispensers continue after existing ones
-        tv_max_pos = {tv.id: 0 for tv in tvs_list}
-        for tv in tvs_list:
-            existing = TVDispenserMapping.objects.filter(tv=tv)
-            for row in existing:
-                pos = _parse_pos(row.button_index)
-                if pos > tv_max_pos[tv.id]:
-                    tv_max_pos[tv.id] = pos
+        # Build global max position so new dispensers continue after existing ones in the group
+        group_disp_max = 0
+        for row in TVDispenserMapping.objects.filter(tv__in=tvs_list):
+            pos = _parse_pos(row.button_index)
+            if pos > group_disp_max:
+                group_disp_max = pos
 
         # Assign TVDispenserMapping only for dispensers that don't have one yet
         new_dispensers = [d for d in dispensers_list if d.id in new_dispenser_ids]
         for idx, dispenser in enumerate(new_dispensers):
             tv = tvs_list[idx % len(tvs_list)]
-            tv_max_pos[tv.id] += 1
-            try:
-                button_char = get_button_index_char(tv_max_pos[tv.id])
-            except ValueError:
-                button_char = chr(0x31)  # Fallback
+            group_disp_max += 1
+            button_char = get_safe_button_index_char(group_disp_max)
             # Remove stale row if somehow present, then create fresh
             TVDispenserMapping.objects.filter(dispenser=dispenser).delete()
             TVDispenserMapping.objects.create(
@@ -3190,10 +3176,7 @@ def _create_tv_slot_mappings(group, new_dispenser_ids=None):
             if dispenser.id not in existing_gdm:
                 # New dispenser — assign next index after current max
                 max_disp_pos += 1
-                try:
-                    grp_btn_char = get_button_index_char(max_disp_pos)
-                except ValueError:
-                    grp_btn_char = chr(0x31)
+                grp_btn_char = get_safe_button_index_char(max_disp_pos)
                 GroupDispenserMapping.objects.create(
                     group=group,
                     dispenser=dispenser,
@@ -3219,10 +3202,7 @@ def _create_tv_slot_mappings(group, new_dispenser_ids=None):
             for cm in counter_qs:
                 if (dispenser.id, cm.counter_id) not in existing_gcbm:
                     max_btn_pos += 1
-                    try:
-                        btn_char = get_button_index_char(max_btn_pos)
-                    except ValueError:
-                        btn_char = chr(0x31)
+                    btn_char = get_safe_button_index_char(max_btn_pos)
                     GroupCounterButtonMapping.objects.create(
                         group=group,
                         dispenser=dispenser,
@@ -3234,13 +3214,12 @@ def _create_tv_slot_mappings(group, new_dispenser_ids=None):
     # Step B: TVKeypadMapping — keypad slot on each TV, linked to dispenser
     # ---------------------------------------------------------------
     if keypads_list:
-        # Collect per-TV max keypad_index from existing mappings
-        tv_kp_max = {tv.id: 0 for tv in tvs_list}
-        for tv in tvs_list:
-            for row in TVKeypadMapping.objects.filter(tv=tv):
-                pos = _parse_pos(row.keypad_index)
-                if pos > tv_kp_max[tv.id]:
-                    tv_kp_max[tv.id] = pos
+        # Collect global max keypad_index from existing mappings in this group
+        group_kp_max = 0
+        for row in TVKeypadMapping.objects.filter(tv__in=tvs_list):
+            pos = _parse_pos(row.keypad_index)
+            if pos > group_kp_max:
+                group_kp_max = pos
 
         for idx, keypad in enumerate(keypads_list):
             # If an explicit TVKeypadMapping already exists, PRESERVE it
@@ -3251,11 +3230,8 @@ def _create_tv_slot_mappings(group, new_dispenser_ids=None):
             tv = tvs_list[idx % len(tvs_list)]
             dispenser = dispensers_list[idx % len(dispensers_list)] if dispensers_list else None
 
-            tv_kp_max[tv.id] += 1
-            try:
-                keypad_char = get_button_index_char(tv_kp_max[tv.id])
-            except ValueError:
-                keypad_char = chr(0x31)  # Fallback
+            group_kp_max += 1
+            keypad_char = get_safe_button_index_char(group_kp_max)
 
             TVKeypadMapping.objects.create(
                 tv=tv,
@@ -3580,10 +3556,7 @@ def mapping_view(request):
                         d = Device.objects.filter(id=d_id).first()
                         if d:
                             pos += 1
-                            try:
-                                btn_char = get_button_index_char(pos)
-                            except ValueError:
-                                btn_char = chr(0x31)
+                            btn_char = get_safe_button_index_char(pos)
                             GroupDispenserMapping.objects.get_or_create(
                                 group=group_obj,
                                 dispenser=d,
@@ -6093,7 +6066,7 @@ def map_tv_dispensers_api(request, tv_id):
         mapping = TVDispenserMapping.objects.create(
             tv=tv,
             dispenser=dispenser,
-            button_index=get_button_index_char(position)  # '1','2',... (ASCII 0x31+)
+            button_index=get_safe_button_index_char(position)  # '1','2',... (ASCII 0x31+)
         )
         created_mappings.append(mapping)
     
@@ -6197,7 +6170,7 @@ def map_tv_keypads_api(request, tv_id):
                 kp = Device.objects.get(id=kp_id, device_type=Device.DeviceType.KEYPAD)
                 # Remove any existing mapping of this keypad to another TV
                 TVKeypadMapping.objects.filter(keypad=kp).exclude(tv=tv).delete()
-                ascii_idx = get_button_index_char(position)  # same fn for both indices
+                ascii_idx = get_safe_button_index_char(position)  # same fn for both indices
                 mapping = TVKeypadMapping.objects.create(
                     tv=tv,
                     keypad=kp,
@@ -6567,10 +6540,7 @@ def swap_counters_api(request):
                             .order_by('id')
                         )
                         for pos, ctdm_row in enumerate(remaining, start=1):
-                            try:
-                                btn_char = get_button_index_char(pos)
-                            except ValueError:
-                                btn_char = chr(0x31)
+                            btn_char = get_safe_button_index_char(pos)
                             GroupCounterButtonMapping.objects.get_or_create(
                                 group=group,
                                 dispenser=disp_obj,
@@ -6671,10 +6641,7 @@ def swap_counters_api(request):
                                     btn_char = chr(0x31 + btn_char - 1)
                             else:
                                 max_btn_pos += 1
-                                try:
-                                    btn_char = get_button_index_char(max_btn_pos)
-                                except ValueError:
-                                    btn_char = chr(0x31)
+                                btn_char = get_safe_button_index_char(max_btn_pos)
                             GroupCounterButtonMapping.objects.get_or_create(
                                 group=group,
                                 dispenser=disp_obj,
@@ -6963,10 +6930,7 @@ def get_token_dispenser_config_api(request):
                 if _this_button_index is not None:
                     _final_bi = str(_this_button_index)
                 else:
-                    try:
-                        _final_bi = get_button_index_char(_fb_idx)
-                    except ValueError:
-                        _final_bi = chr(0x31)
+                    _final_bi = get_safe_button_index_char(_fb_idx)
 
                 # dispenser_button_index: group-wide sequential index from DB only.
                 # No fallback — the DB (GroupCounterButtonMapping) is the single
@@ -6980,9 +6944,9 @@ def get_token_dispenser_config_api(request):
                     'counter_prefix_code': _counter.counter_prefix_code,
                     'max_token_number': _counter.max_token_number,
                     'status': _counter.status,
+                    'keypad_index': str(_this_keypad_index) if _this_keypad_index is not None else None,
                     'button_index': _final_bi,
                     'dispenser_button_index': _dispenser_btn_idx,
-                    'keypad_button_index': str(_this_keypad_index) if _this_keypad_index is not None else None,
                 })
     except Exception:
         mapped_counters = []
@@ -7057,10 +7021,7 @@ def get_token_dispenser_config_api(request):
                 if fam_button_index is not None:
                     final_bi = str(fam_button_index)
                 else:
-                    try:
-                        final_bi = get_button_index_char(fallback_index)
-                    except ValueError:
-                        final_bi = chr(0x31)
+                    final_bi = get_safe_button_index_char(fallback_index)
 
                 # dispenser_button_index: group-wide sequential index from DB only.
                 # No fallback — the DB (GroupCounterButtonMapping) is the single
@@ -7074,9 +7035,9 @@ def get_token_dispenser_config_api(request):
                     'counter_prefix_code': counter.counter_prefix_code,
                     'max_token_number': counter.max_token_number,
                     'status': counter.status,
+                    'keypad_index': str(fam_keypad_index) if fam_keypad_index is not None else None,
                     'button_index': final_bi,
                     'dispenser_button_index': fam_dispenser_btn_idx,
-                    'keypad_button_index': str(fam_keypad_index) if fam_keypad_index is not None else None,
                     'dispenser_s_no': fam_dispenser.serial_number,
                 })
     except Exception:
@@ -7150,10 +7111,7 @@ def get_token_dispenser_config_api(request):
                 if _own_btn_index is not None:
                     _obi = str(_own_btn_index)
                 else:
-                    try:
-                        _obi = get_button_index_char(int(_odbi))
-                    except (ValueError, TypeError):
-                        _obi = chr(0x31)
+                    _obi = get_safe_button_index_char(int(_odbi)) if _odbi and _odbi.isdigit() else chr(0x31)
 
                 own_counters.append({
                     'counter_id': _c.id,
@@ -7162,9 +7120,9 @@ def get_token_dispenser_config_api(request):
                     'counter_prefix_code': _c.counter_prefix_code,
                     'max_token_number': _c.max_token_number,
                     'status': _c.status,
+                    'keypad_index': str(_own_kp_index) if _own_kp_index is not None else None,
                     'button_index': _obi,
                     'dispenser_button_index': _odbi,
-                    'keypad_button_index': str(_own_kp_index) if _own_kp_index is not None else None,
                 })
         else:
             # No group: standalone dispenser — use CTDM order as before.
@@ -7177,10 +7135,7 @@ def get_token_dispenser_config_api(request):
                 if _own_btn_index is not None:
                     _obi = str(_own_btn_index)
                 else:
-                    try:
-                        _obi = get_button_index_char(_oi)
-                    except ValueError:
-                        _obi = chr(0x31)
+                    _obi = get_safe_button_index_char(_oi)
                 _odbi = None  # No group → no DB-stored dispenser_button_index
                 own_counters.append({
                     'counter_id': _c.id,
@@ -7189,9 +7144,9 @@ def get_token_dispenser_config_api(request):
                     'counter_prefix_code': _c.counter_prefix_code,
                     'max_token_number': _c.max_token_number,
                     'status': _c.status,
+                    'keypad_index': str(_own_kp_index) if _own_kp_index is not None else None,
                     'button_index': _obi,
                     'dispenser_button_index': _odbi,
-                    'keypad_button_index': str(_own_kp_index) if _own_kp_index is not None else None,
                 })
     except Exception:
         own_counters = []
@@ -8185,20 +8140,17 @@ def update_group_devices_api(request, group_id):
         # We do NOT wipe GroupDispenserMapping here — indices are preserved.
         added_dispenser_ids = set(new_dispenser_ids) - old_dispenser_ids
         if added_dispenser_ids:
-            existing_indices = set(GroupDispenserMapping.objects.filter(group=group).values_list('dispenser_button_index', flat=True))
+            def _normalize_char(ch):
+                if isinstance(ch, int):
+                    return chr(0x31 + ch - 1)
+                return str(ch)
+                
+            existing_indices = set(_normalize_char(idx) for idx in GroupDispenserMapping.objects.filter(group=group).values_list('dispenser_button_index', flat=True))
             pos = 1
             dispensers_to_add = [d for d in new_dispensers if d.id in added_dispenser_ids]
             
             for disp in dispensers_to_add:
-                while True:
-                    try:
-                        ch = get_button_index_char(pos)
-                    except ValueError:
-                        ch = chr(0x31)  # Fallback to '1'
-                        break
-                    if ch not in existing_indices:
-                        break
-                    pos += 1
+                ch = get_next_available_index(existing_indices)
                 
                 GroupDispenserMapping.objects.create(
                     group=group,
@@ -8472,64 +8424,21 @@ def save_group_button_mappings_api(request, group_id):
     if errors:
         return Response({'status': 'error', 'message': ' '.join(errors)}, status=400)
 
-    # Auto-assign missing indices.
-    # Dispenser button_index: sequentially per TV.
-    def _auto_assign_per_tv(slots, idx_key):
-        slots = [dict(r) for r in slots]
-        used_per_tv = {}
-        for row in slots:
-            tv_id = row['tv_id']
-            if tv_id not in used_per_tv:
-                used_per_tv[tv_id] = set()
-            if row[idx_key] is not None:
-                used_per_tv[tv_id].add(row[idx_key])
-
-        pos_per_tv = {}
-        result = []
-        for row in slots:
-            tv_id = row['tv_id']
-            if row[idx_key] is None:
-                pos = pos_per_tv.get(tv_id, 1)
-                while True:
-                    try:
-                        ch = get_button_index_char(pos)
-                    except ValueError:
-                        ch = chr(0x31)
-                        break
-                    if ch not in used_per_tv[tv_id]:
-                        break
-                    pos += 1
-                row[idx_key] = ch
-                used_per_tv[tv_id].add(ch)
-                pos_per_tv[tv_id] = pos + 1
-            result.append(row)
-        return result
-
-    # Keypad keypad_index: sequentially across the whole group.
+    # Auto-assign sequentially across the whole group.
     def _auto_assign_group(slots, idx_key):
         slots = [dict(r) for r in slots]
         used_global = {row[idx_key] for row in slots if row[idx_key] is not None}
 
-        pos = 1
         result = []
         for row in slots:
             if row[idx_key] is None:
-                while True:
-                    try:
-                        ch = get_button_index_char(pos)
-                    except ValueError:
-                        ch = chr(0x31)
-                        break
-                    if ch not in used_global:
-                        break
-                    pos += 1
+                ch = get_next_available_index(used_global)
                 row[idx_key] = ch
                 used_global.add(ch)
-                pos += 1
             result.append(row)
         return result
 
-    parsed_disp_slots = _auto_assign_per_tv(parsed_disp_slots, 'button_index')
+    parsed_disp_slots = _auto_assign_group(parsed_disp_slots, 'button_index')
     parsed_kp_slots   = _auto_assign_group(parsed_kp_slots, 'keypad_index')
 
     tv_map     = {d.id: d for d in Device.objects.filter(id__in=group_tv_ids)}
@@ -8602,26 +8511,21 @@ def save_group_button_mappings_api(request, group_id):
             if pos > max_grp_pos:
                 max_grp_pos = pos
 
-        seen_grp_chars = set(existing_gdm_map.values())
+        def _normalize_char(ch):
+            if isinstance(ch, int):
+                return chr(0x31 + ch - 1)
+            return str(ch)
+
+        seen_grp_chars = set(_normalize_char(v) for v in existing_gdm_map.values())
         for did in ordered_disp_ids:
             disp_obj = disp_map.get(did)
             if not disp_obj:
                 continue
             if disp_obj.id in existing_gdm_map:
-                grp_char = existing_gdm_map[disp_obj.id]
-                # Normalise legacy integer values to string char
-                if isinstance(grp_char, int):
-                    grp_char = chr(0x31 + grp_char - 1)
+                grp_char = _normalize_char(existing_gdm_map[disp_obj.id])
             else:
                 # New dispenser: pick next available slot after current max
-                while True:
-                    max_grp_pos += 1
-                    try:
-                        grp_char = get_button_index_char(max_grp_pos)
-                    except ValueError:
-                        grp_char = chr(0x31)
-                    if grp_char not in seen_grp_chars:
-                        break
+                grp_char = get_next_available_index(seen_grp_chars)
                 seen_grp_chars.add(grp_char)
             GroupDispenserMapping.objects.create(
                 group=group, dispenser=disp_obj,
@@ -8652,10 +8556,7 @@ def save_group_button_mappings_api(request, group_id):
                     btn_char = existing_gcbm_map[key]
                 else:
                     max_btn_pos += 1
-                    try:
-                        btn_char = get_button_index_char(max_btn_pos)
-                    except ValueError:
-                        btn_char = chr(0x31)
+                    btn_char = get_safe_button_index_char(max_btn_pos)
                 GroupCounterButtonMapping.objects.get_or_create(
                     group=group, dispenser=disp_obj, counter=cm.counter,
                     defaults={'button_index': btn_char})
@@ -8736,9 +8637,9 @@ def get_android_mapped_counters(request):
                     .values_list('counter_id', flat=True)
                 )
                 try:
-                    pos          = all_ctdm.index(counter.id) + 1  # 1-based
-                    button_index = get_button_index_char(pos)
-                except (ValueError, Exception):
+                    pos = all_ctdm.index(counter.id) + 1  # 1-based
+                    button_index = get_safe_button_index_char(pos)
+                except ValueError:
                     button_index = '1'
         if not mapped_dispenser_sn:
             continue  # counter not mapped to any dispenser — skip

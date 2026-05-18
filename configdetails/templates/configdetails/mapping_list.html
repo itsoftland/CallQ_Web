@@ -1521,14 +1521,14 @@
         const dispPayload = state.dispenserSlots.map(r => ({
             dispenser_id: r.dispenser_id,
             tv_id:        r.tv_id,
-            button_index: null,
+            button_index: r.button_index || null,
         }));
         const kpPayload = state.keypadSlots
             .filter(r => r.keypad_id && r.tv_id)   // TV is required by backend validator
             .map(r => ({
                 keypad_id:    r.keypad_id,
                 tv_id:        r.tv_id,
-                keypad_index: null,
+                keypad_index: r.keypad_index || null,
                 dispenser_id: r.dispenser_id || null,
             }));
 
