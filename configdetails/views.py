@@ -1370,16 +1370,15 @@ def _get_tv_flag_config(request, device, company, dealer_customer, is_dealer_cus
             return results
 
         # Look up this dispenser's TV-slot index (TVDispenserMapping).
-        # Fallback: when no TVDispenserMapping row exists (keypad-first config),
-        # use keypad_index as the dispenser slot identifier — each keypad slot
-        # maps 1-to-1 with a dispenser slot so the index is semantically identical.
+        # We no longer fall back to keypad_index because keypad_index is per-group,
+        # while dispenser_index is strictly per-TV.
         try:
             tdm = TVDispenserMapping.objects.filter(
                 tv=device, dispenser=dispenser
             ).only('button_index').first()
-            dispenser_index = tdm.button_index if tdm else keypad_index
+            dispenser_index = tdm.button_index if tdm else '1'
         except Exception:
-            dispenser_index = keypad_index
+            dispenser_index = '1'
 
         # Resolve the group this dispenser belongs to (via GroupDispenserMapping).
         # This is the only authoritative group for this dispenser — dispensers can
@@ -3139,19 +3138,21 @@ def _create_tv_slot_mappings(group, new_dispenser_ids=None):
     # Step A: TVDispenserMapping — dispenser slot on each TV
     # ---------------------------------------------------------------
     if dispensers_list:
-        # Build global max position so new dispensers continue after existing ones in the group
-        group_disp_max = 0
-        for row in TVDispenserMapping.objects.filter(tv__in=tvs_list):
-            pos = _parse_pos(row.button_index)
-            if pos > group_disp_max:
-                group_disp_max = pos
+        # Build per-TV max position so new dispensers continue after existing ones
+        tv_max_pos = {tv.id: 0 for tv in tvs_list}
+        for tv in tvs_list:
+            existing = TVDispenserMapping.objects.filter(tv=tv)
+            for row in existing:
+                pos = _parse_pos(row.button_index)
+                if pos > tv_max_pos[tv.id]:
+                    tv_max_pos[tv.id] = pos
 
         # Assign TVDispenserMapping only for dispensers that don't have one yet
         new_dispensers = [d for d in dispensers_list if d.id in new_dispenser_ids]
         for idx, dispenser in enumerate(new_dispensers):
             tv = tvs_list[idx % len(tvs_list)]
-            group_disp_max += 1
-            button_char = get_safe_button_index_char(group_disp_max)
+            tv_max_pos[tv.id] += 1
+            button_char = get_safe_button_index_char(tv_max_pos[tv.id])
             # Remove stale row if somehow present, then create fresh
             TVDispenserMapping.objects.filter(dispenser=dispenser).delete()
             TVDispenserMapping.objects.create(
@@ -8424,6 +8425,35 @@ def save_group_button_mappings_api(request, group_id):
     if errors:
         return Response({'status': 'error', 'message': ' '.join(errors)}, status=400)
 
+    # Auto-assign sequentially per TV.
+    def _auto_assign_per_tv(slots, idx_key):
+        slots = [dict(r) for r in slots]
+        
+        def _norm(v):
+            if isinstance(v, int):
+                return chr(0x31 + v - 1)
+            return str(v)
+
+        used_per_tv = {}
+        for row in slots:
+            tv_id = row['tv_id']
+            if tv_id not in used_per_tv:
+                used_per_tv[tv_id] = set()
+            if row[idx_key] is not None:
+                used_per_tv[tv_id].add(_norm(row[idx_key]))
+
+        result = []
+        for row in slots:
+            tv_id = row['tv_id']
+            if row[idx_key] is None:
+                ch = get_next_available_index(used_per_tv[tv_id])
+                row[idx_key] = ch
+                used_per_tv[tv_id].add(ch)
+            else:
+                row[idx_key] = _norm(row[idx_key])
+            result.append(row)
+        return result
+
     # Auto-assign sequentially across the whole group.
     def _auto_assign_group(slots, idx_key):
         slots = [dict(r) for r in slots]
@@ -8446,7 +8476,7 @@ def save_group_button_mappings_api(request, group_id):
             result.append(row)
         return result
 
-    parsed_disp_slots = _auto_assign_group(parsed_disp_slots, 'button_index')
+    parsed_disp_slots = _auto_assign_per_tv(parsed_disp_slots, 'button_index')
     parsed_kp_slots   = _auto_assign_group(parsed_kp_slots, 'keypad_index')
 
     tv_map     = {d.id: d for d in Device.objects.filter(id__in=group_tv_ids)}
