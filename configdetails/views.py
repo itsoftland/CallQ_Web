@@ -8646,10 +8646,26 @@ def get_android_mapped_counters(request):
 
         # dispenser_button_index — the slot of this dispenser in its group
         dispenser_button_index = None
+        keypad_index = None
         if dispenser_obj:
             gdm = GroupDispenserMapping.objects.filter(dispenser=dispenser_obj).first()
             if gdm:
                 dispenser_button_index = gdm.dispenser_button_index
+            
+            # Map DISPENSER -> KEYPAD to assign the keypad_index
+            kp_mapping = TVKeypadMapping.objects.filter(dispenser=dispenser_obj).first()
+            if kp_mapping:
+                keypad_index = kp_mapping.keypad_index
+            else:
+                # Fallback to ButtonMapping linear hierarchy
+                bm = ButtonMapping.objects.filter(
+                    source_device=dispenser_obj,
+                    target_device__device_type='KEYPAD'
+                ).first()
+                if bm:
+                    km = TVKeypadMapping.objects.filter(keypad=bm.target_device).first()
+                    if km:
+                        keypad_index = km.keypad_index
 
         mapped_counters.append({
             "id":                     counter.id,
@@ -8661,6 +8677,7 @@ def get_android_mapped_counters(request):
             "mapped_dispenser_sn":    mapped_dispenser_sn,
             "button_index":           button_index,
             "dispenser_button_index": dispenser_button_index,
+            "keypad_index":           keypad_index,
         })
 
     return Response({"counters": mapped_counters})
