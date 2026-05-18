@@ -1484,12 +1484,6 @@
         const moved = arr.splice(_dragSrc.idx, 1)[0];
         arr.splice(targetIdx, 0, moved);
 
-        // Clear cached button indices so they are re-computed on save
-        arr.forEach(r => {
-            if (type === 'disp') r.button_index = null;
-            else r.keypad_index = null;
-        });
-
         if (type === 'disp') renderBtnMapDispTable();
         else renderBtnMapKpTable();
     }

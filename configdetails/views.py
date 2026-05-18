@@ -37,6 +37,21 @@ def get_next_available_index(used_indices):
             return ch
         pos += 1
 
+def _parse_pos(val):
+    if not val:
+        return 0
+    try:
+        if isinstance(val, int):
+            return val
+        if isinstance(val, str):
+            if val.isdigit():
+                return int(val)
+            if len(val) == 1:
+                return ord(val) - 0x31 + 1
+    except Exception:
+        pass
+    return 0
+
 # --- API VIEWS ---
 class DeviceViewSet(viewsets.ModelViewSet):
     queryset = Device.objects.all()
@@ -1376,9 +1391,9 @@ def _get_tv_flag_config(request, device, company, dealer_customer, is_dealer_cus
             tdm = TVDispenserMapping.objects.filter(
                 tv=device, dispenser=dispenser
             ).only('button_index').first()
-            dispenser_index = tdm.button_index if tdm else '1'
+            dispenser_index = tdm.button_index if tdm else None
         except Exception:
-            dispenser_index = '1'
+            dispenser_index = None
 
         # Resolve the group this dispenser belongs to (via GroupDispenserMapping).
         # This is the only authoritative group for this dispenser — dispensers can
@@ -1535,13 +1550,8 @@ def _get_tv_flag_config(request, device, company, dealer_customer, is_dealer_cus
         mapped_keypads_list = []
         mapped_counters_list = []
 
-    # Fallback: if no TVKeypadMapping rows exist, try TVDispenserMapping directly.
-    # In this case keypad_index is None (no keypad slot), dispenser_index is set.
-    if not mapped_keypads_list:
-        for tdm in TVDispenserMapping.objects.filter(tv=device).select_related('dispenser').order_by('button_index'):
-            mapped_counters_list.extend(
-                _build_counters_for_dispenser(tdm.dispenser, None)  # no keypad slot; dispenser_index resolved inside
-            )
+    # Note: We no longer fallback to TVDispenserMapping if mapped_keypads_list is empty.
+    # Keypads MUST be explicitly mapped to the TV (via the TV Config page) to display counters.
 
     # ----------------------------------------------------------------
     # Filter counters to only those from dispensers explicitly wired
@@ -1935,7 +1945,7 @@ def device_config(request, device_id):
             # Button B/C/D strings are stored in the keypad's own config_json.
             # ----------------------------------------------------------------
             no_of_keypads = int(request.POST.get('no_of_keypads', 0))
-            selected_keypad_data = []  # list of (keypad_id, dispenser_id_or_None)
+            selected_keypad_data = []  # list of (slot_num, keypad_id, dispenser_id_or_None)
 
             for i in range(1, no_of_keypads + 1):
                 kp_id_raw = request.POST.get(f'keypad_selection_{i}', '').strip()
@@ -1945,7 +1955,7 @@ def device_config(request, device_id):
                         if kp_id_int > 0:
                             disp_id_raw = request.POST.get(f'dispenser_for_keypad_{i}', '').strip()
                             disp_id = int(disp_id_raw) if disp_id_raw else None
-                            selected_keypad_data.append((kp_id_int, disp_id))
+                            selected_keypad_data.append((i, kp_id_int, disp_id))
                     except (ValueError, TypeError):
                         pass
 
@@ -1956,12 +1966,12 @@ def device_config(request, device_id):
                     _seen_kp_ids = set()
                     _deduped = []
                     for _row in selected_keypad_data:
-                        if _row[0] not in _seen_kp_ids:
-                            _seen_kp_ids.add(_row[0])
+                        if _row[1] not in _seen_kp_ids:
+                            _seen_kp_ids.add(_row[1])
                             _deduped.append(_row)
                     selected_keypad_data = _deduped
 
-                    keypad_ids = [row[0] for row in selected_keypad_data]
+                    keypad_ids = [row[1] for row in selected_keypad_data]
                     keypads_qs = Device.objects.filter(
                         id__in=keypad_ids,
                         device_type=Device.DeviceType.KEYPAD,
@@ -1985,15 +1995,13 @@ def device_config(request, device_id):
                     # Atomically replace keypad mappings for this TV
                     with transaction.atomic():
                         TVKeypadMapping.objects.filter(tv=device).delete()
-                        # Clear direct dispenser mappings to prevent stale data
-                        TVDispenserMapping.objects.filter(tv=device).delete()
-                        for position, (kp_id, disp_id) in enumerate(selected_keypad_data, start=1):
+                        for slot_num, kp_id, disp_id in selected_keypad_data:
                             try:
                                 kp = Device.objects.get(id=kp_id, device_type=Device.DeviceType.KEYPAD)
                                 dispenser = Device.objects.get(id=disp_id, device_type=Device.DeviceType.TOKEN_DISPENSER) if disp_id else None
                                 # Remove any existing mapping of this keypad to another TV
                                 TVKeypadMapping.objects.filter(keypad=kp).exclude(tv=device).delete()
-                                ascii_idx = get_safe_button_index_char(position)
+                                ascii_idx = get_safe_button_index_char(slot_num)
                                 TVKeypadMapping.objects.create(
                                     tv=device,
                                     keypad=kp,
@@ -2012,7 +2020,6 @@ def device_config(request, device_id):
                 # empty — i.e., they want to remove all keypad mappings.
                 try:
                     TVKeypadMapping.objects.filter(tv=device).delete()
-                    TVDispenserMapping.objects.filter(tv=device).delete()
                 except Exception:
                     pass
 
@@ -2023,7 +2030,11 @@ def device_config(request, device_id):
             selected_dispenser_ids = []
 
             for i in range(1, no_of_dispensers + 1):
-                dispenser_id = request.POST.get(f'dispenser_selection_{i}') or request.POST.get(f'counter_selection_{i}')
+                dispenser_id = (
+                    request.POST.get(f'dispenser_counter_selection_{i}') or
+                    request.POST.get(f'dispenser_selection_{i}') or 
+                    request.POST.get(f'counter_selection_{i}')
+                )
                 if dispenser_id:
                     try:
                         dispenser_id_int = int(dispenser_id)
@@ -2038,7 +2049,10 @@ def device_config(request, device_id):
             if not selected_dispenser_ids:
                 # Fallback to counter selection if no dispensers selected
                 for i in range(1, no_of_dispensers + 1):
-                    counter_id = request.POST.get(f'counter_selection_{i}')
+                    counter_id = (
+                        request.POST.get(f'dispenser_counter_selection_{i}') or
+                        request.POST.get(f'counter_selection_{i}')
+                    )
                     if counter_id:
                         try:
                             counter_id_int = int(counter_id)
@@ -2392,16 +2406,14 @@ def device_config(request, device_id):
         all_dispensers_for_tv = []         # dispensers in same company for the slot dropdown
         mapped_dispenser_by_kp_position = {}  # slot int (1-8) -> dispenser_id (from kp_mapping.dispenser)
         try:
-            all_keypads_for_tv = Device.objects.filter(
-                device_type=Device.DeviceType.KEYPAD,
-                company=device.company,
-            ).order_by('serial_number')
-
-            # Only show dispensers that belong to the group(s) this TV is a member of.
-            # This ensures the dropdown is scoped to the TV's group and prevents
-            # accidentally assigning an unrelated dispenser to a keypad slot.
             _tv_groups = GroupMapping.objects.filter(tvs=device)
             if _tv_groups.exists():
+                _grp_kp_ids = _tv_groups.values_list('keypads__id', flat=True)
+                all_keypads_for_tv = Device.objects.filter(
+                    id__in=list(_grp_kp_ids),
+                    device_type=Device.DeviceType.KEYPAD,
+                ).order_by('serial_number')
+
                 _grp_disp_ids = GroupDispenserMapping.objects.filter(
                     group__in=_tv_groups
                 ).values_list('dispenser_id', flat=True)
@@ -2410,7 +2422,12 @@ def device_config(request, device_id):
                     device_type=Device.DeviceType.TOKEN_DISPENSER,
                 ).order_by('serial_number')
             else:
-                # TV not yet in any group — fall back to all company dispensers
+                # TV not yet in any group — fall back to all company keypads & dispensers
+                all_keypads_for_tv = Device.objects.filter(
+                    device_type=Device.DeviceType.KEYPAD,
+                    company=device.company,
+                ).order_by('serial_number')
+
                 all_dispensers_for_tv = Device.objects.filter(
                     device_type=Device.DeviceType.TOKEN_DISPENSER,
                     company=device.company,
@@ -2419,9 +2436,9 @@ def device_config(request, device_id):
             existing_kp_mappings = list(
                 TVKeypadMapping.objects.filter(tv=device)
                     .select_related('keypad', 'dispenser')
-                    .order_by('keypad_index')
             )
-            for slot_pos, kpm in enumerate(existing_kp_mappings, start=1):
+            for kpm in existing_kp_mappings:
+                slot_pos = _parse_pos(kpm.keypad_index)
                 mapped_keypad_by_position[slot_pos] = kpm.keypad_id
                 if kpm.dispenser_id:
                     mapped_dispenser_by_kp_position[slot_pos] = kpm.dispenser_id
@@ -3113,16 +3130,6 @@ def _create_tv_slot_mappings(group, new_dispenser_ids=None):
       - new_dispenser_ids: optional set of Device IDs that are brand-new additions
         to this group (used to skip TVDispenserMapping rebuild for existing ones).
     """
-    def _parse_pos(val):
-        try:
-            if isinstance(val, int) or (isinstance(val, str) and val.isdigit()):
-                return int(val)
-            elif isinstance(val, str) and len(val) == 1:
-                return ord(val) - 0x31 + 1
-        except Exception:
-            pass
-        return 0
-
     dispensers_list = list(group.dispensers.all().order_by('id'))
     keypads_list    = list(group.keypads.all().order_by('id'))
     tvs_list        = list(group.tvs.all().order_by('id'))
@@ -8463,14 +8470,24 @@ def save_group_button_mappings_api(request, group_id):
                 return chr(0x31 + v - 1)
             return str(v)
 
-        used_global = { _norm(row[idx_key]) for row in slots if row[idx_key] is not None }
+        kp_assigned_indices = {}
+        for row in slots:
+            if row[idx_key] is not None:
+                kp_assigned_indices[row['keypad_id']] = _norm(row[idx_key])
+
+        used_global = set(kp_assigned_indices.values())
 
         result = []
         for row in slots:
+            kp_id = row['keypad_id']
             if row[idx_key] is None:
-                ch = get_next_available_index(used_global)
-                row[idx_key] = ch
-                used_global.add(ch)
+                if kp_id in kp_assigned_indices:
+                    row[idx_key] = kp_assigned_indices[kp_id]
+                else:
+                    ch = get_next_available_index(used_global)
+                    row[idx_key] = ch
+                    used_global.add(ch)
+                    kp_assigned_indices[kp_id] = ch
             else:
                 row[idx_key] = _norm(row[idx_key])
             result.append(row)
@@ -8484,25 +8501,87 @@ def save_group_button_mappings_api(request, group_id):
     keypad_map = {d.id: d for d in Device.objects.filter(id__in=group_keypad_ids)}
 
     with transaction.atomic():
-        # Rewrite TVDispenserMapping
-        TVDispenserMapping.objects.filter(dispenser__in=list(disp_map.values())).delete()
+        # Stable update for TVDispenserMapping:
+        # Preserve original button_index and do not delete them from group edit feature.
+        existing_tdms = {
+            tdm.dispenser_id: tdm
+            for tdm in TVDispenserMapping.objects.filter(dispenser__in=list(disp_map.values()))
+        }
+        
+        keep_tdm_ids = []
         for row in parsed_disp_slots:
-            tv_obj   = tv_map.get(row['tv_id'])
+            tv_obj = tv_map.get(row['tv_id'])
             disp_obj = disp_map.get(row['dispenser_id'])
-            if tv_obj and disp_obj:
-                TVDispenserMapping.objects.create(
-                    tv=tv_obj, dispenser=disp_obj, button_index=row['button_index'])
+            if not tv_obj or not disp_obj:
+                continue
+                
+            existing_tdm = existing_tdms.get(disp_obj.id)
+            if existing_tdm:
+                existing_tdm.tv = tv_obj
+                existing_tdm.save()
+                keep_tdm_ids.append(existing_tdm.id)
+            else:
+                # Find next available button_index for this TV
+                used_indices = set(
+                    TVDispenserMapping.objects.filter(tv=tv_obj)
+                    .exclude(dispenser=disp_obj)
+                    .values_list('button_index', flat=True)
+                )
+                new_btn_idx = get_next_available_index(used_indices)
+                new_tdm = TVDispenserMapping.objects.create(
+                    tv=tv_obj,
+                    dispenser=disp_obj,
+                    button_index=new_btn_idx
+                )
+                keep_tdm_ids.append(new_tdm.id)
+                
+        # Clean up dispenser mappings in this group that were removed
+        TVDispenserMapping.objects.filter(
+            dispenser__in=list(disp_map.values())
+        ).exclude(id__in=keep_tdm_ids).delete()
 
-        # Rewrite TVKeypadMapping
-        TVKeypadMapping.objects.filter(keypad__in=list(keypad_map.values())).delete()
+        # Stable update for TVKeypadMapping:
+        existing_kpms = {
+            kpm.keypad_id: kpm
+            for kpm in TVKeypadMapping.objects.filter(keypad__in=list(keypad_map.values()))
+        }
+        
+        keep_kpm_ids = []
         for row in parsed_kp_slots:
-            tv_obj   = tv_map.get(row['tv_id'])
-            kp_obj   = keypad_map.get(row['keypad_id'])
+            tv_obj = tv_map.get(row['tv_id'])
+            kp_obj = keypad_map.get(row['keypad_id'])
             disp_obj = disp_map.get(row['dispenser_id']) if row['dispenser_id'] else None
-            if tv_obj and kp_obj:
-                TVKeypadMapping.objects.create(
-                    tv=tv_obj, keypad=kp_obj, dispenser=disp_obj,
-                    keypad_index=row['keypad_index'])
+            if not tv_obj or not kp_obj:
+                continue
+                
+            existing_kpm = existing_kpms.get(kp_obj.id)
+            if existing_kpm:
+                existing_kpm.tv = tv_obj
+                existing_kpm.dispenser = disp_obj
+                if row.get('keypad_index'):
+                    existing_kpm.keypad_index = row['keypad_index']
+                existing_kpm.save()
+                keep_kpm_ids.append(existing_kpm.id)
+            else:
+                # Determine next available index for this TV
+                used_indices = set(
+                    TVKeypadMapping.objects.filter(tv=tv_obj)
+                    .exclude(keypad=kp_obj)
+                    .values_list('keypad_index', flat=True)
+                )
+                new_kp_idx = row.get('keypad_index') or get_next_available_index(used_indices)
+                new_kpm = TVKeypadMapping.objects.create(
+                    tv=tv_obj,
+                    keypad=kp_obj,
+                    dispenser=disp_obj,
+                    keypad_index=new_kp_idx
+                )
+                keep_kpm_ids.append(new_kpm.id)
+                
+        # Clean up removed keypad mappings
+        TVKeypadMapping.objects.filter(
+            keypad__in=list(keypad_map.values())
+        ).exclude(id__in=keep_kpm_ids).delete()
 
         # ── Rebuild GroupDispenserMapping ────────────────────────────────────
         # Preserve existing dispenser_button_index values for dispensers already
@@ -8606,11 +8685,41 @@ def save_group_button_mappings_api(request, group_id):
             f"{len(parsed_disp_slots)} dispenser slots, {len(parsed_kp_slots)} keypad slots configured."
         )
 
+        # Re-query saved TVDispenserMapping and TVKeypadMapping to return the exact actual DB state
+        saved_tdms = TVDispenserMapping.objects.filter(
+            dispenser__in=list(disp_map.values())
+        ).select_related('dispenser', 'tv')
+        
+        response_dispenser_slots = []
+        for tdm in saved_tdms:
+            response_dispenser_slots.append({
+                'dispenser_id': tdm.dispenser_id,
+                'display_name': tdm.dispenser.display_name or tdm.dispenser.serial_number,
+                'tv_id':        tdm.tv_id,
+                'tv_name':      tdm.tv.display_name or tdm.tv.serial_number,
+                'button_index': tdm.button_index,
+            })
+            
+        saved_kpms = TVKeypadMapping.objects.filter(
+            keypad__in=list(keypad_map.values())
+        ).select_related('keypad', 'tv', 'dispenser')
+        
+        response_keypad_slots = []
+        for kpm in saved_kpms:
+            response_keypad_slots.append({
+                'keypad_id':    kpm.keypad_id,
+                'keypad_name':  kpm.keypad.display_name or kpm.keypad.serial_number,
+                'tv_id':        kpm.tv_id,
+                'tv_name':      kpm.tv.display_name or kpm.tv.serial_number,
+                'keypad_index': kpm.keypad_index,
+                'dispenser_id': kpm.dispenser_id,
+            })
+
     return Response({
         'status': 'success',
         'message': f"Button mappings for group '{group.group_name}' saved successfully.",
-        'dispenser_slots': parsed_disp_slots,
-        'keypad_slots':    parsed_kp_slots,
+        'dispenser_slots': response_dispenser_slots,
+        'keypad_slots':    response_keypad_slots,
     })
 
 
