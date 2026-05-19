@@ -3171,7 +3171,7 @@ def assign_device_branch(request, device_id):
         
     return redirect('device_list')
 
-def _create_tv_slot_mappings(group, new_dispenser_ids=None):
+def _create_tv_slot_mappings(group, new_dispenser_ids=None, new_tv_ids=None, new_keypad_ids=None):
     """
     Create (or update) TVDispenserMapping and TVKeypadMapping rows for every
     TV in the group, assigning ASCII slot indices starting at chr(0x31)='1'.
@@ -3191,9 +3191,15 @@ def _create_tv_slot_mappings(group, new_dispenser_ids=None):
     if not tvs_list:
         return  # Nothing to do without at least one TV
 
-    if new_dispenser_ids is None:
-        # Called during initial group creation: every dispenser is "new"
+    is_initial_creation = (new_dispenser_ids is None and new_tv_ids is None and new_keypad_ids is None)
+    if is_initial_creation:
         new_dispenser_ids = {d.id for d in dispensers_list}
+        new_tv_ids = {t.id for t in tvs_list}
+        new_keypad_ids = {k.id for k in keypads_list}
+    else:
+        new_dispenser_ids = set(new_dispenser_ids or [])
+        new_tv_ids = set(new_tv_ids or [])
+        new_keypad_ids = set(new_keypad_ids or [])
 
     # ── GroupDispenserMapping: preserve existing, add new ────────────────
     # Find the current max dispenser_button_index in this group
@@ -3218,24 +3224,38 @@ def _create_tv_slot_mappings(group, new_dispenser_ids=None):
                 dispenser_button_index=grp_btn_char,
             )
 
-    # ── TVDispenserMapping: Map every dispenser to every TV in the group ─
+    # ── TVDispenserMapping: Map newly added dispenser/TV relations ──────
     # using the stable dispenser_button_index from GroupDispenserMapping.
     gdm_map = {
         gdm.dispenser_id: gdm.dispenser_button_index
         for gdm in GroupDispenserMapping.objects.filter(group=group)
     }
     for tv in tvs_list:
+        used_indices = set(
+            TVDispenserMapping.objects.filter(tv=tv).values_list('button_index', flat=True)
+        )
         for dispenser in dispensers_list:
-            grp_btn_char = gdm_map.get(dispenser.id)
-            if grp_btn_char:
-                tdm, created = TVDispenserMapping.objects.get_or_create(
+            should_map = (
+                is_initial_creation or
+                dispenser.id in new_dispenser_ids or
+                tv.id in new_tv_ids
+            )
+            if not should_map:
+                continue
+
+            tdm = TVDispenserMapping.objects.filter(tv=tv, dispenser=dispenser).first()
+            if not tdm:
+                grp_btn_char = gdm_map.get(dispenser.id)
+                if grp_btn_char and grp_btn_char not in used_indices:
+                    btn_idx = grp_btn_char
+                else:
+                    btn_idx = get_next_available_index(used_indices)
+                used_indices.add(btn_idx)
+                TVDispenserMapping.objects.create(
                     tv=tv,
                     dispenser=dispenser,
-                    defaults={'button_index': grp_btn_char}
+                    button_index=btn_idx
                 )
-                if not created and tdm.button_index != grp_btn_char:
-                    tdm.button_index = grp_btn_char
-                    tdm.save(update_fields=['button_index'])
 
     # ── GroupCounterButtonMapping: preserve existing, add new ────────────
     # Find the current max button_index across all counters in this group
@@ -3286,6 +3306,14 @@ def _create_tv_slot_mappings(group, new_dispenser_ids=None):
         # 2. Map every keypad in this group to every TV in the group using its stable index
         for tv in tvs_list:
             for idx, keypad in enumerate(keypads_list):
+                should_map = (
+                    is_initial_creation or
+                    keypad.id in new_keypad_ids or
+                    tv.id in new_tv_ids
+                )
+                if not should_map:
+                    continue
+
                 dispenser = dispensers_list[idx % len(dispensers_list)] if dispensers_list else None
                 tkm, created = TVKeypadMapping.objects.get_or_create(
                     tv=tv,
@@ -8259,7 +8287,12 @@ def update_group_devices_api(request, group_id):
         # Existing rows are preserved; removed devices already had their rows
         # deleted above. _create_tv_slot_mappings will only insert rows for
         # devices that don't yet have a mapping (i.e. brand-new additions).
-        _create_tv_slot_mappings(group, new_dispenser_ids=added_dispenser_ids)
+        _create_tv_slot_mappings(
+            group,
+            new_dispenser_ids=added_dispenser_ids,
+            new_tv_ids=added_tv_ids,
+            new_keypad_ids=added_keypad_ids
+        )
 
         # ── Rebuild group-wide ButtonMapping rows to match the updated devices ──
         # Gather all current exclusive devices in the group to delete their stale button mappings
@@ -8581,39 +8614,43 @@ def save_group_button_mappings_api(request, group_id):
     keypad_map = {d.id: d for d in Device.objects.filter(id__in=group_keypad_ids)}
 
     with transaction.atomic():
-        # Stable update for TVDispenserMapping:
-        # Preserve original button_index and do not delete them from group edit feature.
         existing_tdms = {
             (tdm.tv_id, tdm.dispenser_id): tdm
             for tdm in TVDispenserMapping.objects.filter(dispenser__in=list(disp_map.values()))
         }
-        
+
         keep_tdm_ids = []
+        slots_by_tv = {}
         for row in parsed_disp_slots:
-            tv_obj = tv_map.get(row['tv_id'])
-            disp_obj = disp_map.get(row['dispenser_id'])
-            if not tv_obj or not disp_obj:
+            tv_id = row['tv_id']
+            if tv_id not in slots_by_tv:
+                slots_by_tv[tv_id] = []
+            slots_by_tv[tv_id].append(row)
+
+        for tv_id, rows in slots_by_tv.items():
+            tv_obj = tv_map.get(tv_id)
+            if not tv_obj:
                 continue
-                
-            existing_tdm = existing_tdms.get((tv_obj.id, disp_obj.id))
-            if existing_tdm:
-                existing_tdm.save()
-                keep_tdm_ids.append(existing_tdm.id)
-            else:
-                # Find next available button_index for this TV
-                used_indices = set(
-                    TVDispenserMapping.objects.filter(tv=tv_obj)
-                    .exclude(dispenser=disp_obj)
-                    .values_list('button_index', flat=True)
-                )
-                new_btn_idx = get_next_available_index(used_indices)
-                new_tdm = TVDispenserMapping.objects.create(
-                    tv=tv_obj,
-                    dispenser=disp_obj,
-                    button_index=new_btn_idx
-                )
-                keep_tdm_ids.append(new_tdm.id)
-                
+            for pos, row in enumerate(rows, start=1):
+                disp_obj = disp_map.get(row['dispenser_id'])
+                if not disp_obj:
+                    continue
+
+                existing_tdm = existing_tdms.get((tv_obj.id, disp_obj.id))
+                btn_idx = str(pos)  # Enforce gapless 1..N sequential index!
+                if existing_tdm:
+                    if existing_tdm.button_index != btn_idx:
+                        existing_tdm.button_index = btn_idx
+                        existing_tdm.save(update_fields=['button_index'])
+                    keep_tdm_ids.append(existing_tdm.id)
+                else:
+                    new_tdm = TVDispenserMapping.objects.create(
+                        tv=tv_obj,
+                        dispenser=disp_obj,
+                        button_index=btn_idx
+                    )
+                    keep_tdm_ids.append(new_tdm.id)
+
         # Clean up dispenser mappings in this group that were removed
         TVDispenserMapping.objects.filter(
             dispenser__in=list(disp_map.values())
@@ -8754,7 +8791,7 @@ def save_group_button_mappings_api(request, group_id):
         # Re-query saved TVDispenserMapping and TVKeypadMapping to return the exact actual DB state
         saved_tdms = TVDispenserMapping.objects.filter(
             dispenser__in=list(disp_map.values())
-        ).select_related('dispenser', 'tv')
+        ).select_related('dispenser', 'tv').order_by('tv', 'button_index')
         
         response_dispenser_slots = []
         for tdm in saved_tdms:
@@ -8768,7 +8805,7 @@ def save_group_button_mappings_api(request, group_id):
             
         saved_kpms = TVKeypadMapping.objects.filter(
             keypad__in=list(keypad_map.values())
-        ).select_related('keypad', 'tv', 'dispenser')
+        ).select_related('keypad', 'tv', 'dispenser').order_by('tv', 'keypad_index')
         
         response_keypad_slots = []
         for kpm in saved_kpms:
