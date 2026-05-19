@@ -2489,12 +2489,12 @@ def device_config(request, device_id):
             existing_kp_mappings = list(
                 TVKeypadMapping.objects.filter(tv=device)
                     .select_related('keypad', 'dispenser')
+                    .order_by('id')
             )
-            for kpm in existing_kp_mappings:
-                slot_pos = _parse_pos(kpm.keypad_index)
-                mapped_keypad_by_position[slot_pos] = kpm.keypad_id
+            for idx, kpm in enumerate(existing_kp_mappings, start=1):
+                mapped_keypad_by_position[idx] = kpm.keypad_id
                 if kpm.dispenser_id:
-                    mapped_dispenser_by_kp_position[slot_pos] = kpm.dispenser_id
+                    mapped_dispenser_by_kp_position[idx] = kpm.dispenser_id
         except Exception:
             all_keypads_for_tv = []
             mapped_keypad_by_position = {}
