@@ -612,14 +612,15 @@ def get_embedded_config(request):
             password = 'XXXX'
             text = config.get('keypad_device_text') or 'Welcome'
             logo_enable = config.get('logo_enable') or '0'
-            # Keypad Index is stored in TVKeypadMapping.keypad_index, which is globally
-            # sequential per group.
-            counter_num = None
-            kp_mapping = TVKeypadMapping.objects.filter(keypad=device).select_related('dispenser').first()
-            if kp_mapping and kp_mapping.keypad_index:
-                counter_num = kp_mapping.keypad_index
-            else:
-                counter_num = config.get('counter_no') or '1'
+            # Keypad Index is stored in Device.keypad_index as the single source of truth,
+            # with fallback to TVKeypadMapping.keypad_index.
+            counter_num = device.keypad_index
+            if not counter_num:
+                kp_mapping = TVKeypadMapping.objects.filter(keypad=device).select_related('dispenser').first()
+                if kp_mapping and kp_mapping.keypad_index:
+                    counter_num = kp_mapping.keypad_index
+                else:
+                    counter_num = config.get('counter_no') or '1'
             # Convert old values (0/1) to new values (1/2) for backward compatibility
             single_multiple_raw = config.get('single_multiple')
             if single_multiple_raw == '0':
@@ -2020,7 +2021,20 @@ def device_config(request, device_id):
                                 dispenser = Device.objects.get(id=disp_id, device_type=Device.DeviceType.TOKEN_DISPENSER) if disp_id else None
                                 # Remove any existing mapping of this keypad to another TV
                                 TVKeypadMapping.objects.filter(keypad=kp).exclude(tv=device).delete()
-                                ascii_idx = get_safe_button_index_char(slot_num)
+                                
+                                if not kp.keypad_index:
+                                    from django.db.models import Q
+                                    # Find all keypads currently in this group to avoid conflicts
+                                    group = GroupMapping.objects.filter(tvs=device).first()
+                                    if group:
+                                        existing_indices = set(k.keypad_index for k in group.keypads.all() if k.keypad_index)
+                                    else:
+                                        existing_indices = set(Device.objects.filter(device_type=Device.DeviceType.KEYPAD).exclude(Q(keypad_index__isnull=True) | Q(keypad_index="")).values_list('keypad_index', flat=True))
+                                    new_idx = get_next_available_index(existing_indices)
+                                    kp.keypad_index = new_idx
+                                    kp.save(update_fields=['keypad_index'])
+
+                                ascii_idx = kp.keypad_index
                                 TVKeypadMapping.objects.create(
                                     tv=device,
                                     keypad=kp,
@@ -3232,31 +3246,40 @@ def _create_tv_slot_mappings(group, new_dispenser_ids=None):
     # Step B: TVKeypadMapping — keypad slot on each TV, linked to dispenser
     # ---------------------------------------------------------------
     if keypads_list:
-        # Collect global max keypad_index from existing mappings in this group
-        group_kp_max = 0
-        for row in TVKeypadMapping.objects.filter(tv__in=tvs_list):
-            pos = _parse_pos(row.keypad_index)
-            if pos > group_kp_max:
-                group_kp_max = pos
-
-        for idx, keypad in enumerate(keypads_list):
-            # If an explicit TVKeypadMapping already exists, PRESERVE it
-            if TVKeypadMapping.objects.filter(keypad=keypad).exists():
-                continue
-
-            # No existing mapping — apply round-robin default
-            tv = tvs_list[idx % len(tvs_list)]
-            dispenser = dispensers_list[idx % len(dispensers_list)] if dispensers_list else None
-
-            group_kp_max += 1
-            keypad_char = get_safe_button_index_char(group_kp_max)
-
-            TVKeypadMapping.objects.create(
-                tv=tv,
-                keypad=keypad,
-                dispenser=dispenser,
-                keypad_index=keypad_char,
+        from django.db.models import Q
+        # 1. Assign stable keypad_index once per keypad in the group
+        existing_indices = set(k.keypad_index for k in keypads_list if k.keypad_index)
+        
+        # If no keypads in this group have indices yet, check existing group mappings in DB
+        if not existing_indices:
+            existing_indices = set(
+                TVKeypadMapping.objects.filter(tv__in=tvs_list)
+                .exclude(Q(keypad_index__isnull=True) | Q(keypad_index=""))
+                .values_list('keypad_index', flat=True)
             )
+
+        for keypad in keypads_list:
+            if not keypad.keypad_index:
+                new_idx = get_next_available_index(existing_indices)
+                keypad.keypad_index = new_idx
+                keypad.save(update_fields=['keypad_index'])
+                existing_indices.add(new_idx)
+
+        # 2. Map every keypad in this group to every TV in the group using its stable index
+        for tv in tvs_list:
+            for idx, keypad in enumerate(keypads_list):
+                dispenser = dispensers_list[idx % len(dispensers_list)] if dispensers_list else None
+                tkm, created = TVKeypadMapping.objects.get_or_create(
+                    tv=tv,
+                    keypad=keypad,
+                    defaults={
+                        'dispenser': dispenser,
+                        'keypad_index': keypad.keypad_index,
+                    }
+                )
+                if not created and tkm.keypad_index != keypad.keypad_index:
+                    tkm.keypad_index = keypad.keypad_index
+                    tkm.save(update_fields=['keypad_index'])
 
 
 def create_group_button_mappings(group, company, branch, dealer_customer):
@@ -6156,15 +6179,21 @@ def map_tv_keypads_api(request, tv_id):
 
     # Check for keypads already mapped to another TV
     duplicate_kps = []
+    tv_groups = set(GroupMapping.objects.filter(tvs=tv).values_list('id', flat=True))
     for kp in keypads_qs:
         clash = TVKeypadMapping.objects.filter(keypad=kp).exclude(tv=tv)
         if clash.exists():
-            other_tvs = [m.tv.serial_number for m in clash]
-            duplicate_kps.append({
-                'keypad_id': kp.id,
-                'keypad_serial_number': kp.serial_number,
-                'other_tvs': other_tvs
-            })
+            clash_tvs_in_other_groups = []
+            for m in clash:
+                m_tv_groups = set(GroupMapping.objects.filter(tvs=m.tv).values_list('id', flat=True))
+                if not tv_groups.intersection(m_tv_groups):
+                    clash_tvs_in_other_groups.append(m.tv.serial_number)
+            if clash_tvs_in_other_groups:
+                duplicate_kps.append({
+                    'keypad_id': kp.id,
+                    'keypad_serial_number': kp.serial_number,
+                    'other_tvs': clash_tvs_in_other_groups
+                })
 
     if duplicate_kps:
         error_details = [
@@ -6187,9 +6216,24 @@ def map_tv_keypads_api(request, tv_id):
                 continue
             try:
                 kp = Device.objects.get(id=kp_id, device_type=Device.DeviceType.KEYPAD)
-                # Remove any existing mapping of this keypad to another TV
-                TVKeypadMapping.objects.filter(keypad=kp).exclude(tv=tv).delete()
-                ascii_idx = get_safe_button_index_char(position)  # same fn for both indices
+                # Remove any existing mapping of this keypad to another TV only if not in the same group
+                for clash_m in TVKeypadMapping.objects.filter(keypad=kp).exclude(tv=tv):
+                    clash_tv_groups = set(GroupMapping.objects.filter(tvs=clash_m.tv).values_list('id', flat=True))
+                    if not tv_groups.intersection(clash_tv_groups):
+                        clash_m.delete()
+
+                if not kp.keypad_index:
+                    from django.db.models import Q
+                    group = GroupMapping.objects.filter(tvs=tv).first()
+                    if group:
+                        existing_indices = set(k.keypad_index for k in group.keypads.all() if k.keypad_index)
+                    else:
+                        existing_indices = set(Device.objects.filter(device_type=Device.DeviceType.KEYPAD).exclude(Q(keypad_index__isnull=True) | Q(keypad_index="")).values_list('keypad_index', flat=True))
+                    new_idx = get_next_available_index(existing_indices)
+                    kp.keypad_index = new_idx
+                    kp.save(update_fields=['keypad_index'])
+
+                ascii_idx = kp.keypad_index
                 mapping = TVKeypadMapping.objects.create(
                     tv=tv,
                     keypad=kp,
@@ -8442,13 +8486,23 @@ def save_group_button_mappings_api(request, group_id):
                 return chr(0x31 + v - 1)
             return str(v)
 
+        from django.db.models import Q
+        # Build map of keypad_id to its persistent keypad_index from Device model
+        kp_db_indices = {
+            k.id: k.keypad_index
+            for k in Device.objects.filter(id__in=[r['keypad_id'] for r in slots]).exclude(Q(keypad_index__isnull=True) | Q(keypad_index=""))
+        }
+
         kp_assigned_indices = {}
         for row in slots:
+            kp_id = row['keypad_id']
+            if kp_id in kp_db_indices:
+                row[idx_key] = kp_db_indices[kp_id]
             if row[idx_key] is not None:
-                kp_assigned_indices[row['keypad_id']] = _norm(row[idx_key])
+                kp_assigned_indices[kp_id] = _norm(row[idx_key])
 
         existing_in_db = set(
-            _norm(v) for v in TVKeypadMapping.objects.filter(tv__in=group_tv_ids).values_list('keypad_index', flat=True)
+            _norm(v) for v in Device.objects.filter(id__in=list(group_keypad_ids)).exclude(Q(keypad_index__isnull=True) | Q(keypad_index="")).values_list('keypad_index', flat=True)
         )
         used_global = set(kp_assigned_indices.values()).union(existing_in_db)
 
@@ -8466,6 +8520,13 @@ def save_group_button_mappings_api(request, group_id):
             else:
                 row[idx_key] = _norm(row[idx_key])
             result.append(row)
+            
+            # Persist back to the Device model right away so it is saved
+            kp_obj = Device.objects.filter(id=kp_id).first()
+            if kp_obj and not kp_obj.keypad_index:
+                kp_obj.keypad_index = row[idx_key]
+                kp_obj.save(update_fields=['keypad_index'])
+                
         return result
 
     parsed_disp_slots = _auto_assign_per_tv(parsed_disp_slots, 'button_index')
@@ -8479,7 +8540,7 @@ def save_group_button_mappings_api(request, group_id):
         # Stable update for TVDispenserMapping:
         # Preserve original button_index and do not delete them from group edit feature.
         existing_tdms = {
-            tdm.dispenser_id: tdm
+            (tdm.tv_id, tdm.dispenser_id): tdm
             for tdm in TVDispenserMapping.objects.filter(dispenser__in=list(disp_map.values()))
         }
         
@@ -8490,9 +8551,8 @@ def save_group_button_mappings_api(request, group_id):
             if not tv_obj or not disp_obj:
                 continue
                 
-            existing_tdm = existing_tdms.get(disp_obj.id)
+            existing_tdm = existing_tdms.get((tv_obj.id, disp_obj.id))
             if existing_tdm:
-                existing_tdm.tv = tv_obj
                 existing_tdm.save()
                 keep_tdm_ids.append(existing_tdm.id)
             else:
@@ -8517,7 +8577,7 @@ def save_group_button_mappings_api(request, group_id):
 
         # Stable update for TVKeypadMapping:
         existing_kpms = {
-            kpm.keypad_id: kpm
+            (kpm.tv_id, kpm.keypad_id): kpm
             for kpm in TVKeypadMapping.objects.filter(keypad__in=list(keypad_map.values()))
         }
         
@@ -8529,27 +8589,18 @@ def save_group_button_mappings_api(request, group_id):
             if not tv_obj or not kp_obj:
                 continue
                 
-            existing_kpm = existing_kpms.get(kp_obj.id)
+            existing_kpm = existing_kpms.get((tv_obj.id, kp_obj.id))
             if existing_kpm:
-                existing_kpm.tv = tv_obj
                 existing_kpm.dispenser = disp_obj
-                if row.get('keypad_index'):
-                    existing_kpm.keypad_index = row['keypad_index']
+                existing_kpm.keypad_index = kp_obj.keypad_index
                 existing_kpm.save()
                 keep_kpm_ids.append(existing_kpm.id)
             else:
-                # Determine next available index for this group
-                used_indices = set(
-                    TVKeypadMapping.objects.filter(tv__in=list(tv_map.values()))
-                    .exclude(keypad=kp_obj)
-                    .values_list('keypad_index', flat=True)
-                )
-                new_kp_idx = row.get('keypad_index') or get_next_available_index(used_indices)
                 new_kpm = TVKeypadMapping.objects.create(
                     tv=tv_obj,
                     keypad=kp_obj,
                     dispenser=disp_obj,
-                    keypad_index=new_kp_idx
+                    keypad_index=kp_obj.keypad_index
                 )
                 keep_kpm_ids.append(new_kpm.id)
                 

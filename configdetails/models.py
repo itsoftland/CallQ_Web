@@ -86,6 +86,7 @@ class Device(models.Model):
     is_active = models.BooleanField(default=True)
     random_number = models.CharField(max_length=50, default='XXXX', help_text="Random number for token dispenser")
     fcm_token = models.TextField(null=True, blank=True, help_text="FCM registration token for push notifications (TV devices)")
+    keypad_index = models.CharField(max_length=1, null=True, blank=True, help_text="Globally unique keypad index within a group, assigned only once at group creation.")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
