@@ -561,8 +561,8 @@
                 }
 
                 await loadMappings();
-                // Auto-fetch existing GroupMapping to pre-populate wizard
-                if (currentBranchId) await loadGroupMappingData();
+                // Auto-fetch existing GroupMapping disabled for new groups to start with a clean slate
+                // if (currentBranchId) await loadGroupMappingData();
 
                 return true;
             } catch (err) {
@@ -1016,6 +1016,26 @@
                 return;
             }
 
+            // Identify current group devices from wizard session selections and preloads
+            const currentGroupDeviceIds = new Set();
+            sessionMappings.forEach(m => {
+                currentGroupDeviceIds.add(String(m.source_device_id));
+                currentGroupDeviceIds.add(String(m.target_device_id));
+            });
+
+            // Also collect from device selector checkboxes
+            const allCheckboxes = document.querySelectorAll('input[type="checkbox"][id*="SelectorContainer"]:checked');
+            allCheckboxes.forEach(cb => {
+                currentGroupDeviceIds.add(String(cb.value));
+            });
+
+            // Also collect preloaded devices
+            if (typeof existingGroupDeviceIds !== 'undefined' && existingGroupDeviceIds) {
+                existingGroupDeviceIds.forEach(id => {
+                    currentGroupDeviceIds.add(String(id));
+                });
+            }
+
             // Group mappings into families using connected-component logic
             const visited = new Set();
             const families = [];
@@ -1052,6 +1072,25 @@
                 families.push(familyIds);
             });
 
+            // Partition families into current group and other groups
+            const currentGroupFamilies = [];
+            const otherFamilies = [];
+
+            families.forEach(familyIds => {
+                let belongsToCurrent = false;
+                for (const id of familyIds) {
+                    if (currentGroupDeviceIds.has(id)) {
+                        belongsToCurrent = true;
+                        break;
+                    }
+                }
+                if (belongsToCurrent) {
+                    currentGroupFamilies.push(familyIds);
+                } else {
+                    otherFamilies.push(familyIds);
+                }
+            });
+
             // Device type icons and colors
             const typeConfig = {
                 'TOKEN_DISPENSER': { icon: 'fas fa-ticket-alt', color: '#0d6efd', bg: '#cfe2ff', label: 'Dispenser' },
@@ -1061,8 +1100,11 @@
                 'TV': { icon: 'fas fa-tv', color: '#dc3545', bg: '#f8d7da', label: 'TV' }
             };
 
-            families.forEach((familyIds, idx) => {
-                // Group devices in this family by type
+            const groupNameInput = document.getElementById('group_name');
+            const groupName = (groupNameInput && groupNameInput.value.trim()) || "Current Group Configuration";
+
+            // Helper to render a chain of devices
+            function buildChainHTML(familyIds) {
                 const devicesByType = {};
                 familyIds.forEach(id => {
                     const dev = findDeviceById(id);
@@ -1072,7 +1114,6 @@
                     }
                 });
 
-                // Order: Dispenser → Keypad → LED → Broker → TV
                 const typeOrder = ['TOKEN_DISPENSER', 'KEYPAD', 'LED', 'BROKER', 'TV'];
                 const orderedTypes = typeOrder.filter(t => devicesByType[t] && devicesByType[t].length > 0);
 
@@ -1095,28 +1136,85 @@
                     });
                     chainHTML += `</div></div>`;
 
-                    // Arrow between types
                     if (tIdx < orderedTypes.length - 1) {
                         chainHTML += `<div class="d-flex align-items-center"><i class="fas fa-long-arrow-alt-right fa-lg text-muted"></i></div>`;
                     }
                 });
 
                 chainHTML += '</div>';
+                return chainHTML;
+            }
 
-                const familyCard = `
-                    <div class="card border rounded-4 mb-3 shadow-sm">
-                        <div class="card-body p-4">
-                            <div class="d-flex align-items-center mb-3">
-                                <span class="badge bg-dark rounded-pill me-2 px-3 py-2">
-                                    <i class="fas fa-link me-1"></i> Group ${idx + 1}
-                                </span>
-                                <span class="text-muted small">${familyIds.size} device(s) connected</span>
+            // Render Current Group Card
+            if (currentGroupFamilies.length > 0) {
+                let chainsHTML = '';
+                currentGroupFamilies.forEach((familyIds, idx) => {
+                    chainsHTML += `
+                        <div class="py-3 ${idx > 0 ? 'border-top mt-3' : ''}">
+                            <div class="text-muted small mb-3">
+                                <span class="badge bg-light text-dark border"><i class="fas fa-link me-1"></i> Chain ${idx + 1}</span>
                             </div>
-                            ${chainHTML}
+                            ${buildChainHTML(familyIds)}
+                        </div>
+                    `;
+                });
+
+                const groupCard = `
+                    <div class="card border rounded-4 mb-4 shadow-sm border-primary">
+                        <div class="card-header bg-primary bg-opacity-10 border-0 pt-4 pb-0">
+                            <div class="d-flex align-items-center justify-content-between mb-2">
+                                <h6 class="mb-0 fw-bold text-primary">
+                                    <i class="fas fa-sitemap me-2"></i>Group: ${groupName}
+                                </h6>
+                                <span class="badge bg-primary rounded-pill px-3 py-2 text-white">
+                                    <i class="fas fa-check-circle me-1"></i> Configuring
+                                </span>
+                            </div>
+                        </div>
+                        <div class="card-body p-4">
+                            ${chainsHTML}
                         </div>
                     </div>
                 `;
-                container.innerHTML += familyCard;
+                container.innerHTML += groupCard;
+            } else if (currentGroupDeviceIds.size > 0) {
+                const groupCard = `
+                    <div class="card border rounded-4 mb-4 shadow-sm border-primary">
+                        <div class="card-header bg-primary bg-opacity-10 border-0 pt-4 pb-0">
+                            <div class="d-flex align-items-center justify-content-between mb-2">
+                                <h6 class="mb-0 fw-bold text-primary">
+                                    <i class="fas fa-sitemap me-2"></i>Group: ${groupName}
+                                </h6>
+                                <span class="badge bg-primary rounded-pill px-3 py-2 text-white">
+                                    <i class="fas fa-check-circle me-1"></i> Configuring
+                                </span>
+                            </div>
+                        </div>
+                        <div class="card-body p-4 text-center">
+                            <i class="fas fa-unlink fa-2x text-muted mb-2"></i>
+                            <p class="text-muted small mb-0">No active mappings created for this group yet.</p>
+                        </div>
+                    </div>
+                `;
+                container.innerHTML += groupCard;
+            }
+
+            // Render Other Groups (existing)
+            otherFamilies.forEach((familyIds, idx) => {
+                const otherCard = `
+                    <div class="card border rounded-4 mb-3 shadow-sm bg-light bg-opacity-50">
+                        <div class="card-body p-4">
+                            <div class="d-flex align-items-center mb-3">
+                                <span class="badge bg-secondary rounded-pill me-2 px-3 py-2">
+                                    <i class="fas fa-link me-1"></i> Existing Configuration
+                                </span>
+                                <span class="text-muted small">${familyIds.size} device(s) connected</span>
+                            </div>
+                            ${buildChainHTML(familyIds)}
+                        </div>
+                    </div>
+                `;
+                container.innerHTML += otherCard;
             });
         }
 

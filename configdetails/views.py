@@ -3313,7 +3313,7 @@ def create_group_button_mappings(group, company, branch, dealer_customer):
         for btn_num in range(1, button_count + 1):
             if keypad_idx < len(keypads_list):
                 keypad = keypads_list[keypad_idx]
-                ButtonMapping.objects.get_or_create(
+                ButtonMapping.objects.update_or_create(
                     company=company, branch=branch,
                     dealer_customer=dealer_customer,
                     source_device=dispenser,
@@ -3326,7 +3326,7 @@ def create_group_button_mappings(group, company, branch, dealer_customer):
     if brokers_list:
         for idx, keypad in enumerate(keypads_list):
             broker = brokers_list[idx % len(brokers_list)]
-            ButtonMapping.objects.get_or_create(
+            ButtonMapping.objects.update_or_create(
                 company=company, branch=branch,
                 dealer_customer=dealer_customer,
                 source_device=keypad,
@@ -3338,7 +3338,7 @@ def create_group_button_mappings(group, company, branch, dealer_customer):
     if leds_list:
         for idx, keypad in enumerate(keypads_list):
             led = leds_list[idx % len(leds_list)]
-            ButtonMapping.objects.get_or_create(
+            ButtonMapping.objects.update_or_create(
                 company=company, branch=branch,
                 dealer_customer=dealer_customer,
                 source_device=keypad,
@@ -3350,7 +3350,7 @@ def create_group_button_mappings(group, company, branch, dealer_customer):
     if tvs_list:
         for idx, broker in enumerate(brokers_list):
             tv = tvs_list[idx % len(tvs_list)]
-            ButtonMapping.objects.get_or_create(
+            ButtonMapping.objects.update_or_create(
                 company=company, branch=branch,
                 dealer_customer=dealer_customer,
                 source_device=broker,
@@ -3624,6 +3624,17 @@ def mapping_view(request):
             session_mapping_ids = [
                 sid for sid in request.POST.getlist('session_mapping_ids[]') if sid
             ]
+
+            # Clean up stale mappings for exclusive devices (Token Dispenser, Keypad, LED)
+            # that are being assigned to this new group, excluding those saved in this wizard session.
+            exclusive_device_ids = [int(d_id) for d_id in (dispensers + keypads + leds) if d_id]
+            if exclusive_device_ids:
+                stale_mappings = ButtonMapping.objects.filter(
+                    Q(source_device_id__in=exclusive_device_ids) | Q(target_device_id__in=exclusive_device_ids)
+                )
+                if session_mapping_ids:
+                    stale_mappings = stale_mappings.exclude(id__in=session_mapping_ids)
+                stale_mappings.delete()
 
             if session_mapping_ids:
                 # The wizard already persisted the user's button choices.
