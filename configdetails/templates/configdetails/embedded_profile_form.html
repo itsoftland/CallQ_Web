@@ -241,7 +241,7 @@
                     </div>
 
                     <div class='col-12 mt-3'>
-                        <h6 class='text-muted mb-2'><i class='fas fa-star me-2'></i>VIP Settings</h6>
+                        <h6 class='text-muted mb-2'><i class='fas fa-star me-2'></i>Emergency Settings</h6>
                     </div>
                     <div class='col-md-4'>
                         <div class='form-check form-switch'>
@@ -250,16 +250,16 @@
                             {% else %}
                             <input class='form-check-input' type='checkbox' name='vip_enable' id='vip_enable'>
                             {% endif %}
-                            <label class='form-check-label fw-bold' for='vip_enable'>VIP Enable</label>
+                            <label class='form-check-label fw-bold' for='vip_enable'>Emergency Enable</label>
                         </div>
                     </div>
                     <div class='col-md-4'>
-                        <label class='form-label fw-bold'>VIP Count From</label>
+                        <label class='form-label fw-bold'>Emergency Count From</label>
                         <input type='number' name='vip_count_from' id='vip_count_from' class='form-control'
                             value='{{  profile.config_json.vip_count_from|default:""  }}' placeholder='Enter'>
                     </div>
                     <div class='col-md-4'>
-                        <label class='form-label fw-bold'>VIP Count To</label>
+                        <label class='form-label fw-bold'>Emergency Count To</label>
                         <input type='number' name='vip_count_to' id='vip_count_to' class='form-control'
                             value='{{  profile.config_json.vip_count_to|default:""  }}' placeholder='Enter'>
                     </div>

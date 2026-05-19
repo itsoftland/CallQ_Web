@@ -217,7 +217,7 @@
                     </div>
 
                     <div class="col-12 mt-4">
-                        <h5 class="text-muted mb-3"><i class="fas fa-star me-2"></i>VIP Settings</h5>
+                        <h5 class="text-muted mb-3"><i class="fas fa-star me-2"></i>Emergency Settings</h5>
                     </div>
                     <div class="col-md-4">
                         <div class="form-check form-switch">
@@ -226,16 +226,16 @@
                             {% else %}
                             <input class="form-check-input" type="checkbox" name="vip_enable" id="vip_enable">
                             {% endif %}
-                            <label class="form-check-label fw-bold" for="vip_enable">VIP Enable</label>
+                            <label class="form-check-label fw-bold" for="vip_enable">Emergency Enable</label>
                         </div>
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label fw-bold">VIP Count From</label>
+                        <label class="form-label fw-bold">Emergency Count From</label>
                         <input type="number" name="vip_count_from" id="vip_count_from" class="form-control"
                             value="{{  config.config_json.vip_count_from|default:''  }}">
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label fw-bold">VIP Count To</label>
+                        <label class="form-label fw-bold">Emergency Count To</label>
                         <input type="number" name="vip_count_to" id="vip_count_to" class="form-control"
                             value="{{  config.config_json.vip_count_to|default:''  }}">
                     </div>
@@ -596,7 +596,7 @@
                             </div>
                         </div>
                         <div class="col-12 mt-4">
-                            <h5 class="text-muted mb-3"><i class="fas fa-star me-2"></i>VIP Settings</h5>
+                            <h5 class="text-muted mb-3"><i class="fas fa-star me-2"></i>Emergency Settings</h5>
                         </div>
                         <div class="col-md-4">
                             <div class="form-check form-switch">
@@ -606,16 +606,16 @@
                                 {% else %}
                                 <input class="form-check-input" type="checkbox" name="vip_enable" id="kp_vip_enable">
                                 {% endif %}
-                                <label class="form-check-label fw-bold" for="kp_vip_enable">VIP Enable</label>
+                                <label class="form-check-label fw-bold" for="kp_vip_enable">Emergency Enable</label>
                             </div>
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label fw-bold">VIP From</label>
+                            <label class="form-label fw-bold">Emergency From</label>
                             <input type="number" name="vip_from" id="kp_vip_from" class="form-control"
                                 value="{{  config.config_json.vip_from|default:''  }}">
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label fw-bold">VIP To</label>
+                            <label class="form-label fw-bold">Emergency To</label>
                             <input type="number" name="vip_to" id="kp_vip_to" class="form-control"
                                 value="{{  config.config_json.vip_to|default:''  }}">
                         </div>

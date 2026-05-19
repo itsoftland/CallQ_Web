@@ -2023,7 +2023,6 @@ def device_config(request, device_id):
                                 TVKeypadMapping.objects.filter(keypad=kp).exclude(tv=device).delete()
                                 
                                 if not kp.keypad_index:
-                                    from django.db.models import Q
                                     # Find all keypads currently in this group to avoid conflicts
                                     group = GroupMapping.objects.filter(tvs=device).first()
                                     if group:
