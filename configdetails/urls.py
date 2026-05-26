@@ -114,5 +114,5 @@ urlpatterns = [
     path('token-report/', views.token_report_list, name='token_report_list'),
 
     # DEPT String API
-    path('api/keypad/dept-string/', views.get_dept_string_api, name='get_dept_string_api'),
+    path('api/keypad/dept-string', views.get_dept_string_api, name='get_dept_string_api'),
 ]
