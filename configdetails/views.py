@@ -9116,7 +9116,7 @@ def get_dept_string_api(request):
     """
     from companydetails.models import DealerCustomer as _DealerCustomer
 
-    NOT_FOUND = "$2,DEPT,XXXX,0,XXXX*"
+    NOT_FOUND = "$2,DEPT,XXXX,0,XXXX*"  # the raw fallback string
 
     # ── 1. Parse inputs ────────────────────────────────────────────────────
     if request.method == 'POST':
@@ -9127,7 +9127,7 @@ def get_dept_string_api(request):
         keypad_sn   = request.GET.get('keypad_serial_number')
 
     if not customer_id or not keypad_sn:
-        return HttpResponse(NOT_FOUND, content_type='text/plain')
+        return JsonResponse({'dept_string': NOT_FOUND})
 
     # ── 2. Resolve customer (Company or DealerCustomer) ────────────────────
     company         = None
@@ -9143,7 +9143,7 @@ def get_dept_string_api(request):
             company = dealer_customer.dealer
 
     if not company and not dealer_customer:
-        return HttpResponse(NOT_FOUND, content_type='text/plain')
+        return JsonResponse({'dept_string': NOT_FOUND})
 
     # ── 3. Find the KEYPAD device ──────────────────────────────────────────
     keypad_qs = Device.objects.filter(
@@ -9157,13 +9157,13 @@ def get_dept_string_api(request):
 
     keypad = keypad_qs.first()
     if not keypad:
-        return HttpResponse(NOT_FOUND, content_type='text/plain')
+        return JsonResponse({'dept_string': NOT_FOUND})
 
     # ── 4. Identify TARGET GROUP ───────────────────────────────────────────
     # A keypad belongs to a GroupMapping via the M2M `keypads` relation.
     group = GroupMapping.objects.filter(keypads=keypad).first()
     if not group:
-        return HttpResponse(NOT_FOUND, content_type='text/plain')
+        return JsonResponse({'dept_string': NOT_FOUND})
 
     # ── 5. Get ALL keypads in this group ──────────────────────────────────
     group_keypads = list(
@@ -9282,4 +9282,4 @@ def get_dept_string_api(request):
     parts.append('XXXX*')
 
     dept_string = ','.join(parts)
-    return HttpResponse(dept_string, content_type='text/plain')
+    return JsonResponse({'dept_string': dept_string})
