@@ -9091,3 +9091,195 @@ def generate_vip_token_api(request):
         'counter_prefix_code': counter.counter_prefix_code,
         'dispenser_sn': dispenser.serial_number,
     })
+
+
+# ---------------------------------------------------------------------------
+# DEPT String API
+# ---------------------------------------------------------------------------
+
+@api_view(['GET', 'POST'])
+@permission_classes([AllowAny])
+def get_dept_string_api(request):
+    """
+    Returns a DEPT formatted string for a given keypad, listing ALL counters
+    in the same group with each counter's correct keypad_index.
+
+    Accepts (GET params or POST body):
+        customer_id           – Company.company_id / Company.id / DealerCustomer.customer_id
+        keypad_serial_number  – Device.serial_number of a KEYPAD device
+
+    Response format:
+        $2,DEPT,XXXX,<NO_OF_COUNTERS>,<KEYPAD_INDEX_1>,<COUNTER_NAME_1>,...,XXXX*
+
+    On error / keypad not found:
+        $2,DEPT,XXXX,0,XXXX*
+    """
+    from companydetails.models import DealerCustomer as _DealerCustomer
+
+    NOT_FOUND = "$2,DEPT,XXXX,0,XXXX*"
+
+    # ── 1. Parse inputs ────────────────────────────────────────────────────
+    if request.method == 'POST':
+        customer_id = request.data.get('customer_id')
+        keypad_sn   = request.data.get('keypad_serial_number')
+    else:
+        customer_id = request.GET.get('customer_id')
+        keypad_sn   = request.GET.get('keypad_serial_number')
+
+    if not customer_id or not keypad_sn:
+        return HttpResponse(NOT_FOUND, content_type='text/plain')
+
+    # ── 2. Resolve customer (Company or DealerCustomer) ────────────────────
+    company         = None
+    dealer_customer = None
+
+    if str(customer_id).isdigit():
+        company = Company.objects.filter(id=customer_id).first()
+    if not company:
+        company = Company.objects.filter(company_id=customer_id).first()
+    if not company:
+        dealer_customer = _DealerCustomer.objects.filter(customer_id=customer_id).first()
+        if dealer_customer:
+            company = dealer_customer.dealer
+
+    if not company and not dealer_customer:
+        return HttpResponse(NOT_FOUND, content_type='text/plain')
+
+    # ── 3. Find the KEYPAD device ──────────────────────────────────────────
+    keypad_qs = Device.objects.filter(
+        serial_number=keypad_sn,
+        device_type=Device.DeviceType.KEYPAD,
+    )
+    if dealer_customer:
+        keypad_qs = keypad_qs.filter(dealer_customer=dealer_customer)
+    elif company:
+        keypad_qs = keypad_qs.filter(company=company)
+
+    keypad = keypad_qs.first()
+    if not keypad:
+        return HttpResponse(NOT_FOUND, content_type='text/plain')
+
+    # ── 4. Identify TARGET GROUP ───────────────────────────────────────────
+    # A keypad belongs to a GroupMapping via the M2M `keypads` relation.
+    group = GroupMapping.objects.filter(keypads=keypad).first()
+    if not group:
+        return HttpResponse(NOT_FOUND, content_type='text/plain')
+
+    # ── 5. Get ALL keypads in this group ──────────────────────────────────
+    group_keypads = list(
+        group.keypads.filter(device_type=Device.DeviceType.KEYPAD)
+        .prefetch_related('config')
+        .all()
+    )
+
+    # ── 6. Build dispenser_sn → keypad_index mapping ──────────────────────
+    # Each keypad's config_json['dispenser_sl_no'] tells us which dispenser(s)
+    # it handles. The keypad's own keypad_index is the value to record.
+    #
+    # A keypad may list a single dispenser SN in dispenser_sl_no.
+    # We also cross-reference TVKeypadMapping (dispenser FK) as a fallback.
+    dispenser_to_keypad_index = {}  # dispenser_sn (str) → keypad_index (ASCII char)
+
+    for kp in group_keypads:
+        kp_index = kp.keypad_index
+        if not kp_index:
+            # Fallback: check TVKeypadMapping for this keypad
+            tkm = TVKeypadMapping.objects.filter(keypad=kp).first()
+            if tkm:
+                kp_index = tkm.keypad_index
+        if not kp_index:
+            continue  # Cannot determine keypad_index for this keypad — skip
+
+        # Primary source: dispenser_sl_no in config_json
+        kp_config = {}
+        if hasattr(kp, 'config') and kp.config:
+            kp_config = kp.config.config_json or {}
+        elif hasattr(kp, 'config_profile') and kp.config_profile:
+            kp_config = kp.config_profile.config_json or {}
+
+        dispenser_sn_from_config = kp_config.get('dispenser_sl_no', '').strip()
+        if dispenser_sn_from_config and dispenser_sn_from_config != '0000000000000000':
+            dispenser_to_keypad_index[dispenser_sn_from_config] = kp_index
+
+        # Secondary source: TVKeypadMapping.dispenser FK
+        tkm_qs = TVKeypadMapping.objects.filter(keypad=kp).select_related('dispenser')
+        for tkm in tkm_qs:
+            if tkm.dispenser:
+                sn = tkm.dispenser.serial_number
+                if sn not in dispenser_to_keypad_index:
+                    dispenser_to_keypad_index[sn] = kp_index
+
+        # Tertiary source: GroupDispenserMapping — all dispensers attached to this
+        # group that are "owned" by this keypad via the keypad's dispenser_sl_no.
+        # (already covered above; this handles keypads with no config yet but
+        #  whose dispenser is explicitly in the group and linked via CTDM)
+
+    # ── 7. Fetch counters for this customer scoped to the same group ───────
+    # CounterConfig has company_id. Counters belong to a group indirectly:
+    # counter → CounterTokenDispenserMapping → dispenser → GroupDispenserMapping → group
+    #
+    # So: keep only counters whose dispenser is in this group.
+    group_dispenser_sns = set(
+        GroupDispenserMapping.objects.filter(group=group)
+        .values_list('dispenser__serial_number', flat=True)
+    )
+
+    # Also include dispensers referenced by the keypad configs (they may not be
+    # in GroupDispenserMapping yet if the setup is partial)
+    group_dispenser_sns.update(dispenser_to_keypad_index.keys())
+
+    # Base counter queryset for the customer
+    if dealer_customer:
+        counter_qs = CounterConfig.objects.filter(
+            company=company,
+            status=True,
+        )
+    else:
+        counter_qs = CounterConfig.objects.filter(
+            company=company,
+            status=True,
+        )
+
+    # Narrow to counters linked to dispensers that belong to this group
+    group_dispenser_ids = list(
+        GroupDispenserMapping.objects.filter(group=group)
+        .values_list('dispenser_id', flat=True)
+    )
+
+    # Get all CounterTokenDispenserMapping rows for dispensers in this group
+    ctdm_qs = CounterTokenDispenserMapping.objects.filter(
+        dispenser_id__in=group_dispenser_ids,
+    ).select_related('counter', 'dispenser')
+
+    # ── 8. Build output: (keypad_index, counter_name) pairs ───────────────
+    output_pairs = []  # list of (keypad_index_char, counter_name)
+
+    for ctdm in ctdm_qs:
+        counter      = ctdm.counter
+        dispenser_sn = ctdm.dispenser.serial_number
+
+        # Skip counters not belonging to this customer's company
+        if counter.company_id != company.id:
+            continue
+
+        # Look up keypad_index for this dispenser
+        kp_idx = dispenser_to_keypad_index.get(dispenser_sn)
+        if not kp_idx:
+            # Skip — this counter's dispenser has no keypad_index mapping
+            continue
+
+        output_pairs.append((kp_idx, counter.counter_name))
+
+    # ── 9. Sort by keypad_index (ASCII order) ─────────────────────────────
+    output_pairs.sort(key=lambda pair: pair[0])
+
+    # ── 10. Construct DEPT string ──────────────────────────────────────────
+    no_of_counters = len(output_pairs)
+    parts = ['$2', 'DEPT', 'XXXX', str(no_of_counters)]
+    for kp_idx, name in output_pairs:
+        parts.append(kp_idx)
+        parts.append(name)
+    parts.append('XXXX*')
+
+    dept_string = ','.join(parts)
+    return HttpResponse(dept_string, content_type='text/plain')
