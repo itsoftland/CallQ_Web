@@ -326,9 +326,20 @@ def get_roles_for_user(user):
 @user_passes_test(company_required)
 def user_edit(request, pk):
     user_to_edit = get_object_or_404(User, pk=pk)
+
+    # ── Snapshot the original company & branch from the DB record ──
+    # These are preserved during edit to prevent accidental overwrites.
+    original_company = user_to_edit.company_relation
+    original_branch = user_to_edit.branch_relation
+    original_company_id = user_to_edit.company_relation_id
+    original_branch_id = user_to_edit.branch_relation_id
+
     if request.method == 'POST':
         email = request.POST.get('email')
         role = request.POST.get('role')
+        # NOTE: company_id from form is ignored for company-bound roles
+        # (preserved from DB). Only used for PRODUCTION_ADMIN which allows
+        # explicit company selection.
         company_id = request.POST.get('company')
         branch_id = request.POST.get('branch')
         assigned_states = request.POST.getlist('assigned_state')
@@ -341,7 +352,7 @@ def user_edit(request, pk):
         # Validation: Check if email already exists (excluding current user)
         if User.objects.filter(email=email).exclude(pk=pk).exists():
             messages.error(request, f"User with email {email} already exists.")
-            companies, branches, single_branch, auto_company = prepare_relations(request, company_id, branch_id)
+            companies, branches, single_branch, auto_company = prepare_relations(request, original_company_id, original_branch_id)
             return render(request, 'userdetails/user_form.html', {
                 'edit_user': user_to_edit,
                 'companies': companies,
@@ -359,7 +370,7 @@ def user_edit(request, pk):
         # Validation: Check if username already exists (excluding current user)
         if User.objects.filter(username=username).exclude(pk=pk).exists():
             messages.error(request, f"User with username '{username}' (generated from email) already exists.")
-            companies, branches, single_branch, auto_company = prepare_relations(request, company_id, branch_id)
+            companies, branches, single_branch, auto_company = prepare_relations(request, original_company_id, original_branch_id)
             return render(request, 'userdetails/user_form.html', {
                 'edit_user': user_to_edit,
                 'companies': companies,
@@ -414,7 +425,9 @@ def user_edit(request, pk):
                     user_to_edit.dealer_customer_relation = None
                     user_to_edit.company_relation = request.user.company_relation
             else:
-                user_to_edit.company_relation_id = company_id
+                # FIX: Preserve original company — do NOT overwrite from form.
+                # The company field is read-only in the edit form.
+                user_to_edit.company_relation = original_company
                 user_to_edit.dealer_customer_relation = None
                 
             user_to_edit.branch_relation_id = branch_id

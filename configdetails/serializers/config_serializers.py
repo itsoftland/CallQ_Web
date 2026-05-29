@@ -91,10 +91,21 @@ class CounterConfigSerializer(serializers.ModelSerializer):
         read_only_fields = ('created_at', 'updated_at')
 
     def _get_company(self):
-        """Resolve the company from the instance (edit) or request context (create)."""
+        """Resolve the company from the instance (edit), request data, or user context."""
+        # For edits, use the instance's company
         if self.instance:
             return self.instance.company
+        # Check if company is explicitly provided in the request data (e.g. Super Admin API call)
         request = self.context.get('request')
+        if request and hasattr(request, 'data'):
+            company_id = request.data.get('company')
+            if company_id:
+                try:
+                    from companydetails.models import Company
+                    return Company.objects.get(id=company_id)
+                except Exception:
+                    pass
+        # Fall back to the user's own company
         if request and hasattr(request.user, 'company_relation') and request.user.company_relation:
             return request.user.company_relation
         return None

@@ -2028,7 +2028,8 @@ def device_config(request, device_id):
                                     if group:
                                         existing_indices = set(k.keypad_index for k in group.keypads.all() if k.keypad_index)
                                     else:
-                                        existing_indices = set(Device.objects.filter(device_type=Device.DeviceType.KEYPAD).exclude(Q(keypad_index__isnull=True) | Q(keypad_index="")).values_list('keypad_index', flat=True))
+                                        # FIX: Scope to group only — start fresh if no group exists
+                                        existing_indices = set()
                                     new_idx = get_next_available_index(existing_indices)
                                     kp.keypad_index = new_idx
                                     kp.save(update_fields=['keypad_index'])
@@ -6292,7 +6293,8 @@ def map_tv_keypads_api(request, tv_id):
                     if group:
                         existing_indices = set(k.keypad_index for k in group.keypads.all() if k.keypad_index)
                     else:
-                        existing_indices = set(Device.objects.filter(device_type=Device.DeviceType.KEYPAD).exclude(Q(keypad_index__isnull=True) | Q(keypad_index="")).values_list('keypad_index', flat=True))
+                        # FIX: Scope to group only — start fresh if no group exists
+                        existing_indices = set()
                     new_idx = get_next_available_index(existing_indices)
                     kp.keypad_index = new_idx
                     kp.save(update_fields=['keypad_index'])
@@ -7384,11 +7386,28 @@ def counter_create(request):
     """Create a new counter for the current user's company."""
     company = getattr(request.user, 'company_relation', None)
     if request.method == 'POST':
+        counter_name = request.POST.get('counter_name')
+        counter_prefix_code = request.POST.get('counter_prefix_code')
+
+        # Validate uniqueness within the same company before creating
+        if company and counter_name and CounterConfig.objects.filter(company=company, counter_name=counter_name).exists():
+            messages.error(request, f'Counter name "{counter_name}" already exists in your company.')
+            return render(request, 'configdetails/counter_form.html', {
+                'counter': None,
+                'action': 'Create'
+            })
+        if company and counter_prefix_code and CounterConfig.objects.filter(company=company, counter_prefix_code=counter_prefix_code).exists():
+            messages.error(request, f'Counter prefix code "{counter_prefix_code}" already exists in your company.')
+            return render(request, 'configdetails/counter_form.html', {
+                'counter': None,
+                'action': 'Create'
+            })
+
         try:
             counter = CounterConfig.objects.create(
                 company=company,
-                counter_name=request.POST.get('counter_name'),
-                counter_prefix_code=request.POST.get('counter_prefix_code'),
+                counter_name=counter_name,
+                counter_prefix_code=counter_prefix_code,
                 counter_display_name=request.POST.get('counter_display_name'),
                 max_token_number=int(request.POST.get('max_token_number', 0)),
                 status=request.POST.get('status') == 'on'

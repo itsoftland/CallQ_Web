@@ -89,7 +89,30 @@
                             <div id="hidden-inputs-container"></div>
                         </div>
                         <div id="company-branch-fields">
-                            {% if single_branch %}
+                            {% if edit_user and edit_user.company_relation %}
+                            {# EDIT MODE: Company is LOCKED to prevent accidental overwrite #}
+                            <div class="mb-3">
+                                <label class="form-label fw-medium">Company</label>
+                                <div class="d-flex align-items-center gap-2">
+                                    <input type="text" class="form-control rounded-3 bg-light"
+                                        value="{{ edit_user.company_relation.company_name }}" disabled>
+                                    <span class="badge bg-secondary text-white px-2 py-2" title="Company is locked during edit">
+                                        <i class="fas fa-lock"></i>
+                                    </span>
+                                </div>
+                                <input type="hidden" name="company" value="{{ edit_user.company_relation.id }}">
+                                <small class="text-muted">Company cannot be changed during edit</small>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label fw-medium">Branch</label>
+                                <select name="branch" class="form-select rounded-3" id="id_branch">
+                                    <option value="">None</option>
+                                    {% for b in branches %}
+                                    <option value="{{ b.id }}" {% if b.is_selected %}selected{% endif %}>{{ b.branch_name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            {% elif single_branch %}
                             {# Both locked: only one branch exists #}
                             <div class="mb-3">
                                 <label class="form-label fw-medium">Company</label>
