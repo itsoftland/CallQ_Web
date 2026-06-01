@@ -610,7 +610,7 @@ def get_embedded_config(request):
     
     for device in devices:
         # Only return config for KEYPAD and BROKER devices
-        if device.device_type not in ('KEYPAD', 'BROKER'):
+        if device.device_type not in ('KEYPAD', 'BROKER', 'TOKEN_DISPENSER'):
             continue
 
         # Fetch config
