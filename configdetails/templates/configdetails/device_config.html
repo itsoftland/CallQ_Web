@@ -1024,37 +1024,67 @@
 
 
                         {% elif device.device_type == 'LED' %}
+                        {# LED config values are set by the device at registration via the API.
+                           They are stored in config_json and displayed read-only here. #}
                         <div class="row g-3">
                             <div class="col-md-6">
-                                <label class="form-label fw-bold">Sound Mode (S/B)</label>
-                                <select name="sound_mode" class="form-select">
-                                    <option value="0" {% if config.config_json.sound_mode == "0" %}selected{% endif %}>0 -
-                                        Bell</option>
-                                    <option value="1" {% if config.config_json.sound_mode == "1" %}selected{% endif %}>1 -
-                                        MY sound module</option>
-                                    <option value="2" {% if config.config_json.sound_mode == "2" %}selected{% endif %}>2 -
-                                        New Sil audio module</option>
-                                </select>
+                                <label class="form-label fw-bold">
+                                    Sound Mode (SB)
+                                    <i class="fas fa-lock text-muted ms-1 small" title="Set by device, not editable"></i>
+                                </label>
+                                <div class="form-control bg-light text-dark" style="cursor:not-allowed; min-height:38px;">
+                                    {% if config.config_json.sound_mode == "0" %}
+                                        0 – Bell
+                                    {% elif config.config_json.sound_mode == "1" %}
+                                        1 – MY sound module
+                                    {% elif config.config_json.sound_mode == "2" %}
+                                        2 – New Sil audio module
+                                    {% else %}
+                                        <span class="text-muted">—</span>
+                                    {% endif %}
+                                </div>
+                                {# Hidden input preserves value through form save #}
+                                <input type="hidden" name="sound_mode" value="{{ config.config_json.sound_mode|default:'' }}">
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label fw-bold">Display Type (DT)</label>
-                                <select name="display_type" class="form-select">
-                                    <option value="1" {% if config.config_json.display_type == "1" %}selected{% endif %}>1
-                                        - Single counter</option>
-                                    <option value="2" {% if config.config_json.display_type == "2" %}selected{% endif %}>2
-                                        - Double counter</option>
-                                    <option value="4" {% if config.config_json.display_type == "4" %}selected{% endif %}>4
-                                        - Four counter</option>
-                                </select>
+                                <label class="form-label fw-bold">
+                                    Display Type (DT)
+                                    <i class="fas fa-lock text-muted ms-1 small" title="Set by device, not editable"></i>
+                                </label>
+                                <div class="form-control bg-light text-dark" style="cursor:not-allowed; min-height:38px;">
+                                    {% if config.config_json.display_type == "1" %}
+                                        1 – Single counter
+                                    {% elif config.config_json.display_type == "2" %}
+                                        2 – Double counter
+                                    {% elif config.config_json.display_type == "4" %}
+                                        4 – Four counter
+                                    {% else %}
+                                        <span class="text-muted">—</span>
+                                    {% endif %}
+                                </div>
+                                <input type="hidden" name="display_type" value="{{ config.config_json.display_type|default:'' }}">
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label fw-bold">Number of Digits (ND)</label>
-                                <select name="no_of_digits" class="form-select">
-                                    <option value="3" {% if config.config_json.no_of_digits == "3" %}selected{% endif %}>3
-                                        Digits</option>
-                                    <option value="4" {% if config.config_json.no_of_digits == "4" %}selected{% endif %}>4
-                                        Digits</option>
-                                </select>
+                                <label class="form-label fw-bold">
+                                    Number of Digits (ND)
+                                    <i class="fas fa-lock text-muted ms-1 small" title="Set by device, not editable"></i>
+                                </label>
+                                <div class="form-control bg-light text-dark" style="cursor:not-allowed; min-height:38px;">
+                                    {% if config.config_json.no_of_digits == "3" %}
+                                        3 Digits
+                                    {% elif config.config_json.no_of_digits == "4" %}
+                                        4 Digits
+                                    {% else %}
+                                        <span class="text-muted">—</span>
+                                    {% endif %}
+                                </div>
+                                <input type="hidden" name="no_of_digits" value="{{ config.config_json.no_of_digits|default:'' }}">
+                            </div>
+                            <div class="col-12">
+                                <small class="text-muted">
+                                    <i class="fas fa-info-circle me-1"></i>
+                                    LED config is device-provided and only applicable for LED devices. These values are set by the device at registration and cannot be edited from the UI.
+                                </small>
                             </div>
                         </div>
                         {% endif %}

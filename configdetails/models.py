@@ -425,6 +425,7 @@ class LedConfig(models.Model):
     def __str__(self):
         return f"Led Config {self.led.serial_number}"
 
+
 class TVCounter(models.Model):
     tv_config = models.ForeignKey(TVConfig, on_delete=models.CASCADE, related_name='counters')
     counter_id = models.CharField(max_length=50) # The logical ID e.g. "TD-MAC-C1"

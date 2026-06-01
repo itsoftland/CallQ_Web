@@ -1800,7 +1800,8 @@ def device_config(request, device_id):
             all_counters = []
             mapped_counter_ids = []
             mapped_counter_by_button = {}
-    # LED handled via config_json only
+
+    # LED: config is stored in DeviceConfig.config_json (same as all other device types)
 
     # Fetch mapped devices for Keypad auto-configuration
     mapped_dispenser_sl_no = None
@@ -7769,13 +7770,28 @@ def register_device_api(request):
         "mac_address": "202505CAL000026",
         "time": "2026-02-26T11:51:20",        # optional timestamp from device
         "bluetooth_name": "Broker 1",         # stored in device_model column
-        "display_name": "Broker 1"            # stored in display_name column
+        "display_name": "Broker 1",           # stored in display_name column
+
+        # LED devices only — ignored for all other device types:
+        "led_config": {
+            "SB": 1,   # Sound/Bell: 0, 1, or 2
+            "DT": 2,   # Display Type: 1, 2, or 4
+            "ND": 4    # Number of Digits: 3 or 4
+        }
     }
 
+    LED config rules:
+    - led_config is processed ONLY when device_type == "LED"
+    - led_config is ignored for all other device types
+    - led_config is optional for LED devices; if omitted, no config is stored
+    - led_config must be COMPLETE (all 3 keys: SB, DT, ND) or absent
+    - LED config is device-provided and only applicable for LED devices
+
     Responses:
-        201 - Device created, waiting for licensing
-        409 - Device already exists
-        400 - Missing / invalid fields
+        201 - New device created (+ LED config stored if provided)
+        200 - Existing LED device: LED config updated or unchanged
+        409 - Non-LED device already exists
+        400 - Missing / invalid fields or invalid led_config
     """
     log_api_request('register_device_api', request)
 
@@ -7786,7 +7802,7 @@ def register_device_api(request):
     bluetooth_name = request.data.get('bluetooth_name', '')  # stored in device_model
     display_name = request.data.get('display_name', '')      # stored in display_name
 
-    # --- Validation ---
+    # --- Validation: required top-level fields ---
     if not serial_number or not device_type:
         log_api_response('register_device_api', 400, error='serial_number and device_type are required')
         return Response({
@@ -7802,13 +7818,127 @@ def register_device_api(request):
             'message': f'Invalid device_type. Must be one of: {", ".join(valid_types)}'
         }, status=400)
 
-    # --- Duplicate check ---
-    if Device.objects.filter(serial_number=serial_number).exists():
-        log_api_response('register_device_api', 409, error='Device already exists')
+    # --- LED config pre-validation (before any DB access) ---
+    # Only validate if device_type is LED and led_config was provided.
+    # For non-LED devices, led_config is silently ignored.
+    led_config_data = None
+    if device_type == Device.DeviceType.LED:
+        raw_led_config = request.data.get('led_config')
+        if raw_led_config is not None:
+            # Must be a dict/object
+            if not isinstance(raw_led_config, dict):
+                log_api_response('register_device_api', 400, error='led_config must be an object')
+                return Response({
+                    'status': 'error',
+                    'message': 'led_config must be an object with keys SB, DT, and ND'
+                }, status=400)
+
+            # Partial led_config is rejected — must be complete or absent
+            required_keys = {'SB', 'DT', 'ND'}
+            missing_keys = required_keys - set(raw_led_config.keys())
+            if missing_keys:
+                log_api_response('register_device_api', 400, error=f'led_config missing keys: {missing_keys}')
+                return Response({
+                    'status': 'error',
+                    'message': f'led_config is incomplete. Missing required keys: {", ".join(sorted(missing_keys))}. '
+                               f'led_config must contain all of: SB, DT, ND'
+                }, status=400)
+
+            # Validate allowed values
+            sb_val = raw_led_config['SB']
+            dt_val = raw_led_config['DT']
+            nd_val = raw_led_config['ND']
+
+            if sb_val not in (0, 1, 2):
+                log_api_response('register_device_api', 400, error=f'Invalid SB value: {sb_val}')
+                return Response({
+                    'status': 'error',
+                    'message': f'Invalid SB value: {sb_val!r}. SB must be one of [0, 1, 2]'
+                }, status=400)
+
+            if dt_val not in (1, 2, 4):
+                log_api_response('register_device_api', 400, error=f'Invalid DT value: {dt_val}')
+                return Response({
+                    'status': 'error',
+                    'message': f'Invalid DT value: {dt_val!r}. DT must be one of [1, 2, 4]'
+                }, status=400)
+
+            if nd_val not in (3, 4):
+                log_api_response('register_device_api', 400, error=f'Invalid ND value: {nd_val}')
+                return Response({
+                    'status': 'error',
+                    'message': f'Invalid ND value: {nd_val!r}. ND must be one of [3, 4]'
+                }, status=400)
+
+            # All valid — store the cleaned values for later DB write
+            led_config_data = {'SB': sb_val, 'DT': dt_val, 'ND': nd_val}
+
+    # --- Existing device: update fields if changed, return 200 ---
+    existing_device = Device.objects.filter(serial_number=serial_number).first()
+
+    if existing_device:
+        update_fields = []
+        updates_made = []
+
+        # --- Update bluetooth_name (device_model) if provided and changed ---
+        if bluetooth_name and existing_device.device_model != bluetooth_name:
+            existing_device.device_model = bluetooth_name
+            update_fields.append('device_model')
+            updates_made.append('bluetooth_name')
+
+        # --- Update display_name if provided and changed ---
+        if display_name and existing_device.display_name != display_name:
+            existing_device.display_name = display_name
+            update_fields.append('display_name')
+            updates_made.append('display_name')
+
+        if update_fields:
+            update_fields.append('updated_at')
+            existing_device.save(update_fields=update_fields)
+
+        # --- LED-specific: update config_json with SB/DT/ND if provided/changed ---
+        led_config_action = None
+        if device_type == Device.DeviceType.LED and led_config_data is not None:
+            try:
+                existing_cfg, _ = DeviceConfig.objects.get_or_create(device=existing_device)
+                current_json = existing_cfg.config_json or {}
+
+                incoming_led = {
+                    'sound_mode': str(led_config_data['SB']),
+                    'display_type': str(led_config_data['DT']),
+                    'no_of_digits': str(led_config_data['ND']),
+                }
+                led_changed = any(current_json.get(k) != v for k, v in incoming_led.items())
+
+                if led_changed:
+                    existing_cfg.config_json = {**current_json, **incoming_led}
+                    existing_cfg.save(update_fields=['config_json', 'updated_at'])
+                    led_config_action = 'updated'
+                    updates_made.append('led_config')
+                else:
+                    led_config_action = 'unchanged'
+            except Exception as e:
+                log_api_response('register_device_api', 500, error=str(e))
+                return Response({
+                    'status': 'error',
+                    'message': f'Failed to update LED config: {str(e)}'
+                }, status=500)
+
+        response_data = {
+            'serial_number': serial_number,
+            'device_type': device_type,
+            'device_id': existing_device.id,
+            'updates': updates_made if updates_made else ['none'],
+        }
+        if led_config_action is not None:
+            response_data['led_config_action'] = led_config_action
+
+        log_api_response('register_device_api', 200, response_data=response_data)
         return Response({
-            'status': 'error',
-            'message': 'Device already exists'
-        }, status=409)
+            'status': 'success',
+            'message': 'Device already registered' + (f' — updated: {", ".join(updates_made)}' if updates_made else ' — no changes'),
+            'data': response_data,
+        }, status=200)
 
     # --- Create device + production serial entry inside a transaction ---
     try:
@@ -7838,6 +7968,20 @@ def register_device_api(request):
                 is_registered=False,
             )
 
+            # 4. LED config storage — stored in DeviceConfig.config_json (same table as
+            #    all other device types). Keys match existing template field names:
+            #      SB → sound_mode, DT → display_type, ND → no_of_digits
+            #    Only applied for LED devices when led_config was provided.
+            if device_type == Device.DeviceType.LED and led_config_data is not None:
+                led_cfg_obj, _ = DeviceConfig.objects.get_or_create(device=device)
+                led_cfg_obj.config_json = {
+                    **(led_cfg_obj.config_json or {}),
+                    'sound_mode': str(led_config_data['SB']),
+                    'display_type': str(led_config_data['DT']),
+                    'no_of_digits': str(led_config_data['ND']),
+                }
+                led_cfg_obj.save(update_fields=['config_json', 'updated_at'])
+
         log_api_response('register_device_api', 201, response_data={'serial_number': serial_number})
         return Response({
             'status': 'success',
@@ -7849,6 +7993,7 @@ def register_device_api(request):
                 'bluetooth_name': bluetooth_name,
                 'display_name': display_name,
                 'device_id': device.id,
+                'led_config_stored': led_config_data is not None,
             }
         }, status=201)
 
@@ -7858,6 +8003,7 @@ def register_device_api(request):
             'status': 'error',
             'message': f'Failed to register device: {str(e)}'
         }, status=500)
+
 
 
 # ---------------------------------------------------------------------------
