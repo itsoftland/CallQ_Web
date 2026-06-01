@@ -68,6 +68,51 @@ def _parse_pos(val):
         pass
     return 0
 
+
+def _assign_keypad_indices_without_tv(keypads_list, used_indices=None):
+    """
+    Fallback keypad_index generation when no TV or broker is present in a group.
+
+    Assigns stable ASCII slot indices (chr(0x31)='1' … 'z') to each keypad
+    in *keypads_list* that does not yet have a keypad_index.  Keypads that
+    already carry a keypad_index are left untouched (idempotent).
+
+    Ordering: keypads are sorted by Device.id (ascending) so the assignment
+    is deterministic across repeated calls and independent of serial-number
+    content or insertion order.
+
+    Args:
+        keypads_list  – iterable of Device objects (device_type == KEYPAD)
+        used_indices  – optional set[str] of ASCII chars already claimed by
+                        sibling groups / TV-based assignments.  When omitted,
+                        the function seeds the set from the pre-existing
+                        keypad_index values of the supplied keypads.
+
+    Returns:
+        dict[int, str] – {device.id: keypad_index_char} for every keypad
+                         in keypads_list (including those already assigned).
+    """
+    # Sort deterministically so index 1 always goes to the lowest device id
+    sorted_keypads = sorted(keypads_list, key=lambda k: k.id)
+
+    if used_indices is None:
+        # Seed from whatever is already stored on the supplied keypads
+        used_indices = set(k.keypad_index for k in sorted_keypads if k.keypad_index)
+
+    result = {}
+    for keypad in sorted_keypads:
+        if keypad.keypad_index:
+            # Already assigned — honour the stored value
+            result[keypad.id] = keypad.keypad_index
+        else:
+            new_idx = get_next_available_index(used_indices)
+            used_indices.add(new_idx)
+            keypad.keypad_index = new_idx
+            keypad.save(update_fields=['keypad_index'])
+            result[keypad.id] = new_idx
+    return result
+
+
 # --- API VIEWS ---
 class DeviceViewSet(viewsets.ModelViewSet):
     queryset = Device.objects.all()
@@ -564,6 +609,10 @@ def get_embedded_config(request):
     result = []
     
     for device in devices:
+        # Only return config for KEYPAD and BROKER devices
+        if device.device_type not in ('KEYPAD', 'BROKER'):
+            continue
+
         # Fetch config
         config = {}
         if hasattr(device, 'config') and device.config:
@@ -613,14 +662,32 @@ def get_embedded_config(request):
             text = config.get('keypad_device_text') or 'Welcome'
             logo_enable = config.get('logo_enable') or '0'
             # Keypad Index is stored in Device.keypad_index as the single source of truth,
-            # with fallback to TVKeypadMapping.keypad_index.
+            # with cascading fallback:
+            #   1. Device.keypad_index  (persistent, preferred)
+            #   2. TVKeypadMapping.keypad_index  (TV-linked slot)
+            #   3. Group-membership fallback  (no TV — assigns index via helper)
+            #   4. config['counter_no'] or '1'  (last resort)
             counter_num = device.keypad_index
             if not counter_num:
                 kp_mapping = TVKeypadMapping.objects.filter(keypad=device).select_related('dispenser').first()
                 if kp_mapping and kp_mapping.keypad_index:
                     counter_num = kp_mapping.keypad_index
                 else:
-                    counter_num = config.get('counter_no') or '1'
+                    # ── Fallback: keypad_index generation when TV/broker missing ─
+                    # If this keypad belongs to a GroupMapping (even one without a
+                    # TV), trigger _assign_keypad_indices_without_tv() for all
+                    # keypads in the group so every sibling gets a stable index,
+                    # then refresh this device to pick up its newly assigned value.
+                    group = GroupMapping.objects.filter(keypads=device).first()
+                    if group:
+                        group_keypads = list(group.keypads.order_by('id'))
+                        _assign_keypad_indices_without_tv(group_keypads)
+                        device.refresh_from_db(fields=['keypad_index'])
+                        counter_num = device.keypad_index
+                    # Final last-resort: use config value or positional default '1'
+                    if not counter_num:
+                        counter_num = config.get('counter_no') or '1'
+
             # Convert old values (0/1) to new values (1/2) for backward compatibility
             single_multiple_raw = config.get('single_multiple')
             if single_multiple_raw == '0':
@@ -684,7 +751,7 @@ def get_embedded_config(request):
                 k_val = config.get(f'keypad_sl_no_{i}') or config.get(f'keypad_sl_no' if i==1 else '') or '0'
                 final_keypads.append(k_val)
 
-            remaining_bit_flag = config.get('remaining_bit_flag', '1')
+            remaining_bit_flag = '1'  # Hardcoded constant — not configurable via UI
 
             # Button string messages (B, C, D buttons on keypad)
             # Stored in device config as button_b_string_id, button_c_string_id, button_d_string_id
@@ -1839,14 +1906,27 @@ def device_config(request, device_id):
                     json_data[btn_key] = json_data[btn_key][:16]
 
         if device.device_type == Device.DeviceType.TOKEN_DISPENSER:
-            dispenser_checkbox_keys = ['day_wise_reset', 'common_pool', 'duplicate_print', 'standalone', 'vip_enable', 'initial_print']
+            dispenser_checkbox_keys = ['day_wise_reset', 'common_pool', 'duplicate_print', 'standalone', 'initial_print']
             for key in dispenser_checkbox_keys:
                 json_data[key] = '1' if request.POST.get(key) == 'on' else '0'
 
-            # Force fixed fields regardless of POST (prevents tampering)
-            # fixed_company_name, fixed_location = _fixed_company_and_location(device)
-            # json_data['company_name'] = fixed_company_name
-            # json_data['location'] = fixed_location
+            # Auto-derive dispenser_id from GroupDispenserMapping.dispenser_button_index.
+            # The UI no longer exposes a manual field — the system assigns this from the
+            # group slot so it is always consistent and cannot be entered incorrectly.
+            json_data.pop('dispenser_id', None)  # discard any stale/manual value
+            try:
+                _gdm = GroupDispenserMapping.objects.filter(dispenser=device).first()
+                if _gdm and _gdm.dispenser_button_index:
+                    # dispenser_button_index is stored as an ASCII char ('1','2',...)
+                    # Convert to integer (e.g. '1' -> 1) for the config payload
+                    _raw_idx = _gdm.dispenser_button_index
+                    _int_idx = ord(_raw_idx) - 0x30 if len(_raw_idx) == 1 else int(_raw_idx)
+                    json_data['dispenser_id'] = str(_int_idx)
+                else:
+                    # No group mapping yet — default to '1'
+                    json_data['dispenser_id'] = config.config_json.get('dispenser_id', '1')
+            except Exception:
+                json_data['dispenser_id'] = config.config_json.get('dispenser_id', '1')
 
         if device.device_type == 'BROKER':
             # Automatically generate topic: customerid-serialnumber
@@ -2529,7 +2609,21 @@ def device_config(request, device_id):
     ads_enabled = False
     if hasattr(device, 'company') and device.company:
         ads_enabled = device.company.ads_enabled
-    
+
+    # Derive the auto-assigned dispenser slot index for read-only display in the template.
+    # Only relevant for TOKEN_DISPENSER; uses the GroupDispenserMapping record as the
+    # single source of truth so it is always consistent with the backend logic.
+    dispenser_button_index_display = None
+    if device.device_type == Device.DeviceType.TOKEN_DISPENSER:
+        try:
+            _gdm_ctx = GroupDispenserMapping.objects.filter(dispenser=device).first()
+            if _gdm_ctx and _gdm_ctx.dispenser_button_index:
+                _raw = _gdm_ctx.dispenser_button_index
+                # Convert ASCII char '1' -> 1, '2' -> 2, etc.
+                dispenser_button_index_display = str(ord(_raw) - 0x30) if len(_raw) == 1 else _raw
+        except Exception:
+            pass
+
     return render(request, 'configdetails/device_config.html', {
         'device': device,
         'config': config,
@@ -2556,6 +2650,7 @@ def device_config(request, device_id):
         'available_keypads_serials': available_keypads_serials,
         'default_company_name': fixed_company_name,
         'default_location': fixed_location,
+        'dispenser_button_index_display': dispenser_button_index_display,
     })
 
 
@@ -3190,7 +3285,16 @@ def _create_tv_slot_mappings(group, new_dispenser_ids=None, new_tv_ids=None, new
     tvs_list        = list(group.tvs.all().order_by('id'))
 
     if not tvs_list:
-        return  # Nothing to do without at least one TV
+        # ── FALLBACK: No TV in group ──────────────────────────────────────────
+        # TVKeypadMapping rows require a TV, so we cannot create them here.
+        # However we CAN (and must) ensure every keypad in the group has a
+        # stable, unique keypad_index stored directly on the Device record.
+        # All downstream APIs read Device.keypad_index as the primary source
+        # of truth, so this satisfies them without touching counter/dispenser logic.
+        if keypads_list:
+            existing_indices = set(k.keypad_index for k in keypads_list if k.keypad_index)
+            _assign_keypad_indices_without_tv(keypads_list, used_indices=existing_indices)
+        return
 
     is_initial_creation = (new_dispenser_ids is None and new_tv_ids is None and new_keypad_ids is None)
     if is_initial_creation:
@@ -5007,7 +5111,7 @@ def _build_config_json(device_type, post, company=None, branch=None):
     elif device_type == 'KEYPAD':
         keypad_data = {
             'keypad_device_text': post.get('keypad_device_text', ''),
-            'counter_no': post.get('counter_no', ''),
+            # counter_no removed — keypad index is read directly from Device.keypad_index (not configurable via UI)
             'logo_enable': '1' if post.get('logo_enable') == 'on' else '0',
             'single_multiple': post.get('single_multiple', '1'),  # Default to '1' (single mode)
             'skip_enable': '1' if post.get('skip_enable') == 'on' else '0',
@@ -5018,7 +5122,7 @@ def _build_config_json(device_type, post, company=None, branch=None):
             'keypad_pool_mode': post.get('keypad_pool_mode', '0'),
             'dispenser_sl_no': post.get('dispenser_sl_no', ''),
             'no_of_keypad_dev': post.get('no_of_keypad_dev', '1'),
-            'remaining_bit_flag': post.get('remaining_bit_flag', '1'),
+            # remaining_bit_flag removed — hardcoded to '1' in the API, not configurable
             # Button string IDs for buttons B, C, D (passed to Android TV via keypad config)
             'button_b_string_id': post.get('button_b_string_id', ''),
             'button_c_string_id': post.get('button_c_string_id', ''),
@@ -9179,12 +9283,147 @@ def get_dept_string_api(request):
         return JsonResponse({'dept_string': NOT_FOUND})
 
     # ── 4. Identify TARGET GROUP ───────────────────────────────────────────
-    # A keypad belongs to a GroupMapping via the M2M `keypads` relation.
+    # Primary path: A keypad belongs to a GroupMapping via the M2M `keypads`
+    # relation (TV/broker-based grouping).
+    # Fallback path: When no GroupMapping exists, derive the group from the
+    # keypad config relationships (keypad_sl_no_* fields) using a graph/union-
+    # find approach.  Each keypad's device_id (serial_number) is its unique
+    # identity; config content is only used to discover edges between keypads.
     group = GroupMapping.objects.filter(keypads=keypad).first()
-    if not group:
-        return JsonResponse({'dept_string': NOT_FOUND})
 
-    # ── 5. Get ALL keypads in this group ──────────────────────────────────
+    # ── FALLBACK: Keypad-config-graph-based grouping (no TV / broker) ──────
+    if not group:
+        # ── 4a. Collect all KEYPAD devices for this customer ────────────────
+        if dealer_customer:
+            all_keypads_qs = Device.objects.filter(
+                dealer_customer=dealer_customer,
+                device_type=Device.DeviceType.KEYPAD,
+                is_active=True,
+            ).prefetch_related('config')
+        else:
+            all_keypads_qs = Device.objects.filter(
+                company=company,
+                device_type=Device.DeviceType.KEYPAD,
+                is_active=True,
+            ).prefetch_related('config')
+
+        # Build a serial_number → Device map (unique identity per device)
+        all_keypad_map = {kp.serial_number: kp for kp in all_keypads_qs}
+
+        # ── 4b. Build adjacency list from config relationships ───────────────
+        # Each keypad's config has keypad_sl_no_1 … keypad_sl_no_5 listing
+        # the serial numbers of peer keypads in the same logical group.
+        # Treat these as undirected edges in a graph.
+        # Duplicate config strings (same keypad_sl_no_* list on multiple
+        # keypads) are handled naturally because we key on serial_number.
+        adjacency = {sn: set() for sn in all_keypad_map}
+        for sn, kp in all_keypad_map.items():
+            kp_cfg = {}
+            if hasattr(kp, 'config') and kp.config:
+                kp_cfg = kp.config.config_json or {}
+            # Extract peer serial numbers from config slots
+            for slot in range(1, 6):
+                peer_sn = (kp_cfg.get(f'keypad_sl_no_{slot}') or '').strip()
+                if peer_sn and peer_sn != '0' and peer_sn in all_keypad_map:
+                    adjacency[sn].add(peer_sn)
+                    adjacency[peer_sn].add(sn)  # ensure undirected edge
+
+        # ── 4c. Find connected component containing the target keypad ────────
+        # BFS / union-find to collect all keypads reachable from the target.
+        visited = set()
+        queue  = [keypad.serial_number]
+        while queue:
+            current = queue.pop()
+            if current in visited:
+                continue
+            visited.add(current)
+            for neighbor in adjacency.get(current, set()):
+                if neighbor not in visited:
+                    queue.append(neighbor)
+
+        # The connected component is the derived group.
+        # If the keypad has no config links it forms a single-member group.
+        derived_group_keypads = [all_keypad_map[sn] for sn in visited if sn in all_keypad_map]
+
+        # ── 4d. Assign sequential button_index per derived group ─────────────
+        # Sort members deterministically (by serial_number) so the index
+        # assignment is stable across repeated calls.
+        # Use Device.keypad_index if already assigned; otherwise assign 1…N.
+        derived_group_keypads.sort(key=lambda d: d.serial_number)
+
+        # Build a map: serial_number → button_index (1-based integer)
+        derived_kp_button_index = {}  # sn → int position (1-based)
+        next_pos = 1
+        for kp in derived_group_keypads:
+            if kp.keypad_index:
+                # Honour pre-assigned persistent index (convert ASCII → int)
+                try:
+                    pos = ord(str(kp.keypad_index)) - 0x31 + 1
+                except Exception:
+                    pos = next_pos
+            else:
+                pos = next_pos
+            derived_kp_button_index[kp.serial_number] = pos
+            next_pos = max(next_pos, pos) + 1  # ensure strict monotone growth
+
+        # ── 4e. Build dispenser_sn → keypad_index mapping (fallback path) ────
+        dispenser_to_keypad_index = {}  # dispenser_sn (str) → ASCII char
+        for kp in derived_group_keypads:
+            pos = derived_kp_button_index.get(kp.serial_number, 1)
+            kp_index_char = get_safe_button_index_char(pos)
+
+            kp_cfg = {}
+            if hasattr(kp, 'config') and kp.config:
+                kp_cfg = kp.config.config_json or {}
+            elif hasattr(kp, 'config_profile') and kp.config_profile:
+                kp_cfg = kp.config_profile.config_json or {}
+
+            # Primary: dispenser_sl_no stored in config
+            disp_sn = kp_cfg.get('dispenser_sl_no', '').strip()
+            if disp_sn and disp_sn != '0000000000000000':
+                dispenser_to_keypad_index[disp_sn] = kp_index_char
+
+            # Secondary: TVKeypadMapping.dispenser FK
+            for tkm in TVKeypadMapping.objects.filter(keypad=kp).select_related('dispenser'):
+                if tkm.dispenser:
+                    sn = tkm.dispenser.serial_number
+                    if sn not in dispenser_to_keypad_index:
+                        dispenser_to_keypad_index[sn] = kp_index_char
+
+        # ── 4f. Resolve counters via dispenser serial numbers ─────────────────
+        # Find dispensers by serial number and collect their linked counters.
+        if dispenser_to_keypad_index:
+            disp_objs = Device.objects.filter(
+                serial_number__in=list(dispenser_to_keypad_index.keys()),
+                device_type=Device.DeviceType.TOKEN_DISPENSER,
+            )
+        else:
+            disp_objs = Device.objects.none()
+
+        ctdm_fallback = CounterTokenDispenserMapping.objects.filter(
+            dispenser__in=disp_objs,
+        ).select_related('counter', 'dispenser')
+
+        # Build output pairs directly from the fallback CTDM queryset
+        output_pairs = []
+        for ctdm in ctdm_fallback:
+            if ctdm.counter.company_id != company.id:
+                continue
+            kp_idx = dispenser_to_keypad_index.get(ctdm.dispenser.serial_number)
+            if kp_idx:
+                output_pairs.append((kp_idx, ctdm.counter.counter_name))
+
+        # ── 4g. Sort and build DEPT string (fallback path) ────────────────────
+        output_pairs.sort(key=lambda pair: pair[0])
+        no_of_counters = len(output_pairs)
+        parts = ['$2', 'DEPT', 'XXXX', str(no_of_counters)]
+        for kp_idx, name in output_pairs:
+            parts.append(kp_idx)
+            parts.append(name)
+        parts.append('XXXX*')
+        return JsonResponse({'dept_string': ','.join(parts)})
+
+    # ── 5. Get ALL keypads in this group (TV/broker path) ─────────────────
     group_keypads = list(
         group.keypads.filter(device_type=Device.DeviceType.KEYPAD)
         .prefetch_related('config')

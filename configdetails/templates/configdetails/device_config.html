@@ -172,9 +172,18 @@
                             value="{{  config.config_json.footer2|default:'Visit Again'  }}">
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label fw-bold">Token Dispenser ID</label>
-                        <input type="number" name="dispenser_id" class="form-control"
-                            value="{{  config.config_json.dispenser_id|default:'1'  }}">
+                        <label class="form-label fw-bold text-muted small">Token Dispenser ID
+                            <span class="ms-1 text-muted" data-bs-toggle="tooltip"
+                                title="Auto-assigned from the system based on this dispenser's group slot. Not editable.">
+                                <i class="fas fa-info-circle"></i>
+                            </span>
+                        </label>
+                        <div class="d-flex align-items-center gap-2 mt-1">
+                            <span class="badge bg-secondary fs-6 px-3 py-2">
+                                {{ dispenser_button_index_display|default:config.config_json.dispenser_id|default:"—" }}
+                            </span>
+                            <small class="text-muted">Auto-assigned by system</small>
+                        </div>
                     </div>
 
                     <div class="col-12 mt-3">
@@ -204,40 +213,6 @@
                         <label class="form-label fw-bold">Token Label</label>
                         <input type="text" name="token_label" class="form-control"
                             value="{{  config.config_json.token_label|default:''  }}" placeholder="Enter">
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label fw-bold">Start Counter</label>
-                        <input type="number" name="start_counter" class="form-control"
-                            value="{{  config.config_json.start_counter|default:''  }}" placeholder="Enter">
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label fw-bold">End Counter</label>
-                        <input type="number" name="end_counter" class="form-control"
-                            value="{{  config.config_json.end_counter|default:''  }}" placeholder="Enter">
-                    </div>
-
-                    <div class="col-12 mt-4">
-                        <h5 class="text-muted mb-3"><i class="fas fa-star me-2"></i>Emergency Settings</h5>
-                    </div>
-                    <div class="col-md-4">
-                        <div class="form-check form-switch">
-                            {% if config.config_json.vip_enable == '1' %}
-                            <input class="form-check-input" type="checkbox" name="vip_enable" id="vip_enable" checked>
-                            {% else %}
-                            <input class="form-check-input" type="checkbox" name="vip_enable" id="vip_enable">
-                            {% endif %}
-                            <label class="form-check-label fw-bold" for="vip_enable">Emergency Enable</label>
-                        </div>
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label fw-bold">Emergency Count From</label>
-                        <input type="number" name="vip_count_from" id="vip_count_from" class="form-control"
-                            value="{{  config.config_json.vip_count_from|default:''  }}">
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label fw-bold">Emergency Count To</label>
-                        <input type="number" name="vip_count_to" id="vip_count_to" class="form-control"
-                            value="{{  config.config_json.vip_count_to|default:''  }}">
                     </div>
                 </div>
 
@@ -412,10 +387,14 @@
                             value="{{  config.config_json.keypad_device_text|default:''  }}">
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label fw-bold">Counter No</label>
-                        <input type="number" name="counter_no" class="form-control"
-                            value="{{  config.config_json.counter_no|default:''  }}">
+                        <label class="form-label fw-bold">Keypad Index</label>
+                        <div class="form-control bg-light text-muted d-flex align-items-center gap-2" style="cursor: not-allowed;">
+                            <i class="fas fa-hashtag text-primary"></i>
+                            <span class="fw-semibold text-dark">{{ device.keypad_index|default:"Not assigned" }}</span>
+                        </div>
+                        <small class="text-muted"><i class="fas fa-info-circle me-1"></i>Auto-assigned by the system. Not editable.</small>
                     </div>
+
                     <div class="col-md-6">
                         <label class="form-label fw-bold">Keypad Serial Number</label>
                         <div id="keypad_container">
@@ -619,11 +598,7 @@
                             <input type="number" name="vip_to" id="kp_vip_to" class="form-control"
                                 value="{{  config.config_json.vip_to|default:''  }}">
                         </div>
-                        <div class="col-md-4">
-                            <label class="form-label fw-bold">Remaining Bit Flag</label>
-                            <input type="text" name="remaining_bit_flag" class="form-control"
-                                value="{{  config.config_json.remaining_bit_flag|default:'1'  }}">
-                        </div>
+
                     </div>
 
                     {% elif device.device_type == 'TV' %}
