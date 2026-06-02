@@ -7073,6 +7073,29 @@ def get_token_dispenser_config_api(request):
     # If the dispenser has no group, returns only its own counters.
     # Each entry carries the dispenser's stored group button index.
     # -------------------------------------------------------------------------
+
+    # keypad_index resolved via: ButtonMapping(dispenser, "Button N") → keypad → TVKeypadMapping.keypad_index
+    # Cache keyed by dispenser serial_number so each dispenser is queried only once per request.
+    _btn_kp_cache = {}
+
+    def _kp_index(disp, local_btn):
+        sno = disp.serial_number
+        if sno not in _btn_kp_cache:
+            slot = {}
+            for _bm in ButtonMapping.objects.filter(
+                source_device=disp,
+                target_device__device_type=Device.DeviceType.KEYPAD,
+            ).select_related('target_device'):
+                try:
+                    n = int(_bm.source_button.split()[-1])
+                except (ValueError, IndexError):
+                    continue
+                _tkm = TVKeypadMapping.objects.filter(keypad=_bm.target_device).first()
+                if _tkm:
+                    slot[n] = _tkm.keypad_index
+            _btn_kp_cache[sno] = slot
+        return _btn_kp_cache[sno].get(local_btn)
+
     mapped_counters = []
     try:
         _gdm_self = GroupDispenserMapping.objects.filter(dispenser=dispenser).select_related('group').first()
@@ -7101,27 +7124,16 @@ def get_token_dispenser_config_api(request):
         for _slot in _all_gdm:
             _disp = _slot.dispenser
 
-            # Resolve TV-slot button_index and keypad_index for this dispenser.
+            # Resolve TV-slot button_index for this dispenser.
             _this_button_index = None
-            _this_keypad_index = None
             for tv in connected_tvs:
                 _tv_disp_map = TVDispenserMapping.objects.filter(
                     tv=tv, dispenser=_disp
                 ).first()
                 if _tv_disp_map:
                     _this_button_index = _tv_disp_map.button_index
-
-                _tv_keypad_map = TVKeypadMapping.objects.filter(
-                    tv=tv, dispenser=_disp
-                ).first()
-                if _tv_keypad_map:
-                    _this_keypad_index = _tv_keypad_map.keypad_index
-
-                if _this_button_index or _this_keypad_index:
+                if _this_button_index:
                     break
-
-            if _this_keypad_index is None:
-                _this_keypad_index = _disp.keypad_index
 
             # Use GCBM (true current state) for group dispensers; CTDM for singletons.
             if _group_obj:
@@ -7157,7 +7169,7 @@ def get_token_dispenser_config_api(request):
                     'counter_prefix_code': _counter.counter_prefix_code,
                     'max_token_number': _counter.max_token_number,
                     'status': _counter.status,
-                    'keypad_index': str(_this_keypad_index) if _this_keypad_index is not None else None,
+                    'keypad_index': _kp_index(_disp, _fb_idx),
                     'button_index': _final_bi,
                     'dispenser_button_index': _dispenser_btn_idx,
                 })
@@ -7195,27 +7207,16 @@ def get_token_dispenser_config_api(request):
         for slot in all_gdm:
             fam_dispenser = slot.dispenser
 
-            # Resolve TV-slot button_index and keypad_index for this sibling dispenser.
+            # Resolve TV-slot button_index for this sibling dispenser.
             fam_button_index = None
-            fam_keypad_index = None
             for tv in connected_tvs:
                 tv_disp_map = TVDispenserMapping.objects.filter(
                     tv=tv, dispenser=fam_dispenser
                 ).first()
                 if tv_disp_map:
                     fam_button_index = tv_disp_map.button_index
-
-                tv_keypad_map = TVKeypadMapping.objects.filter(
-                    tv=tv, dispenser=fam_dispenser
-                ).first()
-                if tv_keypad_map:
-                    fam_keypad_index = tv_keypad_map.keypad_index
-
-                if fam_button_index or fam_keypad_index:
+                if fam_button_index:
                     break
-
-            if fam_keypad_index is None:
-                fam_keypad_index = fam_dispenser.keypad_index
 
             # Use GCBM (true current state) for group dispensers; CTDM for singletons.
             if group_obj:
@@ -7251,7 +7252,7 @@ def get_token_dispenser_config_api(request):
                     'counter_prefix_code': counter.counter_prefix_code,
                     'max_token_number': counter.max_token_number,
                     'status': counter.status,
-                    'keypad_index': str(fam_keypad_index) if fam_keypad_index is not None else None,
+                    'keypad_index': _kp_index(fam_dispenser, fallback_index),
                     'button_index': final_bi,
                     'dispenser_button_index': fam_dispenser_btn_idx,
                     'dispenser_s_no': fam_dispenser.serial_number,
@@ -7294,21 +7295,14 @@ def get_token_dispenser_config_api(request):
     # -------------------------------------------------------------------------
     own_counters = []
     try:
-        # Resolve TV-slot and keypad indices for this dispenser
+        # Resolve TV-slot button_index for this dispenser.
         _own_btn_index = None
-        _own_kp_index  = None
         for tv in connected_tvs:
             _tdm = TVDispenserMapping.objects.filter(tv=tv, dispenser=dispenser).first()
             if _tdm:
                 _own_btn_index = _tdm.button_index
-            _tkm = TVKeypadMapping.objects.filter(tv=tv, dispenser=dispenser).first()
-            if _tkm:
-                _own_kp_index = _tkm.keypad_index
-            if _own_btn_index or _own_kp_index:
+            if _own_btn_index:
                 break
-
-        if _own_kp_index is None:
-            _own_kp_index = dispenser.keypad_index
 
         _own_gdm_row = GroupDispenserMapping.objects.filter(dispenser=dispenser).select_related('group').first()
         _own_group   = _own_gdm_row.group if _own_gdm_row else None
@@ -7323,7 +7317,7 @@ def get_token_dispenser_config_api(request):
                 .select_related('counter')
                 .order_by('button_index')
             )
-            for _gcbm_row in own_gcbm_rows:
+            for _own_local_btn, _gcbm_row in enumerate(own_gcbm_rows, start=1):
                 _c   = _gcbm_row.counter
                 _odbi = str(_gcbm_row.button_index)
 
@@ -7339,7 +7333,7 @@ def get_token_dispenser_config_api(request):
                     'counter_prefix_code': _c.counter_prefix_code,
                     'max_token_number': _c.max_token_number,
                     'status': _c.status,
-                    'keypad_index': str(_own_kp_index) if _own_kp_index is not None else None,
+                    'keypad_index': _kp_index(dispenser, _own_local_btn),
                     'button_index': _obi,
                     'dispenser_button_index': _odbi,
                 })
@@ -7363,7 +7357,7 @@ def get_token_dispenser_config_api(request):
                     'counter_prefix_code': _c.counter_prefix_code,
                     'max_token_number': _c.max_token_number,
                     'status': _c.status,
-                    'keypad_index': str(_own_kp_index) if _own_kp_index is not None else None,
+                    'keypad_index': _kp_index(dispenser, _oi),
                     'button_index': _obi,
                     'dispenser_button_index': _odbi,
                 })
