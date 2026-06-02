@@ -209,10 +209,12 @@
                             {% endif %}
 
                             <!-- Configure Button -->
+                            {% if device.device_type != 'Serial Apk' and device.device_type != 'Config Apk' %}
                             <a href="{% url 'device_config' device.id %}" class="btn btn-sm btn-outline-primary ms-1"
                                 title="Configure">
                                 <i class="fas fa-cog"></i>
                             </a>
+                            {% endif %}
 
                             <!-- Delete Button -->
                             {% if request.user.role == 'SUPER_ADMIN' %}

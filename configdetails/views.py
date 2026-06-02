@@ -2651,8 +2651,22 @@ def device_config(request, device_id):
         except Exception:
             pass
 
+    # Resolve the family (GroupMapping) this device belongs to, for display in the
+    # config page header. A device may be a member via any of the group's device sets.
+    family_name = None
+    try:
+        family_group = GroupMapping.objects.filter(
+            Q(dispensers=device) | Q(keypads=device) | Q(tvs=device) |
+            Q(brokers=device) | Q(leds=device)
+        ).distinct().first()
+        if family_group:
+            family_name = family_group.group_name
+    except Exception:
+        family_name = None
+
     return render(request, 'configdetails/device_config.html', {
         'device': device,
+        'family_name': family_name,
         'config': config,
         'tv_config': tv_config,
         'counters': counters,
