@@ -113,6 +113,32 @@ def _assign_keypad_indices_without_tv(keypads_list, used_indices=None):
     return result
 
 
+def _cleanup_group_devices_and_mappings(group):
+    """
+    Resets Device.keypad_index and deletes TVKeypadMapping, TVDispenserMapping,
+    and ButtonMapping records for exclusive devices before a group is deleted.
+    Must be called inside a database transaction.
+    """
+    from django.db.models import Q as _Q
+    group_keypads = list(group.keypads.all())
+    group_dispensers = list(group.dispensers.all())
+    group_leds = list(group.leds.all())
+
+    for kp in group_keypads:
+        kp.keypad_index = None
+        kp.save(update_fields=['keypad_index'])
+
+    TVKeypadMapping.objects.filter(keypad__in=group_keypads).delete()
+    TVDispenserMapping.objects.filter(dispenser__in=group_dispensers).delete()
+
+    # Only exclusive devices (keypads, dispensers, leds) — brokers and TVs
+    # can belong to multiple groups so their ButtonMappings must not be wiped.
+    exclusive_devices = group_keypads + group_dispensers + group_leds
+    ButtonMapping.objects.filter(
+        _Q(source_device__in=exclusive_devices) | _Q(target_device__in=exclusive_devices)
+    ).delete()
+
+
 # --- API VIEWS ---
 class DeviceViewSet(viewsets.ModelViewSet):
     queryset = Device.objects.all()
@@ -3828,7 +3854,12 @@ def mapping_view(request):
             
         elif action == 'unmap':
             mapping_id = request.POST.get('mapping_id')
-            GroupMapping.objects.filter(id=mapping_id).delete()
+            group = GroupMapping.objects.filter(id=mapping_id).first()
+            if group:
+                with transaction.atomic():
+                    _cleanup_group_devices_and_mappings(group)
+                    group.delete()
+
             log_activity(request.user, "Group Deleted", f"Group Mapping {mapping_id} deleted")
             messages.success(request, "Group deleted successfully.")
             
@@ -5571,35 +5602,21 @@ def delete_button_mapping_api(request, mapping_id):
 @api_view(['POST'])
 @login_required
 def delete_family_mapping_api(request, family_id):
-    """Delete a group mapping and all associated button mappings."""
-    from django.db import transaction
-    
+    """Delete a group mapping and all associated device mappings."""
     group = get_object_or_404(GroupMapping, id=family_id)
     group_name = group.group_name
-    
-    # Check permissions
+
     user = request.user
     if user.role == 'BRANCH_ADMIN' and group.branch != user.branch_relation:
         return Response({'status': 'error', 'message': 'You do not have permission to delete this group.'}, status=403)
     elif user.role == 'COMPANY_ADMIN' and group.company != user.company_relation:
         return Response({'status': 'error', 'message': 'You do not have permission to delete this group.'}, status=403)
-    
+
     with transaction.atomic():
-        # Get all devices in this group
-        all_devices = list(group.dispensers.all()) + list(group.keypads.all()) + \
-                     list(group.leds.all()) + list(group.brokers.all()) + list(group.tvs.all())
-        
-        # Delete all button mappings associated with devices in this group
-        ButtonMapping.objects.filter(
-            Q(source_device__in=all_devices) | Q(target_device__in=all_devices)
-        ).delete()
-        
-        # Delete the group mapping
+        _cleanup_group_devices_and_mappings(group)
         group.delete()
-        
-        # Log the activity
-        log_activity(request.user, "Group Deleted", f"Group '{group_name}' (ID: {family_id}) and all associated button mappings deleted")
-    
+        log_activity(request.user, "Group Deleted", f"Group '{group_name}' (ID: {family_id}) deleted")
+
     return Response({'status': 'success', 'message': f'Group "{group_name}" deleted successfully.'})
 
 @api_view(['GET'])
@@ -9187,11 +9204,19 @@ def get_android_mapped_counters(request):
                     target_device__device_type='KEYPAD'
                 )
                 if bms.exists():
-                    target_device_ids = bms.values_list('target_device_id', flat=True)
+                    target_device_ids = list(bms.values_list('target_device_id', flat=True))
                     kms = TVKeypadMapping.objects.filter(keypad__in=target_device_ids)
                     if kms.exists():
                         keypad_indexes = list(set(kms.values_list('keypad_index', flat=True)))
                         keypad_index = keypad_indexes[0] if keypad_indexes else None
+                    if not keypad_index:
+                        # No TV present — read Device.keypad_index directly from the linked keypads
+                        kp_qs = Device.objects.filter(
+                            id__in=target_device_ids
+                        ).exclude(keypad_index__isnull=True).exclude(keypad_index='')
+                        if kp_qs.exists():
+                            keypad_indexes = list(set(kp_qs.values_list('keypad_index', flat=True)))
+                            keypad_index = keypad_indexes[0] if keypad_indexes else None
 
         mapped_counters.append({
             "id":                     counter.id,
@@ -9583,6 +9608,10 @@ def get_dept_string_api(request):
     # A keypad may list a single dispenser SN in dispenser_sl_no.
     # We also cross-reference TVKeypadMapping (dispenser FK) as a fallback.
     dispenser_to_keypad_index = {}  # dispenser_sn (str) → keypad_index (ASCII char)
+
+    # Ensure every keypad in the group has a stable keypad_index before we read it.
+    # Idempotent: keypads that already have an index are left unchanged.
+    _assign_keypad_indices_without_tv(group_keypads)
 
     for kp in group_keypads:
         kp_index = kp.keypad_index
