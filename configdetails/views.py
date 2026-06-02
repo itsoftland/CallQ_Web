@@ -7120,6 +7120,9 @@ def get_token_dispenser_config_api(request):
                 if _this_button_index or _this_keypad_index:
                     break
 
+            if _this_keypad_index is None:
+                _this_keypad_index = _disp.keypad_index
+
             # Use GCBM (true current state) for group dispensers; CTDM for singletons.
             if _group_obj:
                 _disp_counter_mappings = GroupCounterButtonMapping.objects.filter(
@@ -7211,6 +7214,9 @@ def get_token_dispenser_config_api(request):
                 if fam_button_index or fam_keypad_index:
                     break
 
+            if fam_keypad_index is None:
+                fam_keypad_index = fam_dispenser.keypad_index
+
             # Use GCBM (true current state) for group dispensers; CTDM for singletons.
             if group_obj:
                 fam_counter_mappings = GroupCounterButtonMapping.objects.filter(
@@ -7300,6 +7306,9 @@ def get_token_dispenser_config_api(request):
                 _own_kp_index = _tkm.keypad_index
             if _own_btn_index or _own_kp_index:
                 break
+
+        if _own_kp_index is None:
+            _own_kp_index = dispenser.keypad_index
 
         _own_gdm_row = GroupDispenserMapping.objects.filter(dispenser=dispenser).select_related('group').first()
         _own_group   = _own_gdm_row.group if _own_gdm_row else None
