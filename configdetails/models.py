@@ -48,6 +48,8 @@ class Device(models.Model):
         KEYPAD = 'KEYPAD', 'Keypad'
         BROKER = 'BROKER', 'Broker'
         LED = 'LED', 'LED'
+        SERIAL_APK = 'Serial Apk', 'Serial Apk'
+        CONFIG_APK = 'Config Apk', 'Config Apk'
 
     class TokenType(models.TextChoices):
         BUTTON_1 = '1_BUTTON', '1 Button'

@@ -660,14 +660,12 @@ def android_employee_login_api(request):
     mac_address = request.data.get('mac_address')
     customer_id = request.data.get('customer_id') # maps to Company.company_id or DealerCustomer.customer_id
 
-    # app_type flag: 'config' (default) | 'serial_numbering'
-    app_type = request.data.get('app_type', 'config').strip().lower()
-    VALID_APP_TYPES = ('config', 'serial_numbering')
-    if app_type not in VALID_APP_TYPES:
-        return DRFResponse({
-            "error": "Invalid app_type",
-            "message": f"app_type must be one of: {', '.join(VALID_APP_TYPES)}."
-        }, status=status.HTTP_400_BAD_REQUEST)
+    # app_type flag: 'config' (default) | 'serial_numbering' | 'tv' | 'serial'
+    app_type = (request.data.get('app_type') or 'config').strip().lower()
+    if app_type == 'serial':
+        app_type = 'serial_numbering'
+    elif app_type not in ('config', 'serial_numbering', 'tv'):
+        app_type = 'config'
 
     # Validate required fields
     if not all([username, password, mac_address]):
@@ -1016,15 +1014,20 @@ def android_config_login(request):
     password = request.data.get('password')
     mac_address = request.data.get('mac_address')
 
-    # app_type flag: 'config' (default) | 'serial_numbering'
+    # app_type flag: 'config' (default) | 'serial_numbering' | 'tv' | 'serial'
     app_type = (request.data.get('app_type') or 'config').strip().lower()
-    VALID_APP_TYPES = ('config', 'serial_numbering')
-    if app_type not in VALID_APP_TYPES:
-        return DRFResponse({
-            "status": "error",
-            "error": "Invalid app_type",
-            "message": f"app_type must be one of: {', '.join(VALID_APP_TYPES)}."
-        }, status=status.HTTP_400_BAD_REQUEST)
+    if app_type == 'serial_numbering':
+        app_type = 'serial'
+    elif app_type not in ('config', 'serial', 'tv'):
+        app_type = 'config'
+
+    # Map normalized app_type to DeviceType choices
+    APP_TYPE_TO_DEVICE_TYPE = {
+        'tv': 'TV',
+        'serial': 'Serial Apk',
+        'config': 'Config Apk'
+    }
+    device_type_val = APP_TYPE_TO_DEVICE_TYPE.get(app_type, 'Config Apk')
 
     if not all([username, password, mac_address]):
         return DRFResponse({
@@ -1058,7 +1061,7 @@ def android_config_login(request):
 
     # --- app_type access control ---
     # Serial Numbering app is restricted to PRODUCTION_ADMIN role only
-    if app_type == 'serial_numbering' and user.role != 'PRODUCTION_ADMIN':
+    if app_type == 'serial' and user.role != 'PRODUCTION_ADMIN':
         return DRFResponse({
             "status": "error",
             "error": "Access denied",
@@ -1083,7 +1086,7 @@ def android_config_login(request):
                 dealer_customer=dealer_cust,
                 licence_status='Pending',
                 is_active=False,
-                device_type='TV', 
+                device_type=device_type_val, 
                 device_model='Android'
             )
         elif user.role in ["SUPER_ADMIN", "ADMIN"]:
@@ -1095,7 +1098,7 @@ def android_config_login(request):
                 dealer_customer=None,
                 licence_status='Pending',
                 is_active=False,
-                device_type='TV', 
+                device_type=device_type_val, 
                 device_model='Android'
             )
         else:
