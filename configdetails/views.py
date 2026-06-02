@@ -7094,7 +7094,7 @@ def get_token_dispenser_config_api(request):
                 if _tkm:
                     slot[n] = _tkm.keypad_index
             _btn_kp_cache[sno] = slot
-        return _btn_kp_cache[sno].get(local_btn)
+        return _btn_kp_cache[sno].get(local_btn) or disp.keypad_index
 
     mapped_counters = []
     try:
@@ -7169,7 +7169,7 @@ def get_token_dispenser_config_api(request):
                     'counter_prefix_code': _counter.counter_prefix_code,
                     'max_token_number': _counter.max_token_number,
                     'status': _counter.status,
-                    'keypad_index': _kp_index(_disp, _fb_idx),
+                    'keypad_index': _kp_index(_disp, _fb_idx) or _dispenser_btn_idx,
                     'button_index': _final_bi,
                     'dispenser_button_index': _dispenser_btn_idx,
                 })
@@ -7252,7 +7252,7 @@ def get_token_dispenser_config_api(request):
                     'counter_prefix_code': counter.counter_prefix_code,
                     'max_token_number': counter.max_token_number,
                     'status': counter.status,
-                    'keypad_index': _kp_index(fam_dispenser, fallback_index),
+                    'keypad_index': _kp_index(fam_dispenser, fallback_index) or fam_dispenser_btn_idx,
                     'button_index': final_bi,
                     'dispenser_button_index': fam_dispenser_btn_idx,
                     'dispenser_s_no': fam_dispenser.serial_number,
@@ -7333,7 +7333,7 @@ def get_token_dispenser_config_api(request):
                     'counter_prefix_code': _c.counter_prefix_code,
                     'max_token_number': _c.max_token_number,
                     'status': _c.status,
-                    'keypad_index': _kp_index(dispenser, _own_local_btn),
+                    'keypad_index': _kp_index(dispenser, _own_local_btn) or _odbi,
                     'button_index': _obi,
                     'dispenser_button_index': _odbi,
                 })
@@ -7357,7 +7357,7 @@ def get_token_dispenser_config_api(request):
                     'counter_prefix_code': _c.counter_prefix_code,
                     'max_token_number': _c.max_token_number,
                     'status': _c.status,
-                    'keypad_index': _kp_index(dispenser, _oi),
+                    'keypad_index': _kp_index(dispenser, _oi) or _odbi,
                     'button_index': _obi,
                     'dispenser_button_index': _odbi,
                 })
