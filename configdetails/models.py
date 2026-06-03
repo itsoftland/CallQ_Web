@@ -85,7 +85,7 @@ class Device(models.Model):
     # Link to Configuration Profile (no scheduling)
     config_profile = models.ForeignKey('DeviceConfigProfile', on_delete=models.SET_NULL, null=True, blank=True, related_name='assigned_devices')
     
-    is_active = models.BooleanField(default=True)
+    is_active = models.BooleanField(default=False)
     random_number = models.CharField(max_length=50, default='XXXX', help_text="Random number for token dispenser")
     fcm_token = models.TextField(null=True, blank=True, help_text="FCM registration token for push notifications (TV devices)")
     keypad_index = models.CharField(max_length=1, null=True, blank=True, help_text="Globally unique keypad index within a group, assigned only once at group creation.")

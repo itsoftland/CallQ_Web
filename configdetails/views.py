@@ -981,8 +981,8 @@ def get_android_tv_config(request):
             device_type=Device.DeviceType.TV,
             company=company,
             dealer_customer=dealer_customer if is_dealer_customer else None,
-            is_active=True,
-            licence_status='Pending' # Explicitly Pending
+            is_active=False,          # Inactive until licence check passes
+            licence_status='Pending'  # Explicitly Pending
         )
 
     # Check if the device belongs to the correct company/dealer_customer
@@ -3201,29 +3201,25 @@ def device_register(request):
                                 try:
                                     licence_to = datetime.strptime(licence_to_str.split(' ')[0], '%Y-%m-%d').date()
                                     new_device.licence_active_to = licence_to
-                                    
-                                    # Determine status based on expiry date
+
+                                    # Determine licence_status only — is_active stays False
+                                    # until the admin runs Check Device Status from the UI.
                                     days_left = (licence_to - date.today()).days
                                     if days_left < 0:
-                                        new_device.is_active = False
                                         new_device.licence_status = 'Expired'
                                     else:
-                                        new_device.is_active = True
-                                        new_device.licence_status = 'Active'
+                                        new_device.licence_status = 'Pending'
                                 except (ValueError, IndexError):
-                                    # Fallback - set as Active if we can't parse date
-                                    new_device.is_active = True
-                                    new_device.licence_status = 'Active'
+                                    new_device.licence_status = 'Pending'
                             else:
-                                # No expiry date in response - use status from API
+                                # No expiry date in response - store API message as status
                                 status_code = status_resp.get('Status', 0)
                                 message = status_resp.get('Message', '')
                                 if status_code == 1 and message.lower() == 'active':
-                                    new_device.licence_status = 'Active'
-                                    new_device.is_active = True
+                                    new_device.licence_status = 'Pending'
                                 else:
                                     new_device.licence_status = message or 'Inactive'
-                                    new_device.is_active = False
+                            # is_active remains False — activated only via check_device_status_api
                             
                             # Update APK version if present
                             if status_resp.get('APKVersion'):
@@ -4095,7 +4091,31 @@ def device_delete(request, device_id):
         
         if can_delete:
             serial = device.serial_number
-            
+
+            # ── Group-membership guard ────────────────────────────────────────
+            # A device that is part of a GroupMapping must be removed from the
+            # group first.  Silently deleting it would leave the group in an
+            # inconsistent state, so we block the operation here.
+            group_names = list(
+                GroupMapping.objects.filter(
+                    Q(dispensers=device) |
+                    Q(keypads=device)   |
+                    Q(tvs=device)       |
+                    Q(brokers=device)   |
+                    Q(leds=device)
+                ).distinct().values_list('group_name', flat=True)
+            )
+            if group_names:
+                joined = ', '.join(f'"{g}"' for g in group_names)
+                messages.error(
+                    request,
+                    f"Cannot delete device {serial} — it is currently mapped to "
+                    f"the following group(s): {joined}. "
+                    f"Please remove it from the group(s) before deleting."
+                )
+                return redirect('device_list')
+            # ─────────────────────────────────────────────────────────────────
+
             # Reset the production serial number status
             from .models import ProductionSerialNumber
             prod_sn = ProductionSerialNumber.objects.filter(serial_number=serial).first()
@@ -4179,8 +4199,9 @@ def device_authenticate_api(request, device_id):
         if resp and resp.get('DeviceRegistrationId'):
             device.device_registration_id = resp.get('DeviceRegistrationId')
             device.product_type_id = resp.get('ProductTypeId')
-            device.licence_status = 'Active' # Activate device upon successful authentication
-            device.is_active = True
+            # NOTE: is_active is NOT set here. Device remains inactive until
+            # check_device_status_api confirms the licence is valid.
+            device.licence_status = 'Pending'
             device.save()
             
             log_activity(request.user, "Device Authenticated", f"Device {device.serial_number} registered with license server (ID: {device.device_registration_id})")
@@ -5226,8 +5247,9 @@ def approve_device_request(request, device_id):
             messages.error(request, "Device must be assigned to a company before approval.")
             return redirect('device_approval_list')
 
-        device.licence_status = 'Active'
-        device.is_active = True
+        device.licence_status = 'Pending'
+        # NOTE: is_active stays False — device is activated only after
+        # check_device_status_api confirms the licence with the external server.
         device.save()
         messages.success(request, f"Device {device.serial_number} approved successfully (Status: Active).")
         return redirect('device_approval_list')
@@ -7985,7 +8007,7 @@ def register_device_api(request):
                 device_model=bluetooth_name if bluetooth_name else 'PC',  # bluetooth_name -> device_model
                 display_name=display_name if display_name else None,       # display_name -> display_name
                 licence_status='Pending',
-                is_active=True,
+                is_active=False,  # Inactive until licence check passes
             )
 
             # 2. Get-or-create the "api" ProductionBatch
