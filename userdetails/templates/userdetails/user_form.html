@@ -152,7 +152,8 @@
                             </div>
                             <div class="mb-3">
                                 <label class="form-label fw-medium">Branch</label>
-                                <select name="branch" class="form-select rounded-3" id="id_branch">
+                                <select name="branch" class="form-select rounded-3" id="id_branch"
+                                    data-preselect-id="{% if form_data.branch %}{{ form_data.branch }}{% elif edit_user.branch_relation_id %}{{ edit_user.branch_relation_id }}{% endif %}">
                                     <option value="">None</option>
                                     {% for b in branches %}
                                     <option value="{{ b.id }}" {% if form_data.branch == b.id or b.is_selected %}selected{% endif %}>{{ b.branch_name }}</option>
@@ -172,7 +173,8 @@
                             </div>
                             <div class="mb-3">
                                 <label class="form-label fw-medium">Branch</label>
-                                <select name="branch" class="form-select rounded-3" id="id_branch">
+                                <select name="branch" class="form-select rounded-3" id="id_branch"
+                                    data-preselect-id="{% if form_data.branch %}{{ form_data.branch }}{% elif edit_user.branch_relation_id %}{{ edit_user.branch_relation_id }}{% endif %}">
                                     <option value="">None</option>
                                     {% for b in branches %}
                                     <option value="{{ b.id }}" {% if form_data.branch == b.id or b.is_selected %}selected{% endif %}>{{ b.branch_name }}</option>
@@ -262,22 +264,38 @@
             }
         }
 
-        function fetchBranches(id) {
+        function fetchBranches(id, preselectId) {
             if (!bS) return;
             bS.innerHTML = '<option value="">Loading...</option>';
-            fetch("{% url 'ajax_get_company_branches' company_id=0 %}".replace('0', id))
+            bS.disabled = true;
+            fetch("{% url 'ajax_get_company_branches' company_id=999999 %}".replace('999999', id))
                 .then(res => { if (!res.ok) throw new Error('Network response was not ok'); return res.json(); })
                 .then(d => {
-                    bS.innerHTML = '<option value="">None</option>';
-                    if (d && d.branches) {
-                        d.branches.forEach(b => {
-                            const o = document.createElement('option');
-                            o.value = b.id; o.textContent = b.branch_name;
-                            bS.appendChild(o);
-                        });
+                    bS.disabled = false;
+                    if (d && d.branches && d.branches.length === 1) {
+                        // Single branch — auto-select, no "None" option
+                        bS.innerHTML = '';
+                        const o = document.createElement('option');
+                        o.value = d.branches[0].id;
+                        o.textContent = d.branches[0].branch_name;
+                        o.selected = true;
+                        bS.appendChild(o);
+                        bS.title = 'Auto-selected — only one branch exists';
+                    } else {
+                        // Multiple branches — show "None" + all options
+                        bS.innerHTML = '<option value="">None</option>';
+                        bS.title = '';
+                        if (d && d.branches) {
+                            d.branches.forEach(b => {
+                                const o = document.createElement('option');
+                                o.value = b.id; o.textContent = b.branch_name;
+                                if (preselectId && String(b.id) === String(preselectId)) o.selected = true;
+                                bS.appendChild(o);
+                            });
+                        }
                     }
                 })
-                .catch(e => { console.error('Error fetching branches:', e); bS.innerHTML = '<option value="">Error</option>'; });
+                .catch(e => { console.error('Error fetching branches:', e); bS.disabled = false; bS.innerHTML = '<option value="">Error</option>'; });
         }
 
         if (cS) cS.addEventListener('change', function () { if (this.value) fetchBranches(this.value); else if (bS) bS.innerHTML = '<option value="">None</option>'; });
@@ -306,6 +324,12 @@
         });
 
         toggle();
+        // Auto-load branches on page init if a company is already selected
+        // (handles re-render after validation errors and edit mode for non-locked company)
+        if (cS && cS.value) {
+            const preselectBranch = bS ? (bS.dataset.preselectId || '') : '';
+            fetchBranches(cS.value, preselectBranch);
+        }
         {% if form_data.assigned_state %}
         {% for s in form_data.assigned_state %} add("{{ s }}"); {% endfor %}
         {% elif edit_user.assigned_state %}

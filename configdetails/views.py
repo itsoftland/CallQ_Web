@@ -3965,6 +3965,30 @@ def mapping_view(request):
         'leds': leds,
     }
 
+    # ------------------------------------------------------------------
+    # JSON serialisation for the React grouping wizard
+    # ------------------------------------------------------------------
+    import json as _json
+    from django.core.serializers.json import DjangoJSONEncoder as _DJE
+
+    _companies_list = list(companies) if companies else []
+    _branches_list  = list(branches)  if branches  else []
+    _dc_list        = list(dealer_customers) if dealer_customers else []
+
+    context['companies_json'] = _json.dumps(
+        [{'id': c.id, 'name': c.company_name} for c in _companies_list],
+        cls=_DJE,
+    )
+    context['branches_json'] = _json.dumps(
+        [{'id': b.id, 'name': b.branch_name} for b in _branches_list],
+        cls=_DJE,
+    )
+    context['dealer_customers_json'] = _json.dumps(
+        [{'id': dc.id, 'name': dc.company_name, 'customer_id': dc.customer_id}
+         for dc in _dc_list],
+        cls=_DJE,
+    )
+
     # Pagination - 8 rows per page
     page = request.GET.get('page', 1)
     paginator = Paginator(list(devices), 8)
