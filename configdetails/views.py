@@ -2963,6 +2963,39 @@ def change_device_owner(request, device_id):
     if company_id:
         from companydetails.models import Company
         company = get_object_or_404(Company, id=company_id)
+
+        # --- License expiry + device limit check for the target company ---
+        # Only enforce when the company is actually changing.
+        if str(company.id) != str(old_company_id):
+            from callq_core.services import LicenseValidator
+
+            # 1. License expiry
+            is_expired, expiry_date = LicenseValidator.check_license_expiry(company)
+            if is_expired:
+                exp_str = expiry_date.strftime('%d-%m-%Y') if expiry_date else 'N/A'
+                messages.error(
+                    request,
+                    f"Cannot assign device to \"{company.company_name}\": "
+                    f"their license has expired (expiry: {exp_str})."
+                )
+                return redirect('device_list')
+
+            # 2. Device type limit
+            # exclude_serial ensures this device's current record at the old
+            # company is NOT counted against the new company's quota.
+            is_over_limit, current_count, max_allowed = LicenseValidator.check_device_limit(
+                company, device.device_type
+            )
+            if is_over_limit:
+                device_type_display = device.device_type.replace('_', ' ').title()
+                messages.error(
+                    request,
+                    f"Cannot switch device to \"{company.company_name}\": "
+                    f"maximum number of {device_type_display} devices reached "
+                    f"(allowed: {max_allowed}, currently registered: {current_count})."
+                )
+                return redirect('device_list')
+
         device.company = company
     else:
         device.company = None
@@ -5276,7 +5309,35 @@ def approve_device_request(request, device_id):
         company_id = request.POST.get('company_id')
         if company_id:
             from companydetails.models import Company
+            from callq_core.services import LicenseValidator
             company = get_object_or_404(Company, id=company_id)
+
+            # --- License expiry check ---
+            is_expired, expiry_date = LicenseValidator.check_license_expiry(company)
+            if is_expired:
+                exp_str = expiry_date.strftime('%d-%m-%Y') if expiry_date else 'N/A'
+                messages.error(
+                    request,
+                    f"Cannot assign device to \"{company.company_name}\": "
+                    f"their license has expired (expiry: {exp_str})."
+                )
+                return redirect('device_approval_list')
+
+            # --- Device type limit check ---
+            # The device is currently unassigned (Pending state), so no exclusion needed.
+            is_over_limit, current_count, max_allowed = LicenseValidator.check_device_limit(
+                company, device.device_type
+            )
+            if is_over_limit:
+                device_type_display = device.device_type.replace('_', ' ').title()
+                messages.error(
+                    request,
+                    f"Cannot assign device to \"{company.company_name}\": "
+                    f"maximum number of {device_type_display} devices reached "
+                    f"(allowed: {max_allowed}, currently registered: {current_count})."
+                )
+                return redirect('device_approval_list')
+
             device.company = company
 
         # Assign Branch if selected
