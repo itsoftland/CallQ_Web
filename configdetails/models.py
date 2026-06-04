@@ -838,6 +838,14 @@ class VipTokenCounter(models.Model):
         default=0,
         help_text="Last issued VIP token number (0 = none issued yet).",
     )
+    # Tracks the date of the last daily reset so the first API call each
+    # new day can automatically reset the counter back to vip_from.
+    last_reset_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text="Date on which current_token was last reset to vip_from. "
+                  "Used to trigger the automatic daily reset.",
+    )
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

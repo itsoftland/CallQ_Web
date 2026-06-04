@@ -19,7 +19,7 @@ import csv
 import io
 import os
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 
 def get_safe_button_index_char(pos):
     """Safely get button index char, falling back to '1' (0x31) if out of range."""
@@ -9581,6 +9581,8 @@ def generate_vip_token_api(request):
             .first()
         )
 
+        today = date.today()
+
         if vtc is None:
             # First ever VIP token for this (counter, dispenser) pair
             vtc = VipTokenCounter(
@@ -9589,7 +9591,15 @@ def generate_vip_token_api(request):
                 vip_from=vip_from,
                 vip_to=vip_to,
                 current_token=vip_from - 1,  # will be incremented to vip_from below
+                last_reset_date=today,
             )
+        else:
+            # ── Daily reset ───────────────────────────────────────────────────
+            # If this is the first call of a new day, reset the counter so
+            # the first VIP token issued today starts at vip_from.
+            if vtc.last_reset_date is None or vtc.last_reset_date < today:
+                vtc.current_token = vip_from - 1
+                vtc.last_reset_date = today
 
         # Always refresh vip_from / vip_to from the keypad config
         vtc.vip_from = vip_from
