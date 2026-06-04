@@ -411,17 +411,30 @@
         modal.show();
     }
 
+    // Track in-flight branch fetch so we can cancel it on rapid re-opens
+    let _branchFetchController = null;
+
     function openChangeOwnerModal(actionUrl, currentCompanyId, currentBranchId) {
         const form = document.getElementById('changeOwnerForm');
         form.action = actionUrl;
+        // Store the original company so the submit guard can reference it
+        form.dataset.originalCompanyId = currentCompanyId || '';
+
         const companySelect = document.getElementById('ownerCompanySelect');
         const branchSelect = document.getElementById('ownerBranchSelect');
 
+        // Set the current company option as selected
         companySelect.value = currentCompanyId || '';
+
+        // Abort any previous branch-fetch to prevent race conditions
+        if (_branchFetchController) {
+            _branchFetchController.abort();
+        }
 
         // Load branches for current company or just clear
         if (currentCompanyId) {
-            fetch(`/CallQ/api/company-branches/${currentCompanyId}/`)
+            _branchFetchController = new AbortController();
+            fetch(`/CallQ/api/company-branches/${currentCompanyId}/`, { signal: _branchFetchController.signal })
                 .then(response => response.json())
                 .then(data => {
                     branchSelect.innerHTML = '<option value="">No Branch (Unassigned)</option>';
@@ -434,7 +447,8 @@
                             branchSelect.appendChild(opt);
                         });
                     }
-                });
+                })
+                .catch(err => { if (err.name !== 'AbortError') console.warn('Branch fetch error:', err); });
         } else {
             branchSelect.innerHTML = '<option value="">No Branch (Unassigned)</option>';
         }
@@ -443,14 +457,20 @@
         modal.show();
     }
 
-    // Add change event for ownerCompanySelect
+    // Add change event for ownerCompanySelect — abort any stale fetch first
     document.getElementById('ownerCompanySelect')?.addEventListener('change', function () {
         const companyId = this.value;
         const branchSelect = document.getElementById('ownerBranchSelect');
         branchSelect.innerHTML = '<option value="">Loading...</option>';
 
+        // Cancel previous in-flight fetch to prevent race conditions
+        if (_branchFetchController) {
+            _branchFetchController.abort();
+        }
+
         if (companyId) {
-            fetch(`/CallQ/api/company-branches/${companyId}/`)
+            _branchFetchController = new AbortController();
+            fetch(`/CallQ/api/company-branches/${companyId}/`, { signal: _branchFetchController.signal })
                 .then(response => response.json())
                 .then(data => {
                     branchSelect.innerHTML = '<option value="">No Branch (Unassigned)</option>';
@@ -462,9 +482,21 @@
                             branchSelect.appendChild(opt);
                         });
                     }
-                });
+                })
+                .catch(err => { if (err.name !== 'AbortError') console.warn('Branch fetch error:', err); });
         } else {
             branchSelect.innerHTML = '<option value="">No Branch (Unassigned)</option>';
+        }
+    });
+
+    // Submit guard: prevent submitting with a blank company when the device
+    // currently belongs to one (catches any frontend initialisation edge cases).
+    document.getElementById('changeOwnerForm')?.addEventListener('submit', function (e) {
+        const companyId = document.getElementById('ownerCompanySelect')?.value || '';
+        const originalCompanyId = this.dataset.originalCompanyId || '';
+        if (!companyId && originalCompanyId) {
+            e.preventDefault();
+            alert('Please select a company, or cancel to keep the current assignment.');
         }
     });
 </script>

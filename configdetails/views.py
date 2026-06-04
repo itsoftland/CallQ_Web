@@ -2957,9 +2957,9 @@ def change_device_owner(request, device_id):
     
     device = get_object_or_404(Device, id=device_id)
     old_company_id = device.company_id
-    company_id = request.POST.get('company_id')
-    branch_id = request.POST.get('branch_id')
-    
+    company_id = request.POST.get('company_id', '').strip()
+    branch_id = request.POST.get('branch_id', '').strip()
+
     if company_id:
         from companydetails.models import Company
         company = get_object_or_404(Company, id=company_id)
@@ -2978,11 +2978,13 @@ def change_device_owner(request, device_id):
                     f"Cannot assign device to \"{company.company_name}\": "
                     f"their license has expired (expiry: {exp_str})."
                 )
+                # Guard: re-attach original company so nothing is lost
                 return redirect('device_list')
 
             # 2. Device type limit
-            # exclude_serial ensures this device's current record at the old
-            # company is NOT counted against the new company's quota.
+            # The device is being moved OUT of the old company so its own slot
+            # there does NOT count against the new company's quota — no exclusion
+            # needed since we only count devices already at the new company.
             is_over_limit, current_count, max_allowed = LicenseValidator.check_device_limit(
                 company, device.device_type
             )
@@ -2994,16 +2996,39 @@ def change_device_owner(request, device_id):
                     f"maximum number of {device_type_display} devices reached "
                     f"(allowed: {max_allowed}, currently registered: {current_count})."
                 )
+                # Guard: device stays with its original company — do NOT save.
                 return redirect('device_list')
 
+        # Validation passed (or same company) — update the company.
         device.company = company
     else:
+        # company_id is blank.  Only unassign the company when the device was
+        # already unassigned.  If it currently belongs to a company, keep it
+        # there — an empty POST value most likely indicates a frontend
+        # initialisation issue, not a deliberate "remove from company" action.
+        if old_company_id:
+            messages.error(
+                request,
+                "No company was selected. The device has been kept with its "
+                "current company."
+            )
+            return redirect('device_list')
         device.company = None
-        
+
     if branch_id:
         from companydetails.models import Branch
         branch = get_object_or_404(Branch, id=branch_id)
-        device.branch = branch
+        # Validate the branch belongs to the device's (new) company to prevent
+        # cross-company branch assignment.
+        if device.company and branch.company != device.company:
+            messages.error(
+                request,
+                "The selected branch does not belong to the chosen company. "
+                "Branch has been cleared."
+            )
+            device.branch = None
+        else:
+            device.branch = branch
     else:
         device.branch = None
     
