@@ -183,11 +183,9 @@
                             </div>
                             {% endif %}
                         </div>
-                        <div class="d-grid mt-4">
-                            <button type="submit" class="btn btn-primary rounded-3 py-2 fw-bold text-white">{{ button_text }}</button>
-                        </div>
-                        <div class="text-center mt-3">
-                            <a href="{% url 'user_list' %}" class="btn btn-link text-secondary text-decoration-none small">Back to List</a>
+                        <div class="d-flex gap-2 mt-4">
+                            <a href="{% url 'user_list' %}" class="btn btn-outline-secondary rounded-3 py-2">Cancel</a>
+                            <button type="submit" class="btn btn-primary rounded-3 py-2 fw-bold text-white flex-fill">{{ button_text }}</button>
                         </div>
                     </form>
                 </div>
