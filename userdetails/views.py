@@ -760,7 +760,19 @@ def android_employee_login_api(request):
                 "error": "Invalid user id or password",
                 "message": "The user is not associated with this customer."
             }, status=status.HTTP_401_UNAUTHORIZED)
-    
+
+    # --- License expiry check ---
+    # Only enforced for direct Company entities; DealerCustomer records do not
+    # carry their own product_to_date. SUPER_ADMIN / ADMIN are exempt.
+    if company and not is_dealer_customer and user.role not in ["SUPER_ADMIN", "ADMIN"]:
+        from callq_core.services import LicenseValidator
+        is_expired, expiry_date = LicenseValidator.check_license_expiry(company)
+        if is_expired:
+            return DRFResponse({
+                "error": "License expired",
+                "message": "Your license has expired. Please contact support."
+            }, status=status.HTTP_403_FORBIDDEN)
+
     # Find the device by mac_address
     device = Device.objects.filter(
         Q(mac_address=mac_address) | Q(serial_number=mac_address)
@@ -1067,6 +1079,19 @@ def android_config_login(request):
             "error": "Access denied",
             "message": "The Serial Numbering app is only accessible to Production Admin accounts."
         }, status=status.HTTP_403_FORBIDDEN)
+
+    # --- License expiry check ---
+    # Block company-bound users from logging in if their license has expired.
+    # SUPER_ADMIN / ADMIN / PRODUCTION_ADMIN are system-level and are exempt.
+    if user.role not in ["SUPER_ADMIN", "ADMIN", "PRODUCTION_ADMIN"] and user.company_relation:
+        from callq_core.services import LicenseValidator
+        is_expired, _ = LicenseValidator.check_license_expiry(user.company_relation)
+        if is_expired:
+            return DRFResponse({
+                "status": "error",
+                "error": "License expired",
+                "message": "Your license has expired. Please contact support."
+            }, status=status.HTTP_403_FORBIDDEN)
 
     # --- Device Approval Check ---
     device = Device.objects.filter(Q(mac_address=mac_address) | Q(serial_number=mac_address)).first()

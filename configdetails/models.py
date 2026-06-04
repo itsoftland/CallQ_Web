@@ -225,6 +225,13 @@ class GroupMapping(models.Model):
     
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        # A group name must be unique within a company, but the same name
+        # can be reused across different companies.
+        unique_together = [('company', 'group_name')]
+        verbose_name = 'Group Mapping'
+        verbose_name_plural = 'Group Mappings'
     
     def clean(self):
         """Validate that Token Dispenser, Keypad, and LED devices are only in one group"""

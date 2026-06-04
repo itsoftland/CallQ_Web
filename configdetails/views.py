@@ -3080,7 +3080,17 @@ def device_register(request):
                 import logging
                 _logger = logging.getLogger(__name__)
                 _logger.warning(f"Failed to sync live device limits for {company.company_name}: {e}")
-        
+
+        # --- License expiry check (UI registration) ---
+        # After syncing live data, verify the license has not expired.
+        # Dealer-created companies may not have product_to_date set; block them too
+        # (missing license = blocked per the spec's edge case #3).
+        from callq_core.services import LicenseValidator
+        is_expired, _expiry = LicenseValidator.check_license_expiry(company)
+        if is_expired:
+            messages.error(request, "Your license has expired. Device registration not allowed.")
+            return redirect('device_register')
+
         success_count = 0
         fail_count = 0
         errors = []
@@ -3126,7 +3136,7 @@ def device_register(request):
                 
                 if current_count >= limit:
                      device_type_display = dtype.replace('_', ' ').title()
-                     errors.append(f"Maximum number of {device_type_display} devices reached! Allowed: {limit}, Currently registered: {current_count}.")
+                     errors.append(f"Maximum number of {device_type_display} devices reached for this customer (Allowed: {limit}, Currently registered: {current_count}).")
                      fail_count += 1
                      continue
 
@@ -3692,6 +3702,15 @@ def mapping_view(request):
             
             if not mapping_company or not group_name:
                 messages.error(request, "Company and Group Name are required.")
+                return redirect('mapping_view')
+
+            # Enforce per-company unique group name
+            if GroupMapping.objects.filter(company=mapping_company, group_name__iexact=group_name).exists():
+                messages.error(
+                    request,
+                    f"A group named \"{group_name}\" already exists in this company. "
+                    f"Please choose a different name."
+                )
                 return redirect('mapping_view')
 
             # Get device lists from form (for group mapping)
@@ -7952,6 +7971,73 @@ def register_device_api(request):
 
             # All valid — store the cleaned values for later DB write
             led_config_data = {'SB': sb_val, 'DT': dt_val, 'ND': nd_val}
+
+    # --- Optional customer_id: license expiry + device limit checks ---
+    # The external API accepts an optional 'customer_id' field.
+    # If provided, we resolve the Company/DealerCustomer and enforce:
+    #   1. License expiry — block if expired or missing.
+    #   2. Device limit  — block if the customer has already reached their
+    #      licensed quota for the given device_type.
+    #
+    # These checks are SKIPPED for existing devices (same serial_number = update
+    # flow) to honour the rule "updates to existing devices should be allowed".
+    # When customer_id is absent the API falls through to the existing
+    # pending-creation flow unchanged.
+    api_customer_id = request.data.get('customer_id')
+    api_company = None
+    api_dealer_customer = None
+
+    if api_customer_id:
+        from companydetails.models import Company as _Company, DealerCustomer as _DealerCustomer
+        from callq_core.services import LicenseValidator
+
+        clean_cid = str(api_customer_id)
+        if clean_cid.startswith('0'):
+            clean_cid = clean_cid[1:]
+
+        if clean_cid.isdigit():
+            api_company = _Company.objects.filter(id=clean_cid).first()
+        if not api_company:
+            api_company = _Company.objects.filter(company_id=clean_cid).first()
+        if not api_company:
+            _dc = _DealerCustomer.objects.filter(customer_id=clean_cid).first()
+            if _dc:
+                api_dealer_customer = _dc
+                api_company = _dc.dealer  # License lives on the dealer company
+
+        if not api_company:
+            log_api_response('register_device_api', 404, error=f'customer_id not found: {api_customer_id}')
+            return Response({
+                'status': 'error',
+                'message': 'Invalid customer_id: customer not found.'
+            }, status=404)
+
+        # Check license expiry for the resolved company.
+        is_expired, expiry_date = LicenseValidator.check_license_expiry(api_company)
+        if is_expired:
+            log_api_response('register_device_api', 403, error='License expired')
+            return Response({
+                'status': 'error',
+                'message': 'License expired. Device registration not allowed.'
+            }, status=403)
+
+        # Check device limit only for NEW registrations.
+        # If the serial_number already exists, this is an update — skip limit check.
+        is_existing = Device.objects.filter(serial_number=serial_number).exists()
+        if not is_existing:
+            is_over_limit, current_count, max_allowed = LicenseValidator.check_device_limit(
+                api_company, device_type
+            )
+            if is_over_limit:
+                device_type_display = device_type.replace('_', ' ').title()
+                log_api_response(
+                    'register_device_api', 403,
+                    error=f'Device limit reached: {device_type} ({current_count}/{max_allowed})'
+                )
+                return Response({
+                    'status': 'error',
+                    'message': f'Maximum number of {device_type_display} devices reached'
+                }, status=403)
 
     # --- Existing device: update fields if changed, return 200 ---
     existing_device = Device.objects.filter(serial_number=serial_number).first()

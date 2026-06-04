@@ -220,3 +220,82 @@ def log_activity(user, action, details=None):
     if user and user.is_authenticated:
         ActivityLog.objects.create(user=user, action=action, details=details)
 
+
+
+# ---------------------------------------------------------------------------
+# License Validation & Device-Limit Enforcement
+# ---------------------------------------------------------------------------
+
+class LicenseValidator:
+    """
+    Centralised license validation helper.
+
+    All entry-points that need to enforce license rules (web login, Android
+    login, external device-registration API, UI device-registration) should
+    call these methods so the logic stays in one place.
+    """
+
+    # Maps Device.device_type values to the Company field that holds the limit.
+    DEVICE_TYPE_LIMIT_MAP = {
+        'BROKER':           'noof_broker_devices',
+        'TOKEN_DISPENSER':  'noof_token_dispensors',
+        'KEYPAD':           'noof_keypad_devices',
+        'TV':               'noof_television_devices',
+        'LED':              'noof_led_devices',
+        'Config Apk':       'noof_config_apk',   # Device.DeviceType.CONFIG_APK = 'Config Apk'
+    }
+
+    @staticmethod
+    def check_license_expiry(company):
+        """
+        Check whether the given Company's license has expired.
+
+        Args:
+            company: companydetails.models.Company instance.
+
+        Returns:
+            (is_expired: bool, expiry_date: date | None)
+            - is_expired is True when product_to_date is set AND < today.
+            - When product_to_date is None (no license recorded) is_expired is
+              also True so that missing-license scenarios are blocked.
+        """
+        from datetime import date as _date
+        expiry = company.product_to_date
+        if expiry is None:
+            # No license date on record -> treat as expired / missing license
+            return True, None
+        return (_date.today() > expiry), expiry
+
+    @staticmethod
+    def check_device_limit(company, device_type, exclude_serial=None):
+        """
+        Check whether the company has reached its licensed device limit for
+        the given device_type.
+
+        Args:
+            company:        companydetails.models.Company instance.
+            device_type:    One of 'BROKER', 'TOKEN_DISPENSER', 'KEYPAD',
+                            'TV', 'LED', 'Config Apk'
+                            (matches Device.DeviceType values).
+            exclude_serial: Optional serial_number to exclude from the count.
+                            Use this when an existing device is re-registering
+                            so its own record is not counted against the limit.
+
+        Returns:
+            (is_over_limit: bool, current_count: int, max_allowed: int)
+        """
+        from configdetails.models import Device
+
+        limit_field = LicenseValidator.DEVICE_TYPE_LIMIT_MAP.get(device_type)
+        if limit_field is None:
+            # Unknown device type -> do not block (conservative: let it through)
+            return False, 0, 0
+
+        max_allowed = getattr(company, limit_field, 0) or 0
+
+        qs = Device.objects.filter(company=company, device_type=device_type)
+        if exclude_serial:
+            qs = qs.exclude(serial_number=exclude_serial)
+        current_count = qs.count()
+
+        return (current_count >= max_allowed), current_count, max_allowed

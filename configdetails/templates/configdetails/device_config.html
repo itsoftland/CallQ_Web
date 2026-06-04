@@ -164,7 +164,7 @@
                     <div class="col-md-4">
                         <label class="form-label fw-bold">Header 3</label>
                         <input type="text" name="header3" class="form-control"
-                            value="{{  config.config_json.header3|default:'System'  }}" placeholder="Enter Header 3">
+                            value="{{  config.config_json.header3|default:' '  }}" placeholder="Enter Header 3">
                     </div>
                     <div class="col-md-6">
                         <label class="form-label fw-bold">Footer 1</label>
@@ -174,7 +174,7 @@
                     <div class="col-md-6">
                         <label class="form-label fw-bold">Footer 2</label>
                         <input type="text" name="footer2" class="form-control"
-                            value="{{  config.config_json.footer2|default:'Visit Again'  }}">
+                            value="{{  config.config_json.footer2|default:' '  }}">
                     </div>
                     <div class="col-md-6">
                         <label class="form-label fw-bold text-muted small">Token Dispenser ID
@@ -472,10 +472,10 @@
                             </label>
                             <input type="text" name="button_b_string_id" id="btn_b_str" class="form-control btn-str-input"
                                 placeholder="e.g. service_b" maxlength="16"
-                                value="{{ config.config_json.button_b_string_id|default:''|slice:':16' }}">
+                                value="{{ config.config_json.button_b_string_id|default:' '|slice:':16' }}">
                             <div class="d-flex justify-content-between mt-1">
                                 <small class="text-muted">Custom string ID for Button B actions</small>
-                                <small class="btn-str-counter text-muted"><span class="btn-str-used">{{ config.config_json.button_b_string_id|default:''|slice:':16'|length }}</span>/16</small>
+                                <small class="btn-str-counter text-muted"><span class="btn-str-used">{{ config.config_json.button_b_string_id|default:' '|slice:':16'|length }}</span>/16</small>
                             </div>
                         </div>
                         <div class="col-md-4">
@@ -484,10 +484,10 @@
                             </label>
                             <input type="text" name="button_c_string_id" id="btn_c_str" class="form-control btn-str-input"
                                 placeholder="e.g. service_c" maxlength="16"
-                                value="{{ config.config_json.button_c_string_id|default:''|slice:':16' }}">
+                                value="{{ config.config_json.button_c_string_id|default:' '|slice:':16' }}">
                             <div class="d-flex justify-content-between mt-1">
                                 <small class="text-muted">Custom string ID for Button C actions</small>
-                                <small class="btn-str-counter text-muted"><span class="btn-str-used">{{ config.config_json.button_c_string_id|default:''|slice:':16'|length }}</span>/16</small>
+                                <small class="btn-str-counter text-muted"><span class="btn-str-used">{{ config.config_json.button_c_string_id|default:' '|slice:':16'|length }}</span>/16</small>
                             </div>
                         </div>
                         <div class="col-md-4">
@@ -496,10 +496,10 @@
                             </label>
                             <input type="text" name="button_d_string_id" id="btn_d_str" class="form-control btn-str-input"
                                 placeholder="e.g. service_d" maxlength="16"
-                                value="{{ config.config_json.button_d_string_id|default:''|slice:':16' }}">
+                                value="{{ config.config_json.button_d_string_id|default:' '|slice:':16' }}">
                             <div class="d-flex justify-content-between mt-1">
                                 <small class="text-muted">Custom string ID for Button D actions</small>
-                                <small class="btn-str-counter text-muted"><span class="btn-str-used">{{ config.config_json.button_d_string_id|default:''|slice:':16'|length }}</span>/16</small>
+                                <small class="btn-str-counter text-muted"><span class="btn-str-used">{{ config.config_json.button_d_string_id|default:' '|slice:':16'|length }}</span>/16</small>
                             </div>
                         </div>
                         <div class="col-md-6">

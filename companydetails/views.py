@@ -163,6 +163,7 @@ class CompanyViewSet(viewsets.ModelViewSet):
         company.noof_keypad_devices = parse_int(data.get('NoofKeypaddevices'), company.noof_keypad_devices)
         company.noof_television_devices = parse_int(data.get('NoofTelevisiondevices'), company.noof_television_devices)
         company.noof_led_devices = parse_int(data.get('NoofLeddevices'), company.noof_led_devices)
+        company.noof_config_apk = parse_int(data.get('NoofConfigApk'), company.noof_config_apk)
         
         # Safely handle license count
         company.number_of_licence = parse_int(data.get('NumberOfLicence'), company.number_of_licence)
@@ -751,36 +752,51 @@ class CustomLoginView(LoginView):
         return context
     
     def form_valid(self, form):
-        """Override to check dealer license status before allowing login."""
+        """Override to check license status before allowing login."""
         # Perform the default login
         response = super().form_valid(form)
-        
+
         user = self.request.user
-        
-        # Check dealer license validation
+
+        # --- License validation for customer-facing roles ---
+        # SUPER_ADMIN / ADMIN / EMPLOYEE are system-level and are not bound to a
+        # customer license, so they are intentionally excluded from these checks.
+
         if user.role == 'DEALER_ADMIN' and user.company_relation:
             company = user.company_relation
-            
+
             # Check if authentication status is approved
             approved_statuses = ['Success', 'Approved', 'Approve']
             if company.authentication_status not in approved_statuses:
                 logout(self.request)
                 messages.error(
-                    self.request, 
+                    self.request,
                     'Your dealer license is not approved. Please contact admin.'
                 )
                 return redirect('login')
-            
+
             # Check if license has expired
             expiry_date = company.product_to_date
             if expiry_date and expiry_date < date.today():
                 logout(self.request)
                 messages.error(
-                    self.request, 
+                    self.request,
                     f'Your dealer license expired on {expiry_date.strftime("%d-%m-%Y")}. Please contact admin to renew.'
                 )
                 return redirect('login')
-        
+
+        elif user.role in ('COMPANY_ADMIN', 'BRANCH_ADMIN') and user.company_relation:
+            # Guard company/branch admins against expired customer licenses.
+            from callq_core.services import LicenseValidator
+            is_expired, expiry_date = LicenseValidator.check_license_expiry(user.company_relation)
+            if is_expired:
+                logout(self.request)
+                messages.error(
+                    self.request,
+                    'Your license has expired. Please contact support.'
+                )
+                return redirect('login')
+
         # Check platform access
         if not user.is_web_user:
             logout(self.request)
@@ -789,7 +805,7 @@ class CustomLoginView(LoginView):
                 'Your account does not have access to the web dashboard. Please use the mobile application.'
             )
             return redirect('login')
-        
+
         return response
 
 @login_required
@@ -1079,6 +1095,7 @@ def sync_company_license_data(company, data, user=None):
     company.noof_keypad_devices = parse_int(data.get('NoofKeypaddevices'), company.noof_keypad_devices)
     company.noof_television_devices = parse_int(data.get('NoofTelevisiondevices'), company.noof_television_devices)
     company.noof_led_devices = parse_int(data.get('NoofLeddevices'), company.noof_led_devices)
+    company.noof_config_apk = parse_int(data.get('NoofConfigApk'), company.noof_config_apk)
     
     company.number_of_licence = parse_int(data.get('NumberOfLicence'), company.number_of_licence)
     company.save()

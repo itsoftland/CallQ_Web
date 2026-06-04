@@ -60,6 +60,7 @@ class Company(models.Model):
     noof_keypad_devices = models.IntegerField(default=0)
     noof_television_devices = models.IntegerField(default=0)
     noof_led_devices = models.IntegerField(default=0)
+    noof_config_apk = models.IntegerField(default=0, help_text="Max Config APK devices allowed by license")
     
     # Tracking
     authentication_status = models.CharField(max_length=100, null=True, blank=True)
