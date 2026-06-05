@@ -178,22 +178,24 @@
             </div>
         </div>
     </div>
+    {% if user.role == "DEALER_ADMIN" %}
     <div class="col-sm-6 col-lg-3">
         <div class="card border-0 shadow-sm h-100">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-start mb-3">
                     <div>
-                        <p class="text-secondary small mb-1">{% if user.role == "DEALER_ADMIN" %}License Quota{% else %}License Usage{% endif %}</p>
-                        <h3 class="fw-bold mb-0">{% if user.role == "DEALER_ADMIN" %}{{ licenses_count|default:"0" }}{% else %}{{ used_licenses|default:"0" }}/{{ total_licenses|default:"0" }}{% endif %}</h3>
+                        <p class="text-secondary small mb-1">License Quota</p>
+                        <h3 class="fw-bold mb-0">{{ licenses_count|default:"0" }}</h3>
                     </div>
                     <div class="stat-icon bg-light rounded-3 p-2">
                         <i class="fas fa-file-alt text-secondary"></i>
                     </div>
                 </div>
-                <p class="text-secondary small mb-0">{% if user.role == "DEALER_ADMIN" %}Total licenses assigned{% else %}{{ available_licenses|default:"0" }} available{% endif %}</p>
+                <p class="text-secondary small mb-0">Total licenses assigned</p>
             </div>
         </div>
     </div>
+    {% endif %}
     <!-- Pending Batch Requests Card -->
     {% if pending_batch_requests > 0 %}
     <div class="col-sm-6 col-lg-3">
@@ -215,44 +217,152 @@
         </a>
     </div>
     {% endif %}
+    <!-- Super Admin: Device Type Breakdown -->
+    {% if user.role == 'SUPER_ADMIN' %}
+    <div class="col-12">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white border-0 pt-3 pb-0">
+                <h6 class="fw-bold mb-0 text-secondary text-uppercase" style="letter-spacing:.05em; font-size:.75rem;">Devices Sold by Type</h6>
+            </div>
+            <div class="card-body pt-2">
+                <div class="row g-2 text-center">
+                    <div class="col-6 col-sm-4 col-md-2">
+                        <div class="p-3 bg-light rounded-3">
+                            <i class="fas fa-tv text-primary mb-2 d-block fa-lg"></i>
+                            <h4 class="fw-bold mb-0">{{ tv_count|default:"0" }}</h4>
+                            <small class="text-muted">TV</small>
+                        </div>
+                    </div>
+                    <div class="col-6 col-sm-4 col-md-2">
+                        <div class="p-3 bg-light rounded-3">
+                            <i class="fas fa-print text-success mb-2 d-block fa-lg"></i>
+                            <h4 class="fw-bold mb-0">{{ token_dispenser_count|default:"0" }}</h4>
+                            <small class="text-muted">Dispenser</small>
+                        </div>
+                    </div>
+                    <div class="col-6 col-sm-4 col-md-2">
+                        <div class="p-3 bg-light rounded-3">
+                            <i class="fas fa-keyboard text-warning mb-2 d-block fa-lg"></i>
+                            <h4 class="fw-bold mb-0">{{ keypad_count|default:"0" }}</h4>
+                            <small class="text-muted">Keypad</small>
+                        </div>
+                    </div>
+                    <div class="col-6 col-sm-4 col-md-2">
+                        <div class="p-3 bg-light rounded-3">
+                            <i class="fas fa-server text-danger mb-2 d-block fa-lg"></i>
+                            <h4 class="fw-bold mb-0">{{ broker_count|default:"0" }}</h4>
+                            <small class="text-muted">Broker</small>
+                        </div>
+                    </div>
+                    <div class="col-6 col-sm-4 col-md-2">
+                        <div class="p-3 bg-light rounded-3">
+                            <i class="fas fa-tv text-info mb-2 d-block fa-lg"></i>
+                            <h4 class="fw-bold mb-0">{{ led_count|default:"0" }}</h4>
+                            <small class="text-muted">LED</small>
+                        </div>
+                    </div>
+                    <div class="col-6 col-sm-4 col-md-2">
+                        <div class="p-3 bg-light rounded-3">
+                            <i class="fas fa-mobile-alt text-secondary mb-2 d-block fa-lg"></i>
+                            <h4 class="fw-bold mb-0">{{ config_apk_count|default:"0" }}</h4>
+                            <small class="text-muted">Config APK</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
     {% elif user.role == 'COMPANY_ADMIN' %}
-    <!-- Company Admin View -->
-    <div class="col-sm-6 col-lg-3">
-        <div class="card border-0 shadow-sm h-100">
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-start mb-3">
-                    <div>
-                        <p class="text-secondary small mb-1">Total Devices</p>
-                        <h3 class="fw-bold mb-0">{{ devices_count|default:"0" }}</h3>
+    <!-- Company Admin View: Total Devices with Type Breakdown -->
+    <div class="col-12">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body py-3">
+                <div class="row align-items-center g-3">
+                    <div class="col-12 col-md-3 border-end-md">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <p class="text-secondary small mb-1">Total Devices</p>
+                                <h2 class="fw-bold mb-0">{{ devices_count|default:"0" }}</h2>
+                                <p class="text-secondary small mt-1 mb-0">Registered devices</p>
+                            </div>
+                            <div class="stat-icon bg-light rounded-3 p-2 d-none d-md-flex">
+                                <i class="fas fa-desktop text-secondary fa-lg"></i>
+                            </div>
+                        </div>
                     </div>
-                    <div class="stat-icon bg-light rounded-3 p-2">
-                        <i class="fas fa-desktop text-secondary"></i>
+                    <div class="col-12 col-md-9">
+                        <div class="row g-2 text-center">
+                            <div class="col-4 col-sm-2">
+                                <div class="p-2 bg-light rounded-3">
+                                    <i class="fas fa-tv text-primary mb-1 d-block"></i>
+                                    <h5 class="fw-bold mb-0">{{ tv_count|default:"0" }}</h5>
+                                    <small class="text-muted">TV</small>
+                                </div>
+                            </div>
+                            <div class="col-4 col-sm-2">
+                                <div class="p-2 bg-light rounded-3">
+                                    <i class="fas fa-print text-success mb-1 d-block"></i>
+                                    <h5 class="fw-bold mb-0">{{ token_dispenser_count|default:"0" }}</h5>
+                                    <small class="text-muted">Dispenser</small>
+                                </div>
+                            </div>
+                            <div class="col-4 col-sm-2">
+                                <div class="p-2 bg-light rounded-3">
+                                    <i class="fas fa-keyboard text-warning mb-1 d-block"></i>
+                                    <h5 class="fw-bold mb-0">{{ keypad_count|default:"0" }}</h5>
+                                    <small class="text-muted">Keypad</small>
+                                </div>
+                            </div>
+                            <div class="col-4 col-sm-2">
+                                <div class="p-2 bg-light rounded-3">
+                                    <i class="fas fa-server text-danger mb-1 d-block"></i>
+                                    <h5 class="fw-bold mb-0">{{ broker_count|default:"0" }}</h5>
+                                    <small class="text-muted">Broker</small>
+                                </div>
+                            </div>
+                            <div class="col-4 col-sm-2">
+                                <div class="p-2 bg-light rounded-3">
+                                    <i class="fas fa-tv text-info mb-1 d-block"></i>
+                                    <h5 class="fw-bold mb-0">{{ led_count|default:"0" }}</h5>
+                                    <small class="text-muted">LED</small>
+                                </div>
+                            </div>
+                            <div class="col-4 col-sm-2">
+                                <div class="p-2 bg-light rounded-3">
+                                    <i class="fas fa-mobile-alt text-secondary mb-1 d-block"></i>
+                                    <h5 class="fw-bold mb-0">{{ config_apk_count|default:"0" }}</h5>
+                                    <small class="text-muted">Config APK</small>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
-                <p class="text-secondary small mb-0">{{ active_devices|default:"0" }} online</p>
             </div>
         </div>
     </div>
-    <div class="col-sm-6 col-lg-3">
-        <div class="card border-0 shadow-sm h-100">
+    <!-- Today's Token Count -->
+    <div class="col-sm-6">
+        <div class="card border-0 shadow-sm h-100" style="border-left: 4px solid #0d6efd !important;">
             <div class="card-body">
-                <div class="d-flex justify-content-between align-items-start mb-3">
+                <div class="d-flex justify-content-between align-items-start mb-2">
                     <div>
-                        <p class="text-secondary small mb-1">Offline Devices</p>
-                        <h3 class="fw-bold mb-0">{{ offline_devices|default:"0" }}</h3>
+                        <p class="text-secondary small mb-1 fw-semibold text-uppercase" style="letter-spacing:.05em;">Today's Tokens</p>
+                        <h2 class="fw-bold mb-0 text-primary">{{ today_token_count|default:"0" }}</h2>
                     </div>
-                    <div class="stat-icon bg-light rounded-3 p-2">
-                        <i class="fas fa-wifi text-secondary"></i>
+                    <div class="stat-icon bg-primary bg-opacity-10 rounded-3 p-2">
+                        <i class="fas fa-ticket-alt text-primary fa-lg"></i>
                     </div>
                 </div>
-                <p class="text-secondary small mb-0">Require attention</p>
+                <p class="text-secondary small mb-0">Tokens issued today</p>
             </div>
         </div>
     </div>
-    <div class="col-sm-6 col-lg-3">
+    <!-- Branches -->
+    <div class="col-sm-6">
         <div class="card border-0 shadow-sm h-100">
             <div class="card-body">
-                <div class="d-flex justify-content-between align-items-start mb-3">
+                <div class="d-flex justify-content-between align-items-start mb-2">
                     <div>
                         <p class="text-secondary small mb-1">Branches</p>
                         <h3 class="fw-bold mb-0">{{ branches_count|default:"0" }}</h3>
@@ -265,31 +375,18 @@
             </div>
         </div>
     </div>
-    <div class="col-sm-6 col-lg-3">
-        <div class="card border-0 shadow-sm h-100">
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-start mb-3">
-                    <div>
-                        <p class="text-secondary small mb-1">Profiles</p>
-                        <h3 class="fw-bold mb-0">{{ profiles_count|default:"0" }}</h3>
-                    </div>
-                    <div class="stat-icon bg-light rounded-3 p-2">
-                        <i class="fas fa-user-cog text-secondary"></i>
-                    </div>
-                </div>
-                <p class="text-secondary small mb-0">Display configurations</p>
-            </div>
-        </div>
-    </div>
     {% endif %}
 </div>
 
 <div class="row g-4">
     <!-- Recent Activity -->
-    <div class="col-lg-6">
+    <div class="{% if user.role == 'SUPER_ADMIN' or user.role == 'COMPANY_ADMIN' %}col-12{% else %}col-lg-6{% endif %}">
         <div class="card border-0 shadow-sm h-100">
-            <div class="card-header bg-white border-0 py-3">
+            <div class="card-header bg-white border-0 py-3 d-flex justify-content-between align-items-center">
                 <h5 class="card-title mb-0 fw-bold">Recent Activity</h5>
+                {% if recent_activity %}
+                <small class="text-muted">Last {{ recent_activity|length }} actions</small>
+                {% endif %}
             </div>
             <div class="card-body p-0">
                 <div class="list-group list-group-flush">
@@ -297,13 +394,18 @@
                     <div class="list-group-item border-0 px-4 py-3">
                         <div class="d-flex justify-content-between align-items-start">
                             <div class="d-flex align-items-start">
-                                <span class="text-primary me-2">●</span>
+                                <span class="text-primary me-2 mt-1">●</span>
                                 <div>
                                     <p class="mb-1 fw-medium text-dark">{{ activity.action }}</p>
-                                    <p class="mb-0 small text-muted">{{ activity.details|truncatechars:50 }}</p>
+                                    {% if activity.details %}
+                                    <p class="mb-0 small text-muted">{{ activity.details|truncatechars:80 }}</p>
+                                    {% endif %}
+                                    {% if activity.user %}
+                                    <p class="mb-0 small text-muted mt-1"><i class="fas fa-user fa-xs me-1"></i>{{ activity.user.get_full_name|default:activity.user.username }}</p>
+                                    {% endif %}
                                 </div>
                             </div>
-                            <small class="text-muted">{{ activity.timestamp|timesince }} ago</small>
+                            <small class="text-muted text-nowrap ms-3">{{ activity.timestamp|timesince }} ago</small>
                         </div>
                     </div>
                     {% empty %}
@@ -317,7 +419,8 @@
         </div>
     </div>
 
-    <!-- System Alerts -->
+    <!-- System Alerts (only for non-super-admin / non-company-admin roles) -->
+    {% if user.role != 'SUPER_ADMIN' and user.role != 'COMPANY_ADMIN' %}
     <div class="col-lg-6">
         <div class="card border-0 shadow-sm h-100">
             <div class="card-header bg-white border-0 py-3">
@@ -338,63 +441,7 @@
             </div>
         </div>
     </div>
+    {% endif %}
 </div>
 
-{% if user.role == 'COMPANY_ADMIN' %}
-<!-- Device Status by Branch -->
-<div class="row g-4 mt-0">
-    <div class="col-lg-6">
-        <div class="card border-0 shadow-sm h-100">
-            <div class="card-header bg-white border-0 py-3">
-                <h5 class="card-title mb-0 fw-bold">Device Status by Branch</h5>
-            </div>
-            <div class="card-body">
-                {% for branch in branch_stats %}
-                <div class="mb-4">
-                    <div class="d-flex justify-content-between mb-2">
-                        <span class="fw-medium">{{ branch.name }}</span>
-                        <span class="text-muted small">{{ branch.device_count }} devices</span>
-                    </div>
-                    <div class="d-flex gap-1">
-                        <div class="progress flex-grow-1 rounded-pill" style="height: 8px;">
-                            <div class="bg-success rounded-pill" role="progressbar"
-                                style="width: {{ branch.online_percent }}%"></div>
-                        </div>
-                        {% if branch.offline_percent > 0 %}
-                        <div class="progress" style="height: 8px; width: {{ branch.offline_percent }}%;">
-                            <div class="bg-danger rounded-pill" role="progressbar" style="width: 100%"></div>
-                        </div>
-                        {% endif %}
-                    </div>
-                </div>
-                {% empty %}
-                <div class="text-center py-4 text-muted">
-                    <p class="mb-0">No branch data available</p>
-                </div>
-                {% endfor %}
-            </div>
-        </div>
-    </div>
-
-    <!-- Quick Actions -->
-    <div class="col-lg-6">
-        <div class="card border-0 shadow-sm h-100">
-            <div class="card-header bg-white border-0 py-3">
-                <h5 class="card-title mb-0 fw-bold">Quick Actions</h5>
-            </div>
-            <div class="card-body">
-                <a href="{% url 'device_list' %}"
-                    class="d-block text-decoration-none text-dark p-3 bg-light rounded-3 mb-3 hover-bg">
-                    <h6 class="fw-semibold mb-1">View Offline Devices</h6>
-                    <p class="text-muted small mb-0">Check connectivity issues</p>
-                </a>
-                <a href="#" class="d-block text-decoration-none text-dark p-3 bg-light rounded-3 hover-bg">
-                    <h6 class="fw-semibold mb-1">Create New Profile</h6>
-                    <p class="text-muted small mb-0">Add display schedule</p>
-                </a>
-            </div>
-        </div>
-    </div>
-</div>
-{% endif %}
 {% endblock %}

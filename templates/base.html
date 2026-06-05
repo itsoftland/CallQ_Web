@@ -106,14 +106,7 @@
                 class="{% if request.resolver_match.url_name == 'mapping_list' %}active{% endif %}">
                 <i class="fas fa-list-alt"></i> <span class="nav-text">Group List</span>
             </a>
-            <a href="{% url 'embedded_profile_list' %}"
-                class="{% if 'embedded_profile' in request.resolver_match.url_name %}active{% endif %}">
-                <i class="fas fa-clock"></i> <span class="nav-text">Scheduler</span>
-            </a>
-            <a href="{% url 'config_profile_list' %}"
-                class="{% if 'config_profile' in request.resolver_match.url_name %}active{% endif %}">
-                <i class="fas fa-sliders-h"></i> <span class="nav-text">Config Profiles</span>
-            </a>
+            {# Scheduler and Config Profiles hidden from sidebar #}
             <a href="{% url 'counter_list' %}"
                 class="{% if 'counter' in request.resolver_match.url_name %}active{% endif %}">
                 <i class="fas fa-list-ol"></i> <span class="nav-text">Counters</span>
@@ -157,14 +150,7 @@
                 class="{% if request.resolver_match.url_name == 'mapping_list' %}active{% endif %}">
                 <i class="fas fa-list-alt"></i> <span class="nav-text">Group List</span>
             </a>
-            <a href="{% url 'embedded_profile_list' %}"
-                class="{% if 'embedded_profile' in request.resolver_match.url_name %}active{% endif %}">
-                <i class="fas fa-clock"></i> <span class="nav-text">Scheduler</span>
-            </a>
-            <a href="{% url 'config_profile_list' %}"
-                class="{% if 'config_profile' in request.resolver_match.url_name %}active{% endif %}">
-                <i class="fas fa-sliders-h"></i> <span class="nav-text">Config Profiles</span>
-            </a>
+            {# Scheduler and Config Profiles hidden from sidebar #}
             <a href="{% url 'counter_list' %}"
                 class="{% if 'counter' in request.resolver_match.url_name %}active{% endif %}">
                 <i class="fas fa-list-ol"></i> <span class="nav-text">Counters</span>
@@ -194,14 +180,7 @@
                 class="{% if request.resolver_match.url_name == 'mapping_list' %}active{% endif %}">
                 <i class="fas fa-list-alt"></i> <span class="nav-text">Group List</span>
             </a>
-            <a href="{% url 'embedded_profile_list' %}"
-                class="{% if 'embedded_profile' in request.resolver_match.url_name %}active{% endif %}">
-                <i class="fas fa-clock"></i> <span class="nav-text">Scheduler</span>
-            </a>
-            <a href="{% url 'config_profile_list' %}"
-                class="{% if 'config_profile' in request.resolver_match.url_name %}active{% endif %}">
-                <i class="fas fa-sliders-h"></i> <span class="nav-text">Config Profiles</span>
-            </a>
+            {# Scheduler and Config Profiles hidden from sidebar #}
             <a href="{% url 'counter_list' %}"
                 class="{% if 'counter' in request.resolver_match.url_name %}active{% endif %}">
                 <i class="fas fa-list-ol"></i> <span class="nav-text">Counters</span>

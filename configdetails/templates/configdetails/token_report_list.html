@@ -233,19 +233,7 @@
     <div class="filter-card">
         <form method="GET" id="filterForm">
             <div class="row g-3 align-items-end">
-                <div class="col-md-3">
-                    <label for="filterId" class="form-label">Customer ID</label>
-                    <div class="input-group input-group-sm">
-                        <span class="input-group-text bg-white border-end-0">
-                            <i class="fas fa-id-card text-muted" style="font-size:.7rem;"></i>
-                        </span>
-                        <input type="text" class="form-control border-start-0"
-                               id="filterId" name="customer_id"
-                               value="{{ filter_customer }}"
-                               placeholder="Search customer…">
-                    </div>
-                </div>
-                <div class="col-md-3">
+                <div class="col-md-4">
                     <label for="filterMac" class="form-label">MAC Address</label>
                     <div class="input-group input-group-sm">
                         <span class="input-group-text bg-white border-end-0">
@@ -257,13 +245,13 @@
                                placeholder="AA:BB:CC…">
                     </div>
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-3">
                     <label for="filterFrom" class="form-label">From Date</label>
                     <input type="date" class="form-control form-control-sm"
                            id="filterFrom" name="date_from"
                            value="{{ filter_date_from }}">
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-3">
                     <label for="filterTo" class="form-label">To Date</label>
                     <input type="date" class="form-control form-control-sm"
                            id="filterTo" name="date_to"
@@ -366,7 +354,7 @@
                 <ul class="pagination pagination-sm mb-0 gap-1">
                     {% if reports.has_previous %}
                     <li class="page-item">
-                        <a class="page-link" href="?{% if filter_customer %}customer_id={{ filter_customer }}&{% endif %}{% if filter_mac %}mac_address={{ filter_mac }}&{% endif %}{% if filter_date_from %}date_from={{ filter_date_from }}&{% endif %}{% if filter_date_to %}date_to={{ filter_date_to }}&{% endif %}page={{ reports.previous_page_number }}">
+                        <a class="page-link" href="?{% if filter_mac %}mac_address={{ filter_mac }}&{% endif %}{% if filter_date_from %}date_from={{ filter_date_from }}&{% endif %}{% if filter_date_to %}date_to={{ filter_date_to }}&{% endif %}page={{ reports.previous_page_number }}">
                             <i class="fas fa-chevron-left" style="font-size:.7rem;"></i>
                         </a>
                     </li>
@@ -377,14 +365,14 @@
                         <li class="page-item active"><span class="page-link">{{ num }}</span></li>
                         {% elif num > reports.number|add:'-3' and num < reports.number|add:'3' %}
                         <li class="page-item">
-                            <a class="page-link" href="?{% if filter_customer %}customer_id={{ filter_customer }}&{% endif %}{% if filter_mac %}mac_address={{ filter_mac }}&{% endif %}{% if filter_date_from %}date_from={{ filter_date_from }}&{% endif %}{% if filter_date_to %}date_to={{ filter_date_to }}&{% endif %}page={{ num }}">{{ num }}</a>
+                            <a class="page-link" href="?{% if filter_mac %}mac_address={{ filter_mac }}&{% endif %}{% if filter_date_from %}date_from={{ filter_date_from }}&{% endif %}{% if filter_date_to %}date_to={{ filter_date_to }}&{% endif %}page={{ num }}">{{ num }}</a>
                         </li>
                         {% endif %}
                     {% endfor %}
 
                     {% if reports.has_next %}
                     <li class="page-item">
-                        <a class="page-link" href="?{% if filter_customer %}customer_id={{ filter_customer }}&{% endif %}{% if filter_mac %}mac_address={{ filter_mac }}&{% endif %}{% if filter_date_from %}date_from={{ filter_date_from }}&{% endif %}{% if filter_date_to %}date_to={{ filter_date_to }}&{% endif %}page={{ reports.next_page_number }}">
+                        <a class="page-link" href="?{% if filter_mac %}mac_address={{ filter_mac }}&{% endif %}{% if filter_date_from %}date_from={{ filter_date_from }}&{% endif %}{% if filter_date_to %}date_to={{ filter_date_to }}&{% endif %}page={{ reports.next_page_number }}">
                             <i class="fas fa-chevron-right" style="font-size:.7rem;"></i>
                         </a>
                     </li>
@@ -400,7 +388,7 @@
             <div class="icon-ring">
                 <i class="fas fa-inbox"></i>
             </div>
-            {% if filter_customer or filter_mac or filter_date_from or filter_date_to %}
+            {% if filter_mac or filter_date_from or filter_date_to %}
                 <p>No records match your current filters.</p>
                 <a href="{% url 'token_report_list' %}" class="btn btn-sm btn-outline-primary">
                     <i class="fas fa-undo me-1"></i>Clear Filters

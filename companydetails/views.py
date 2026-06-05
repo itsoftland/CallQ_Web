@@ -250,7 +250,14 @@ def dashboard(request):
         context['dealers_count'] = Company.objects.filter(company_type='DEALER').count()
         context['devices_count'] = Device.objects.count()
         context['licenses_count'] = License.objects.count()
-        context['recent_activity'] = ActivityLog.objects.all().order_by('-timestamp')[:5]
+        context['tv_count'] = Device.objects.filter(device_type=Device.DeviceType.TV).count()
+        context['token_dispenser_count'] = Device.objects.filter(device_type=Device.DeviceType.TOKEN_DISPENSER).count()
+        context['keypad_count'] = Device.objects.filter(device_type=Device.DeviceType.KEYPAD).count()
+        context['broker_count'] = Device.objects.filter(device_type=Device.DeviceType.BROKER).count()
+        context['led_count'] = Device.objects.filter(device_type=Device.DeviceType.LED).count()
+        context['serial_apk_count'] = Device.objects.filter(device_type=Device.DeviceType.SERIAL_APK).count()
+        context['config_apk_count'] = Device.objects.filter(device_type=Device.DeviceType.CONFIG_APK).count()
+        context['recent_activity'] = ActivityLog.objects.all().order_by('-timestamp')[:10]
     elif user.role == "ADMIN":
         state_filter = user.assigned_state
         if state_filter:
@@ -328,9 +335,29 @@ def dashboard(request):
     elif user.role == "COMPANY_ADMIN":
          # Company View
          if user.company_relation:
-            context['devices_count'] = Device.objects.filter(company=user.company_relation).count()
-            context['licenses_count'] = 0 # Or total licenses for company if applicable
-            # Add more stats as needed
+            company = user.company_relation
+            context['devices_count'] = Device.objects.filter(company=company).count()
+            context['tv_count'] = Device.objects.filter(company=company, device_type=Device.DeviceType.TV).count()
+            context['token_dispenser_count'] = Device.objects.filter(company=company, device_type=Device.DeviceType.TOKEN_DISPENSER).count()
+            context['keypad_count'] = Device.objects.filter(company=company, device_type=Device.DeviceType.KEYPAD).count()
+            context['broker_count'] = Device.objects.filter(company=company, device_type=Device.DeviceType.BROKER).count()
+            context['led_count'] = Device.objects.filter(company=company, device_type=Device.DeviceType.LED).count()
+            context['serial_apk_count'] = Device.objects.filter(company=company, device_type=Device.DeviceType.SERIAL_APK).count()
+            context['config_apk_count'] = Device.objects.filter(company=company, device_type=Device.DeviceType.CONFIG_APK).count()
+            # Today's token count
+            from django.utils import timezone
+            from configdetails.models import TokenReport
+            today = timezone.now().date()
+            context['today_token_count'] = (
+                TokenReport.objects.filter(customerId=company.company_id, received_dateTime__date=today).count()
+                if company.company_id else 0
+            )
+            context['branches_count'] = Branch.objects.filter(company=company).count()
+            from configdetails.models import EmbeddedProfile
+            context['profiles_count'] = EmbeddedProfile.objects.filter(company=company).count()
+            context['recent_activity'] = ActivityLog.objects.filter(
+                user__company_relation=company
+            ).order_by('-timestamp')[:10]
             
     elif user.role == "BRANCH_ADMIN":
         # Branch View
