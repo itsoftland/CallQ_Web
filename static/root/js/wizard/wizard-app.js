@@ -51,6 +51,7 @@ function App() {
             name: d.get_display_identifier,
             code: d.serial_number,
             model: d.device_model || 'CQ Device',
+            inGroup: !!d.in_group,
           });
         });
         setPool(g);
@@ -142,7 +143,7 @@ function App() {
       <div className="card elev fade-in" key={step.id}>
         {step.kind==='config' && (
           <ConfigStep gName={gName} setGName={setGName} counts={counts} setCount={setCount}
-            brId={brId} setBrId={setBrId} dcId={dcId} setDcId={setDcId} steps={steps} loading={loading}/>
+            brId={brId} setBrId={setBrId} dcId={dcId} setDcId={setDcId} steps={steps} loading={loading} pool={pool}/>
         )}
         {step.kind==='map' && (
           <div style={{padding:26}}>
@@ -179,7 +180,7 @@ function App() {
 }
 
 /* ── CONFIG STEP ── */
-function ConfigStep({gName,setGName,counts,setCount,brId,setBrId,dcId,setDcId,steps,loading}) {
+function ConfigStep({gName,setGName,counts,setCount,brId,setBrId,dcId,setDcId,steps,loading,pool}) {
   const order=['TOKEN_DISPENSER','KEYPAD','LED','BROKER','TV'];
   return (
     <div style={{padding:26}}>
@@ -213,6 +214,11 @@ function ConfigStep({gName,setGName,counts,setCount,brId,setBrId,dcId,setDcId,st
       <div className="countgrid" style={{marginBottom:22}}>
         {order.map(type=>{
           const ty=T(type); const zero=counts[type]===0; const opt=type==='LED'||type==='BROKER'||type==='TV';
+          const exclusive = type==='TOKEN_DISPENSER'||type==='KEYPAD'||type==='LED';
+          const devicesOfType = pool[type] || [];
+          const totalInBranch = devicesOfType.length;
+          const availCount = exclusive ? devicesOfType.filter(d => !d.inGroup).length : totalInBranch;
+          const hasDevices = totalInBranch > 0;
           return (
             <div className={`ccard${zero&&opt?' zero':''}`} key={type}>
               <div className="chead">
@@ -221,6 +227,22 @@ function ConfigStep({gName,setGName,counts,setCount,brId,setBrId,dcId,setDcId,st
               </div>
               <Counter value={counts[type]} min={opt?0:1} onChange={v=>setCount(type,v)}/>
               {zero&&opt&&<div className="badge-skip"><Ico name="fa-circle-minus"/> step skipped</div>}
+              {hasDevices && (
+                <div style={{marginTop:8,fontSize:11,fontWeight:600,display:'flex',alignItems:'center',gap:5,
+                  color: availCount === 0 ? 'var(--danger)' : availCount < totalInBranch ? 'var(--warning)' : 'var(--success)'}}>
+                  <Ico name={availCount === 0 ? 'fa-circle-xmark' : availCount === totalInBranch ? 'fa-circle-check' : 'fa-circle-half-stroke'}
+                    style={{fontSize:10}}/>
+                  {exclusive
+                    ? <span>{availCount} of {totalInBranch} available</span>
+                    : <span>{totalInBranch} in branch</span>}
+                </div>
+              )}
+              {!hasDevices && (brId || dcId) && !loading && (
+                <div style={{marginTop:8,fontSize:11,fontWeight:600,color:'var(--ink-4)',display:'flex',alignItems:'center',gap:5}}>
+                  <Ico name="fa-circle-exclamation" style={{fontSize:10}}/>
+                  <span>No devices registered</span>
+                </div>
+              )}
             </div>
           );
         })}

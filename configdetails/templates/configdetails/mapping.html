@@ -4,7 +4,6 @@
 {% block page_title %}System-Wide Mapping Configuration{% endblock %}
 
 {% block content %}
-{# ── Django → React data bridge ── #}
 <script>
 window.__WZ = {
   companies:       {{ companies_json|safe }},
@@ -18,7 +17,6 @@ window.__WZ = {
 </script>
 
 <style>
-/* ── Wizard design system (scoped to .wzwrap) ── */
 .wzwrap{
   --cq-primary:#2563EB;--cq-primary-hover:#1D4ED8;--cq-primary-light:#EFF6FF;--cq-primary-2:#DBEAFE;
   --ink:#111827;--ink-2:#4B5563;--ink-3:#6B7280;--ink-4:#9CA3AF;
@@ -34,25 +32,18 @@ window.__WZ = {
   --t-led:#D97706;    --t-led-bg:#FFF7ED;
   --t-broker:#7C3AED; --t-broker-bg:#F5F1FE;
   --t-tv:#E11D48;     --t-tv-bg:#FFF1F3;
-  font-family:'Inter',system-ui,sans-serif;
-  color:var(--ink);
+  font-family:'Inter',system-ui,sans-serif;color:var(--ink);
 }
 .wzwrap *{box-sizing:border-box;}
 .wzwrap button{font-family:inherit;}
-
-/* page header */
 .wzwrap .page-head{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;margin-bottom:20px;}
 .wzwrap .page-head h2{font-size:22px;font-weight:800;margin:0 0 5px;letter-spacing:-.4px;}
 .wzwrap .page-head p{margin:0;color:var(--ink-3);font-size:13.5px;max-width:560px;line-height:1.55;}
 .wzwrap .pill-link{font-size:12.5px;color:var(--cq-primary);font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border:1px solid var(--border);border-radius:999px;background:#fff;cursor:pointer;transition:.15s;}
 .wzwrap .pill-link:hover{border-color:var(--cq-primary);background:var(--cq-primary-light);}
-
-/* card */
 .wzwrap .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-xl);box-shadow:var(--shadow-sm);}
 .wzwrap .card.elev{box-shadow:var(--shadow-md);}
 .wzwrap .cardfoot{display:flex;align-items:center;justify-content:space-between;padding:18px 24px;border-top:1px solid var(--border-2);}
-
-/* stepper – rail */
 .wzwrap .rail{display:flex;align-items:flex-start;padding:22px 30px;gap:0;}
 .wzwrap .rstep{display:flex;flex-direction:column;align-items:center;gap:9px;flex-shrink:0;cursor:pointer;position:relative;}
 .wzwrap .rstep .nodeo{width:40px;height:40px;border-radius:50%;background:#fff;border:2px solid var(--border);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;color:var(--ink-4);transition:.2s;position:relative;z-index:2;}
@@ -63,8 +54,6 @@ window.__WZ = {
 .wzwrap .rstep.done .lbl{color:var(--ink-2);}
 .wzwrap .rconn{flex:1;height:2px;background:var(--border);margin-top:19px;min-width:24px;border-radius:2px;transition:.3s;}
 .wzwrap .rconn.fill{background:var(--cq-primary);}
-
-/* chain pipeline */
 .wzwrap .chain{display:flex;align-items:stretch;gap:0;flex-wrap:wrap;}
 .wzwrap .cnode{display:flex;flex-direction:column;align-items:center;gap:8px;padding:4px;min-width:90px;transition:.2s;}
 .wzwrap .cnode .cic{width:54px;height:54px;border-radius:15px;display:flex;align-items:center;justify-content:center;font-size:21px;border:1.5px solid transparent;transition:.2s;}
@@ -73,14 +62,9 @@ window.__WZ = {
 .wzwrap .cnode.active .cic{box-shadow:0 0 0 4px #fff,0 0 0 7px currentColor;transform:translateY(-2px);}
 .wzwrap .carrow{display:flex;align-items:center;color:var(--ink-4);font-size:15px;padding-top:18px;}
 .wzwrap .cbranch{display:flex;flex-direction:column;justify-content:center;gap:8px;padding-top:6px;}
-
-/* guidance banner */
 .wzwrap .guide{display:flex;gap:13px;align-items:flex-start;background:var(--cq-primary-light);border:1px solid var(--cq-primary-2);border-radius:var(--radius-lg);padding:15px 17px;}
 .wzwrap .guide .gi{width:30px;height:30px;border-radius:9px;background:#fff;color:var(--cq-primary);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;box-shadow:var(--shadow-sm);}
 .wzwrap .guide .gt{font-size:13px;color:var(--ink-2);line-height:1.55;}
-.wzwrap .guide .gt b{color:var(--ink);font-weight:700;}
-
-/* form */
 .wzwrap .field label{display:block;font-size:12px;font-weight:600;color:var(--ink-2);margin-bottom:7px;}
 .wzwrap .field label .req{color:var(--danger);}
 .wzwrap .input,.wzwrap .select{width:100%;height:44px;border:1px solid var(--border);background:#fff;border-radius:10px;padding:0 14px;font-size:13.5px;font-family:inherit;color:var(--ink);transition:.15s;outline:none;}
@@ -92,8 +76,6 @@ window.__WZ = {
 .wzwrap .counter button:hover{background:var(--bg);color:var(--cq-primary);}
 .wzwrap .counter input{width:46px;text-align:center;border:none;outline:none;font-size:15px;font-weight:700;color:var(--ink);background:#fff;font-family:inherit;-moz-appearance:textfield;}
 .wzwrap .counter input::-webkit-outer-spin-button,.wzwrap .counter input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
-
-/* device count grid */
 .wzwrap .countgrid{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;}
 .wzwrap .ccard{border:1px solid var(--border);border-radius:14px;padding:15px 14px 16px;transition:.2s;background:#fff;}
 .wzwrap .ccard.zero{background:var(--bg);border-style:dashed;}
@@ -102,8 +84,6 @@ window.__WZ = {
 .wzwrap .ccard .ctitle{font-size:12px;font-weight:700;color:var(--ink);line-height:1.2;}
 .wzwrap .ccard .csub{font-size:10.5px;color:var(--ink-4);}
 .wzwrap .badge-skip{display:inline-flex;align-items:center;gap:4px;font-size:9.5px;font-weight:700;color:var(--ink-4);text-transform:uppercase;letter-spacing:.4px;margin-top:9px;}
-
-/* mapping cards */
 .wzwrap .maplist{display:flex;flex-direction:column;gap:12px;}
 .wzwrap .mapcard{border:1px solid var(--border);border-radius:14px;background:#fff;overflow:hidden;transition:.2s;}
 .wzwrap .mapcard.on{border-color:var(--cq-primary-2);box-shadow:0 2px 10px rgba(37,99,235,.07);}
@@ -122,33 +102,10 @@ window.__WZ = {
 .wzwrap .switch.on{background:var(--cq-primary);}
 .wzwrap .switch .knob{position:absolute;top:2.5px;left:2.5px;width:18px;height:18px;border-radius:50%;background:#fff;transition:.2s;box-shadow:0 1px 3px rgba(0,0,0,.2);}
 .wzwrap .switch.on .knob{left:19px;}
-
-/* custom dropdown */
-.wzwrap .cs{position:relative;width:100%;}
-.wzwrap .cs-btn{width:100%;height:44px;display:flex;align-items:center;justify-content:space-between;gap:10px;background:#fff;border:1px solid var(--border);border-radius:10px;padding:0 13px;font-family:inherit;font-size:13.5px;cursor:pointer;transition:.15s;text-align:left;}
-.wzwrap .cs-btn:hover{border-color:var(--ink-4);}
-.wzwrap .cs-btn.open{border-color:var(--cq-primary);box-shadow:0 0 0 3px var(--cq-primary-light);}
-.wzwrap .cs-btn.has{border-color:var(--cq-primary-2);background:var(--cq-primary-light);}
-.wzwrap .cs-btn.open.has{background:#fff;}
-.wzwrap .cs-val{color:var(--ink);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.wzwrap .cs-ph{color:var(--ink-4);}
-.wzwrap .cs-chev{transition:.2s;}
-.wzwrap .cs-btn.open .cs-chev{transform:rotate(180deg);}
-.wzwrap .cs-menu{position:absolute;top:calc(100% + 6px);left:0;right:0;z-index:40;background:#fff;border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow-lg);padding:6px;max-height:248px;overflow-y:auto;animation:csIn .14s ease;}
-@keyframes csIn{from{opacity:0;transform:translateY(-5px);}to{opacity:1;transform:translateY(0);}}
-.wzwrap .cs-opt{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 11px;border-radius:8px;cursor:pointer;transition:.12s;}
-.wzwrap .cs-opt:hover{background:var(--bg);}
-.wzwrap .cs-opt.on{background:var(--cq-primary-light);}
-.wzwrap .cs-opt-nm{font-size:13px;font-weight:700;color:var(--ink);}
-.wzwrap .cs-opt-sub{font-size:11px;color:var(--ink-4);margin-top:1px;}
-
-/* status chips */
 .wzwrap .statchip{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;font-weight:700;padding:6px 12px;border-radius:999px;}
 .wzwrap .statchip.ok{background:var(--success-bg);color:var(--success);}
 .wzwrap .statchip.warn{background:var(--warning-bg);color:var(--warning);}
 .wzwrap .statchip.neutral{background:var(--bg);color:var(--ink-3);}
-
-/* buttons */
 .wzwrap .btn{display:inline-flex;align-items:center;justify-content:center;gap:9px;height:44px;padding:0 24px;border-radius:999px;font-size:13.5px;font-weight:700;cursor:pointer;border:1px solid transparent;transition:.15s;font-family:inherit;}
 .wzwrap .btn-primary{background:var(--cq-primary);color:#fff;box-shadow:0 4px 14px rgba(37,99,235,.28);}
 .wzwrap .btn-primary:hover:not(:disabled){background:var(--cq-primary-hover);}
@@ -158,8 +115,6 @@ window.__WZ = {
 .wzwrap .btn-ghost:disabled{opacity:.4;cursor:not-allowed;}
 .wzwrap .btn-success{background:var(--success);color:#fff;box-shadow:0 4px 14px rgba(16,185,129,.28);}
 .wzwrap .btn-success:hover{filter:brightness(.96);}
-
-/* review */
 .wzwrap .rev-card{border:1px solid var(--border);border-radius:16px;overflow:hidden;}
 .wzwrap .rev-head{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;background:linear-gradient(180deg,var(--cq-primary-light),#fff);border-bottom:1px solid var(--border-2);}
 .wzwrap .rev-body{padding:22px 20px;}
@@ -168,42 +123,58 @@ window.__WZ = {
 .wzwrap .sumtile .stico{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:14px;}
 .wzwrap .sumtile .stn{font-size:18px;font-weight:800;line-height:1;}
 .wzwrap .sumtile .stl{font-size:10.5px;color:var(--ink-4);font-weight:600;margin-top:3px;}
-
-/* custom dropdown — portal menu is rendered at body level (position:fixed),
-   so it needs a global rule in addition to the scoped .wzwrap version */
-.cs-menu{background:#fff;border:1px solid #E5E7EB;border-radius:12px;box-shadow:0 18px 40px -12px rgba(16,24,40,.22);padding:6px;max-height:248px;overflow-y:auto;animation:csIn .14s ease;font-family:'Inter',system-ui,sans-serif;}
-@keyframes csIn{from{opacity:0;transform:translateY(-5px);}to{opacity:1;transform:translateY(0);}}
-.cs-opt{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 11px;border-radius:8px;cursor:pointer;transition:.12s;}
-.cs-opt:hover{background:#F3F4F6;}
-.cs-opt.on{background:#EFF6FF;}
-.cs-opt-nm{font-size:13px;font-weight:700;color:#111827;}
-.cs-opt-sub{font-size:11px;color:#9CA3AF;margin-top:1px;}
-
-
 .wzwrap .fade-in{animation:wzFade .32s ease;}
 @keyframes wzFade{from{transform:translateY(7px);opacity:0;}to{transform:translateY(0);opacity:1;}}
 .wzwrap .empty{display:flex;flex-direction:column;align-items:center;gap:10px;padding:46px 20px;text-align:center;color:var(--ink-4);}
-
-@media(max-width:920px){
-  .wzwrap .countgrid{grid-template-columns:repeat(2,1fr);}
-  .wzwrap .rail{overflow-x:auto;}
-  .wzwrap .srcchip{min-width:160px;}
-}
+@media(max-width:920px){.wzwrap .countgrid{grid-template-columns:repeat(2,1fr);}.wzwrap .rail{overflow-x:auto;}.wzwrap .srcchip{min-width:160px;}}
 </style>
 
-{# React + Babel via CDN #}
-<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin="anonymous"></script>
-<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin="anonymous"></script>
-<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
-
-{# Mount point #}
 <div class="wzwrap">
-  <div id="wz-root"></div>
+  <!-- Page Header -->
+  <div class="page-head">
+    <div>
+      <h2>New Device Group</h2>
+      <p>Link your branch devices into a working call-flow. The wizard only shows the steps your selected devices need.</p>
+    </div>
+    <a class="pill-link" href="{% url 'mapping_list' %}">
+      <svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;display:block"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/></svg>
+      Group List
+    </a>
+  </div>
+
+  <!-- Stepper -->
+  <div class="card" style="margin-bottom:18px;overflow-x:auto">
+    <div class="rail" id="wz-stepper"></div>
+  </div>
+
+  <!-- Step Body -->
+  <div class="card elev" id="wz-card">
+    <div id="wz-body"></div>
+
+    <!-- Footer -->
+    <div class="cardfoot">
+      <button class="btn btn-ghost" id="wz-back" onclick="wzBack()">
+        <svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;display:block"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+        Back
+      </button>
+      <div style="display:flex;align-items:center;gap:16px">
+        <div id="wz-hint" style="display:none;font-size:12px;color:var(--ink-4);align-items:center;gap:6px">
+          <svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;display:block"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+          <span class="hint-msg"></span>
+        </div>
+        <button class="btn btn-primary" id="wz-next" onclick="wzNext()">
+          Continue
+          <svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;display:block"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+        </button>
+        <button class="btn btn-success" id="wz-finish" style="display:none" onclick="wzFinish()">
+          <svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;display:block"><path d="M21.8 10A10 10 0 1 1 17 3.3"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          Finish &amp; Save
+        </button>
+      </div>
+    </div>
+  </div>
 </div>
 
-{# Wizard static files (icons → components → app) #}
 <script src="{% static 'root/js/wizard/icons.js' %}"></script>
-<script type="text/babel" src="{% static 'root/js/wizard/wizard-components.js' %}"></script>
-<script type="text/babel" src="{% static 'root/js/wizard/wizard-app.js' %}"></script>
-
+<script src="{% static 'root/js/wizard/wz.js' %}"></script>
 {% endblock %}

@@ -5676,7 +5676,27 @@ def get_branch_devices_api(request, branch_id):
     devices = Device.objects.filter(branch=branch)
     if dtype:
         devices = devices.filter(device_type=dtype)
-        
+
+    # Pre-compute IDs of devices already assigned to groups (exclusive types)
+    taken_dispenser_ids = set(
+        GroupDispenserMapping.objects.values_list('dispenser_id', flat=True)
+    )
+    taken_keypad_ids = set(
+        GroupMapping.objects.values_list('keypads__id', flat=True)
+    ) - {None}
+    taken_led_ids = set(
+        GroupMapping.objects.values_list('leds__id', flat=True)
+    ) - {None}
+
+    def _is_in_group(d):
+        if d.device_type == Device.DeviceType.TOKEN_DISPENSER:
+            return d.id in taken_dispenser_ids
+        elif d.device_type == Device.DeviceType.KEYPAD:
+            return d.id in taken_keypad_ids
+        elif d.device_type == Device.DeviceType.LED:
+            return d.id in taken_led_ids
+        return False  # Brokers/TVs can be shared across groups
+
     data = [
         {
             'id': d.id,
@@ -5685,7 +5705,8 @@ def get_branch_devices_api(request, branch_id):
             'get_display_identifier': d.get_display_identifier,
             'device_model': d.device_model,
             'device_type': d.device_type,
-            'token_type': d.token_type
+            'token_type': d.token_type,
+            'in_group': _is_in_group(d),
         } for d in devices
     ]
     return Response({'devices': data})
@@ -6057,7 +6078,57 @@ def mapping_list_view(request):
         
         branch_mappings[key]['groups'].append(group_data)
     
-    # Structure: { branch: {'families': [...], 'standalone_by_type': {...}} }
+    # Compute available device counts per branch/company key
+    # IDs of exclusive-type devices already claimed by ANY group
+    all_taken_dispenser_ids = set(
+        GroupDispenserMapping.objects.values_list('dispenser_id', flat=True)
+    )
+    all_taken_keypad_ids = set(
+        GroupMapping.objects.values_list('keypads__id', flat=True)
+    ) - {None}
+    all_taken_led_ids = set(
+        GroupMapping.objects.values_list('leds__id', flat=True)
+    ) - {None}
+
+    for key, branch_data in branch_mappings.items():
+        # Determine company and branch for scoping
+        if isinstance(key, Branch):
+            branch_obj = key
+            company_obj = key.company
+            base_qs = Device.objects.filter(company=company_obj, branch=branch_obj, is_active=True)
+        else:
+            # key is a Company (no branch)
+            branch_obj = None
+            company_obj = key
+            base_qs = Device.objects.filter(company=company_obj, is_active=True)
+
+        # Total devices of each type in this branch
+        total_dispensers = base_qs.filter(device_type=Device.DeviceType.TOKEN_DISPENSER).count()
+        total_keypads = base_qs.filter(device_type=Device.DeviceType.KEYPAD).count()
+        total_leds = base_qs.filter(device_type=Device.DeviceType.LED).count()
+        total_brokers = base_qs.filter(device_type=Device.DeviceType.BROKER).count()
+        total_tvs = base_qs.filter(device_type=Device.DeviceType.TV).count()
+
+        # Available (unassigned) for exclusive types
+        avail_dispensers = base_qs.filter(
+            device_type=Device.DeviceType.TOKEN_DISPENSER
+        ).exclude(id__in=all_taken_dispenser_ids).count()
+        avail_keypads = base_qs.filter(
+            device_type=Device.DeviceType.KEYPAD
+        ).exclude(id__in=all_taken_keypad_ids).count()
+        avail_leds = base_qs.filter(
+            device_type=Device.DeviceType.LED
+        ).exclude(id__in=all_taken_led_ids).count()
+        def _pct(avail, total):
+            return int(round(avail * 100 / total)) if total > 0 else 0
+
+        branch_data['available_devices'] = {
+            'dispensers': {'total': total_dispensers, 'available': avail_dispensers, 'pct': _pct(avail_dispensers, total_dispensers)},
+            'keypads': {'total': total_keypads, 'available': avail_keypads, 'pct': _pct(avail_keypads, total_keypads)},
+            'leds': {'total': total_leds, 'available': avail_leds, 'pct': _pct(avail_leds, total_leds)},
+            'brokers': {'total': total_brokers, 'available': total_brokers, 'pct': 100},
+            'tvs': {'total': total_tvs, 'available': total_tvs, 'pct': 100},
+        }
     
     return render(request, 'configdetails/mapping_list.html', {
         'grouped_mappings': branch_mappings

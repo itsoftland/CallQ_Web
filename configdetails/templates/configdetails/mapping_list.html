@@ -84,7 +84,19 @@
 .wzwrap .action-btn{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:9px;border:1px solid var(--border);background:#fff;cursor:pointer;transition:.15s;font-size:13px;}
 .wzwrap .action-btn:hover{border-color:var(--cq-primary);color:var(--cq-primary);background:var(--cq-primary-light);}
 .wzwrap .action-btn.danger:hover{border-color:var(--danger);color:var(--danger);background:#FFF1F2;}
-@media(max-width:768px){.wzwrap .chain-wrap{padding:14px;}.wzwrap .page-head{flex-direction:column;gap:12px;}}
+.wzwrap .avail-bar{display:flex;flex-wrap:wrap;gap:10px;padding:16px 20px;margin-bottom:20px;background:linear-gradient(135deg,#F8FAFC 0%,#EFF6FF 100%);border:1px solid var(--border);border-radius:var(--radius-xl);}
+.wzwrap .avail-bar-title{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:.5px;width:100%;margin-bottom:4px;}
+.wzwrap .avail-item{display:flex;align-items:center;gap:10px;padding:10px 16px;background:#fff;border-radius:var(--radius-lg);border:1px solid var(--border-2);flex:1;min-width:155px;transition:.15s;}
+.wzwrap .avail-item:hover{border-color:var(--cq-primary);box-shadow:var(--shadow-sm);}
+.wzwrap .avail-icon{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;}
+.wzwrap .avail-info{display:flex;flex-direction:column;gap:2px;min-width:0;}
+.wzwrap .avail-type{font-size:11px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:.3px;}
+.wzwrap .avail-counts{display:flex;align-items:baseline;gap:4px;}
+.wzwrap .avail-num{font-size:18px;font-weight:800;line-height:1;}
+.wzwrap .avail-total{font-size:11px;color:var(--ink-4);font-weight:600;}
+.wzwrap .avail-progress{width:100%;height:4px;background:#E5E7EB;border-radius:999px;overflow:hidden;margin-top:2px;}
+.wzwrap .avail-progress-fill{height:100%;border-radius:999px;transition:width .3s;}
+@media(max-width:768px){.wzwrap .chain-wrap{padding:14px;}.wzwrap .page-head{flex-direction:column;gap:12px;}.wzwrap .avail-bar{gap:8px;padding:12px 14px;}.wzwrap .avail-item{min-width:130px;padding:8px 12px;}}
 
 /* ── Button Mapping – CSS Grid Layout ─────────────────────────── */
 .mapping-table-container {
@@ -221,6 +233,86 @@
                     </div>
                     {% endif %}
                 </div>
+
+                <!-- Available Devices Summary -->
+                {% if branch_data.available_devices %}
+                <div class="avail-bar">
+                    <div class="avail-bar-title">
+                        <i class="fas fa-boxes"></i> Device Inventory
+                    </div>
+                    {% with ad=branch_data.available_devices %}
+                    <div class="avail-item">
+                        <div class="avail-icon" style="background:var(--t-disp-bg);color:var(--t-disp);">
+                            <i class="fas fa-ticket-alt"></i>
+                        </div>
+                        <div class="avail-info">
+                            <span class="avail-type">Dispensers</span>
+                            <div class="avail-counts">
+                                <span class="avail-num" style="color:var(--t-disp);">{{ ad.dispensers.available }}</span>
+                                <span class="avail-total">/ {{ ad.dispensers.total }} available</span>
+                            </div>
+                            <div class="avail-progress">
+                                <div class="avail-progress-fill" style="background:var(--t-disp);width:{{ ad.dispensers.pct }}%;"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="avail-item">
+                        <div class="avail-icon" style="background:var(--t-keypad-bg);color:var(--t-keypad);">
+                            <i class="fas fa-keyboard"></i>
+                        </div>
+                        <div class="avail-info">
+                            <span class="avail-type">Keypads</span>
+                            <div class="avail-counts">
+                                <span class="avail-num" style="color:var(--t-keypad);">{{ ad.keypads.available }}</span>
+                                <span class="avail-total">/ {{ ad.keypads.total }} available</span>
+                            </div>
+                            <div class="avail-progress">
+                                <div class="avail-progress-fill" style="background:var(--t-keypad);width:{{ ad.keypads.pct }}%;"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="avail-item">
+                        <div class="avail-icon" style="background:var(--t-led-bg);color:var(--t-led);">
+                            <i class="fas fa-lightbulb"></i>
+                        </div>
+                        <div class="avail-info">
+                            <span class="avail-type">LEDs</span>
+                            <div class="avail-counts">
+                                <span class="avail-num" style="color:var(--t-led);">{{ ad.leds.available }}</span>
+                                <span class="avail-total">/ {{ ad.leds.total }} available</span>
+                            </div>
+                            <div class="avail-progress">
+                                <div class="avail-progress-fill" style="background:var(--t-led);width:{{ ad.leds.pct }}%;"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="avail-item">
+                        <div class="avail-icon" style="background:var(--t-broker-bg);color:var(--t-broker);">
+                            <i class="fas fa-network-wired"></i>
+                        </div>
+                        <div class="avail-info">
+                            <span class="avail-type">Brokers</span>
+                            <div class="avail-counts">
+                                <span class="avail-num" style="color:var(--t-broker);">{{ ad.brokers.total }}</span>
+                                <span class="avail-total">total (shared)</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="avail-item">
+                        <div class="avail-icon" style="background:var(--t-tv-bg);color:var(--t-tv);">
+                            <i class="fas fa-tv"></i>
+                        </div>
+                        <div class="avail-info">
+                            <span class="avail-type">TVs</span>
+                            <div class="avail-counts">
+                                <span class="avail-num" style="color:var(--t-tv);">{{ ad.tvs.total }}</span>
+                                <span class="avail-total">total (shared)</span>
+                            </div>
+                        </div>
+                    </div>
+                    {% endwith %}
+                </div>
+                {% endif %}
 
                 <!-- Device Groups -->
                 {% if branch_data.groups %}
