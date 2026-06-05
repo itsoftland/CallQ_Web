@@ -40,17 +40,20 @@
 }
 
 .login-logo {
-    width: 48px;
-    height: 48px;
-    background: var(--primary-color);
-    border-radius: 12px;
+    width: 80px;
+    height: 80px;
     margin: 0 auto 16px;
     display: flex;
     align-items: center;
     justify-content: center;
-    color: white;
-    font-size: 1.25rem;
-    font-weight: bold;
+    overflow: hidden;
+}
+
+.login-logo-img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
 }
 
 /* Animations */
