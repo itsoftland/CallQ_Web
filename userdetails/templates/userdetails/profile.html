@@ -17,15 +17,16 @@
                                 {{ user.username.0|upper }}
                             </div>
                         </div>
-                        <h4 class="fw-bold mb-1">{{ user.get_full_name|default:user.username }}</h4>
+                        <h4 class="fw-bold mb-1">{{ user.display_name|default:user.username }}</h4>
                         <p class="text-secondary small mb-4 text-uppercase tracking-wider">{{ user.get_role_display }}
                         </p>
 
                         <div class="d-grid gap-2 pt-2">
-                            <a href="{% url 'trigger_password_reset' %}"
-                                class="btn btn-outline-primary rounded-pill btn-sm">
+                            <button type="button" id="changePasswordBtn"
+                                class="btn btn-outline-primary rounded-pill btn-sm"
+                                data-bs-toggle="modal" data-bs-target="#confirmPasswordResetModal">
                                 <i class="fas fa-key me-2"></i>Change Password
-                            </a>
+                            </button>
                         </div>
                     </div>
 
@@ -46,17 +47,10 @@
                                 <i class="fas fa-user-circle me-2"></i>Personal Information
                             </h6>
                             <div class="row g-3 mb-4">
-                                <div class="col-md-6">
-                                    <label class="form-label fw-semibold small text-uppercase tracking-wider">First
-                                        Name</label>
-                                    <input type="text" name="first_name" class="form-control bg-light border-0"
-                                        value="{{ user.first_name }}" placeholder="Your first name">
-                                </div>
-                                <div class="col-md-6">
-                                    <label class="form-label fw-semibold small text-uppercase tracking-wider">Last
-                                        Name</label>
-                                    <input type="text" name="last_name" class="form-control bg-light border-0"
-                                        value="{{ user.last_name }}" placeholder="Your last name">
+                                <div class="col-md-12">
+                                    <label class="form-label fw-semibold small text-uppercase tracking-wider">Display Name</label>
+                                    <input type="text" name="display_name" class="form-control bg-light border-0"
+                                        value="{{ user.display_name|default:'' }}" placeholder="e.g. John Doe">
                                 </div>
                                 <div class="col-md-12">
                                     <label
@@ -173,6 +167,42 @@
                         </form>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Change Password Confirmation Modal -->
+<div class="modal fade" id="confirmPasswordResetModal" tabindex="-1" aria-labelledby="confirmPasswordResetLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
+            <div class="modal-header border-0 pb-0" style="background: linear-gradient(135deg,#eff6ff,#dbeafe);">
+                <div class="d-flex align-items-center gap-3 py-2">
+                    <div class="rounded-circle d-flex align-items-center justify-content-center"
+                        style="width:46px;height:46px;background:#2563eb;flex-shrink:0;">
+                        <i class="fas fa-lock text-white"></i>
+                    </div>
+                    <div>
+                        <h5 class="modal-title fw-bold mb-0" id="confirmPasswordResetLabel">Reset Password?</h5>
+                        <p class="text-secondary small mb-0">This action will send a reset link to your email.</p>
+                    </div>
+                </div>
+                <button type="button" class="btn-close ms-auto" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body pt-3 pb-2 px-4">
+                <div class="alert alert-warning d-flex align-items-start gap-2 rounded-3 py-2 px-3 small mb-3">
+                    <i class="fas fa-exclamation-triangle mt-1 flex-shrink-0"></i>
+                    <span>A password reset link will be sent to <strong>{{ user.email }}</strong>. You will need to click that link to set a new password.</span>
+                </div>
+                <p class="text-muted small mb-0">Are you sure you want to continue?</p>
+            </div>
+            <div class="modal-footer border-0 pt-2 pb-4 px-4 gap-2">
+                <button type="button" class="btn btn-light rounded-pill px-4" data-bs-dismiss="modal">
+                    <i class="fas fa-times me-1"></i>Cancel
+                </button>
+                <a id="confirmPasswordResetLink" href="{% url 'trigger_password_reset' %}"
+                    class="btn btn-primary rounded-pill px-4 fw-semibold">
+                    <i class="fas fa-paper-plane me-1"></i>Yes, Send Reset Link
+                </a>
             </div>
         </div>
     </div>

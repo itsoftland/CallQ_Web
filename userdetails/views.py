@@ -935,6 +935,7 @@ def profile(request):
             else:
                 user.email = email
                 user.username = email.split('@')[0]
+                user.display_name = request.POST.get('display_name', user.display_name)
                 user.save()
                 
                 # Company details update (only for COMPANY_ADMIN or DEALER_ADMIN)

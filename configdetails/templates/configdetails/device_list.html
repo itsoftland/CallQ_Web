@@ -136,10 +136,27 @@
                                     class="avatar-sm bg-light-info text-info rounded d-flex align-items-center justify-content-center me-2">
                                     <i class="fas fa-broadcast-tower"></i>
                                 </div>
-                                {% else %}
+                                {% elif device.device_type == 'LED' %}
                                 <div
                                     class="avatar-sm bg-light-danger text-danger rounded d-flex align-items-center justify-content-center me-2">
                                     <i class="fas fa-lightbulb"></i>
+                                </div>
+                                {% elif device.device_type == 'Config Apk' %}
+                                <div
+                                    class="avatar-sm rounded d-flex align-items-center justify-content-center me-2"
+                                    style="background-color:#ede9fe; color:#7c3aed;">
+                                    <i class="fas fa-mobile-alt"></i>
+                                </div>
+                                {% elif device.device_type == 'Serial Apk' %}
+                                <div
+                                    class="avatar-sm rounded d-flex align-items-center justify-content-center me-2"
+                                    style="background-color:#f1f5f9; color:#334155;">
+                                    <i class="fas fa-barcode"></i>
+                                </div>
+                                {% else %}
+                                <div
+                                    class="avatar-sm bg-light-secondary text-secondary rounded d-flex align-items-center justify-content-center me-2">
+                                    <i class="fas fa-microchip"></i>
                                 </div>
                                 {% endif %}
                                 <span class="fw-medium">{{ device.get_device_type_display }}</span>
