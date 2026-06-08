@@ -358,6 +358,64 @@ class GroupCounterButtonMapping(models.Model):
 
 
 
+class DispenserKeypadMapping(models.Model):
+    """
+    Maps a single dispenser (identified by its group + dispenser_button_index) to
+    ONE OR MORE keypads within the same group.
+
+    Each row = one (dispenser_button_index slot) → one keypad.
+    Multiple rows with the same dispenser/button_index but different keypads
+    represent the multi-keypad case described in the requirements.
+
+    Rules:
+    - One keypad can only appear once per group (enforced by unique on group+keypad).
+    - A dispenser button slot can map to many keypads (no uniqueness on that side).
+    - Deleting the parent group cascades to all rows automatically.
+    """
+    group = models.ForeignKey(
+        GroupMapping,
+        on_delete=models.CASCADE,
+        related_name='dispenser_keypad_mappings',
+    )
+    dispenser = models.ForeignKey(
+        Device,
+        on_delete=models.CASCADE,
+        related_name='dkm_dispenser_slots',
+        limit_choices_to={'device_type': Device.DeviceType.TOKEN_DISPENSER},
+    )
+    # Which physical button slot on the dispenser this keypad is connected to.
+    dispenser_button_index = models.CharField(
+        max_length=1,
+        default=chr(BUTTON_INDEX_START),
+        help_text=(
+            "ASCII button index of the dispenser slot that drives this keypad. "
+            "Mirrors GroupDispenserMapping.dispenser_button_index."
+        ),
+    )
+    keypad = models.ForeignKey(
+        Device,
+        on_delete=models.CASCADE,
+        related_name='dkm_keypad_slots',
+        limit_choices_to={'device_type': Device.DeviceType.KEYPAD},
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [
+            # One keypad can only be owned by one dispenser-button slot per group.
+            ('group', 'keypad'),
+        ]
+        ordering = ['group', 'dispenser', 'dispenser_button_index']
+        verbose_name = 'Dispenser → Keypad Mapping'
+        verbose_name_plural = 'Dispenser → Keypad Mappings'
+
+    def __str__(self):
+        return (
+            f"{self.group.group_name} → {self.dispenser.serial_number} "
+            f"[btn {self.dispenser_button_index}] → {self.keypad.serial_number}"
+        )
+
+
 class DeviceConfig(models.Model):
     device = models.OneToOneField(Device, on_delete=models.CASCADE, related_name='config')
     config_json = models.JSONField(default=dict)

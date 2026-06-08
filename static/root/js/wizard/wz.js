@@ -28,14 +28,19 @@ let state = {
   counts: {TOKEN_DISPENSER:0, KEYPAD:0, LED:0, BROKER:0, TV:0},
   pool: {TOKEN_DISPENSER:[], KEYPAD:[], LED:[], BROKER:[], TV:[]},
   asn: {included:{}, dispToKeypad:{}, keypadToLed:{}, keypadToBroker:{}, brokerToTv:{}},
+  // dispToKeypad: { dispId: [kpId1, kpId2, ...] }  — multi-keypad per dispenser
   cur: 0,
   loading: false,
 };
 
 /* ── Derived ── */
 function inclDisp() { return (state.pool.TOKEN_DISPENSER||[]).filter(d=>state.asn.included[d.id]); }
-function kpDevs()   {
-  const ids = [...new Set(inclDisp().map(d=>state.asn.dispToKeypad[d.id]).filter(Boolean))];
+function kpDevs() {
+  const ids = [];
+  inclDisp().forEach(d => {
+    const arr = state.asn.dispToKeypad[d.id] || [];
+    arr.forEach(kId => { if (!ids.includes(kId)) ids.push(kId); });
+  });
   return ids.map(id=>(state.pool.KEYPAD||[]).find(d=>d.id===id)).filter(Boolean);
 }
 function brkDevs()  {
@@ -64,7 +69,7 @@ function buildSteps() {
 /* ── Validation ── */
 function stageOk(id) {
   const inc = inclDisp(), kp = kpDevs(), brk = brkDevs();
-  if(id==='disp_keypad')   return inc.length>=1 && inc.every(d=>state.asn.dispToKeypad[d.id]);
+  if(id==='disp_keypad')   return inc.length>=1 && inc.every(d=>{ const arr=state.asn.dispToKeypad[d.id]; return arr&&arr.length>0; });
   if(id==='keypad_led')    return kp.length>=1  && kp.every(k=>state.asn.keypadToLed[k.id]);
   if(id==='keypad_broker') return kp.length>=1  && kp.every(k=>state.asn.keypadToBroker[k.id]);
   if(id==='broker_tv')     return brk.length>=1 && brk.every(b=>state.asn.brokerToTv[b.id]);
@@ -159,12 +164,26 @@ function renderMapStage(step) {
 
   if(step.id==='disp_keypad'){
     const all=state.pool.TOKEN_DISPENSER||[];
+    const allKp=state.pool.KEYPAD||[];
     const inc=all.filter(d=>state.asn.included[d.id]);
-    total=inc.length; done=inc.filter(d=>state.asn.dispToKeypad[d.id]).length;
+    total=inc.length; done=inc.filter(d=>{ const a=state.asn.dispToKeypad[d.id]; return a&&a.length>0; }).length;
     rows=all.map(d=>{
       const on=!!state.asn.included[d.id];
-      const mapped=state.asn.dispToKeypad[d.id];
-      const linkHtml=on?`<span class="lk">${ico('fa-arrow-right-long')}</span><div class="tgt-wrap"><div class="tgt-label">${ico(toT.icon)} Routes to keypad</div>${deviceSelectHtml('sel-disp-'+d.id,d.id,'KEYPAD',mapped)}</div>`:`<span style="font-size:12.5px;color:var(--ink-4)">Not part of this group</span>`;
+      const selIds=state.asn.dispToKeypad[d.id]||[];
+      let linkHtml;
+      if(on){
+        const kpChecks=allKp.map(k=>{
+          const chk=selIds.includes(k.id)?'checked':'';
+          return `<label style="display:flex;align-items:center;gap:7px;padding:7px 10px;border-radius:9px;cursor:pointer;font-size:13px;font-weight:600;background:${chk?'var(--cq-primary-light)':'var(--bg-2)'};border:1.5px solid ${chk?'var(--cq-primary)':'var(--border)'};transition:all .15s">
+            <input type="checkbox" style="display:none" ${chk} onchange="wzToggleKeypad('${d.id}','${k.id}',this.checked)">
+            ${ico(toT.icon)}<span>${k.name}</span><span style="color:var(--ink-4);font-size:11px">${k.code}</span>
+          </label>`;
+        }).join('');
+        const badge=selIds.length>0?`<span class="statchip ok" style="margin-left:4px">${selIds.length} selected</span>`:'';
+        linkHtml=`<span class="lk">${ico('fa-arrow-right-long')}</span><div class="tgt-wrap"><div class="tgt-label">${ico(toT.icon)} Routes to keypads ${badge}</div><div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:6px">${kpChecks||'<span style="color:var(--ink-4);font-size:12px">No keypads available</span>'}</div></div>`;
+      } else {
+        linkHtml=`<span style="font-size:12.5px;color:var(--ink-4)">Not part of this group</span>`;
+      }
       return `<div class="mapcard${on?' on':''}" id="mc-${d.id}">
         <div class="mrow">
           <div class="srcchip"><div class="sico" style="background:${fromT.bg};color:${fromT.color}">${ico(fromT.icon)}</div><div style="min-width:0"><div class="snm">${d.name}</div><div class="scode">${d.code} · ${d.model}</div></div></div>
@@ -296,6 +315,18 @@ function wzToggle(devId) {
   wzRender();
 }
 
+function wzToggleKeypad(dispId, kpId, checked) {
+  if(!state.asn.dispToKeypad[dispId]) state.asn.dispToKeypad[dispId]=[];
+  const arr=state.asn.dispToKeypad[dispId];
+  if(checked){ if(!arr.includes(kpId)) arr.push(kpId); }
+  else { state.asn.dispToKeypad[dispId]=arr.filter(id=>id!==kpId); }
+  updateFooter();
+  const mc=document.getElementById('mc-'+dispId);
+  if(mc) mc.classList.toggle('on', state.asn.dispToKeypad[dispId].length>0);
+  // re-render to refresh badges
+  wzRender();
+}
+
 function wzMap(fieldId, srcId, targetType, val) {
   const fieldMap={disp_keypad:'dispToKeypad',keypad_led:'keypadToLed',keypad_broker:'keypadToBroker',broker_tv:'brokerToTv'};
   const steps=buildSteps(); const step=steps[Math.min(state.cur,steps.length-1)];
@@ -338,7 +369,12 @@ function loadDevices() {
 function wzFinish() {
   const inc=inclDisp(), kp=kpDevs(), brk=brkDevs();
   const dispIds=inc.map(d=>d.id);
-  const keypIds=[...new Set(dispIds.map(id=>state.asn.dispToKeypad[id]).filter(Boolean))];
+
+  // Collect all unique keypad IDs across all dispenser→keypad arrays
+  const keypIdSet=new Set();
+  dispIds.forEach(dId=>{ (state.asn.dispToKeypad[dId]||[]).forEach(kId=>keypIdSet.add(kId)); });
+  const keypIds=[...keypIdSet];
+
   const lIds=state.counts.LED>0?[...new Set(keypIds.map(id=>state.asn.keypadToLed[id]).filter(Boolean))]:[];
   const brIds=state.counts.BROKER>0?[...new Set(keypIds.map(id=>state.asn.keypadToBroker[id]).filter(Boolean))]:[];
   const tIds=(state.counts.TV>0&&state.counts.BROKER>0)?[...new Set(brIds.map(id=>state.asn.brokerToTv[id]).filter(Boolean))]:[];
@@ -355,6 +391,10 @@ function wzFinish() {
   lIds.forEach(id=>h('leds[]',id));
   brIds.forEach(id=>h('brokers[]',id));
   tIds.forEach(id=>h('tvs[]',id));
+  // Send dispenser→keypad pairs for multi-keypad mapping storage
+  dispIds.forEach(dId=>{
+    (state.asn.dispToKeypad[dId]||[]).forEach(kId=>h('disp_keypad_map[]',`${dId}:${kId}`));
+  });
   document.body.appendChild(form); form.submit();
 }
 

@@ -5,7 +5,7 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.http import HttpResponse, HttpResponseForbidden, FileResponse, JsonResponse
 from django.contrib import messages
-from .models import Device, DeviceConfig, TVConfig, Mapping, Counter, TVCounter, TVAd, LedConfig, EmbeddedProfile, ProductionBatch, ProductionSerialNumber, ButtonMapping, CounterConfig, TVCounterMapping, CounterTokenDispenserMapping, ExternalDeviceCounterLog, GroupMapping, GroupDispenserMapping, GroupCounterButtonMapping, TVDispenserMapping, TVKeypadMapping, get_button_index_char, BUTTON_INDEX_SEQUENCE
+from .models import Device, DeviceConfig, TVConfig, Mapping, Counter, TVCounter, TVAd, LedConfig, EmbeddedProfile, ProductionBatch, ProductionSerialNumber, ButtonMapping, CounterConfig, TVCounterMapping, CounterTokenDispenserMapping, ExternalDeviceCounterLog, GroupMapping, GroupDispenserMapping, GroupCounterButtonMapping, TVDispenserMapping, TVKeypadMapping, DispenserKeypadMapping, get_button_index_char, BUTTON_INDEX_SEQUENCE
 from django.db import transaction
 from .serializers.config_serializers import DeviceSerializer, DeviceConfigSerializer, TVConfigSerializer, MappingSerializer, EmbeddedProfileSerializer, CounterConfigSerializer, TVCounterMappingSerializer, CounterTokenDispenserMappingSerializer, ExternalDeviceCounterLogSerializer, TVDispenserMappingSerializer, TVKeypadMappingSerializer
 from companydetails.models import Company, Branch
@@ -1543,7 +1543,7 @@ def _get_tv_flag_config(request, device, company, dealer_customer, is_dealer_cus
                     results.append({
                         'counter_id':              c.counter_name,
                         'default_code':            c.counter_prefix_code,
-                        'keypad_index':            keypad_index,
+                        'keypad_index':            [keypad_index] if keypad_index else [],
                         'button_index':            _parse_pos(dispenser_index),
                         'dispenser_button_index':  dispenser_button_number_char,
                         'name':                    c.counter_display_name,
@@ -1565,7 +1565,7 @@ def _get_tv_flag_config(request, device, company, dealer_customer, is_dealer_cus
                     results.append({
                         'counter_id':              c.counter_name,
                         'default_code':            c.counter_prefix_code,
-                        'keypad_index':            keypad_index,
+                        'keypad_index':            [keypad_index] if keypad_index else [],
                         'button_index':            _parse_pos(dispenser_index),
                         'dispenser_button_index':  dispenser_button_number_char,
                         'name':                    c.counter_display_name,
@@ -1651,7 +1651,7 @@ def _get_tv_flag_config(request, device, company, dealer_customer, is_dealer_cus
             mapped_keypads_list.append({
                 'keypad_sn':           format_tv_serial_number(kp.serial_number),
                 'keypad_display_name': kp.display_name or format_tv_serial_number(kp.serial_number),
-                'keypad_index':        kp_mapping.keypad_index,
+                'keypad_index':        [kp_mapping.keypad_index] if kp_mapping.keypad_index else [],
                 'dispenser_sn':        format_tv_serial_number(dispenser.serial_number) if dispenser else None,
                 'button_strings':      button_strings,
                 'counters':            kp_counters,
@@ -3513,6 +3513,15 @@ def _create_tv_slot_mappings(group, new_dispenser_ids=None, new_tv_ids=None, new
                 keypad.save(update_fields=['keypad_index'])
                 existing_indices.add(new_idx)
 
+        # Build a lookup: keypad_id → dispenser
+        # Priority: DispenserKeypadMapping (explicit multi-keypad assignment)
+        # Fallback: positional assignment (legacy / single-keypad behaviour)
+        dkm_lookup = {
+            dkm.keypad_id: dkm.dispenser
+            for dkm in DispenserKeypadMapping.objects.filter(group=group)
+                                                      .select_related('dispenser')
+        }
+
         # 2. Map every keypad in this group to every TV in the group using its stable index
         for tv in tvs_list:
             for idx, keypad in enumerate(keypads_list):
@@ -3524,7 +3533,11 @@ def _create_tv_slot_mappings(group, new_dispenser_ids=None, new_tv_ids=None, new
                 if not should_map:
                     continue
 
-                dispenser = dispensers_list[idx % len(dispensers_list)] if dispensers_list else None
+                # Resolve dispenser: explicit DKM record wins over positional fallback
+                dispenser = dkm_lookup.get(
+                    keypad.id,
+                    dispensers_list[idx % len(dispensers_list)] if dispensers_list else None
+                )
                 tkm, created = TVKeypadMapping.objects.get_or_create(
                     tv=tv,
                     keypad=keypad,
@@ -3889,6 +3902,44 @@ def mapping_view(request):
             assign_devices(tvs, group.tvs)
             assign_devices(brokers, group.brokers)
             assign_devices(leds, group.leds)
+
+            # ─── Multi-keypad: store DispenserKeypadMapping rows ───────────────
+            # The wizard submits disp_keypad_map[] as "dispenser_id:keypad_id"
+            # strings for every (dispenser, keypad) pair selected.
+            # Format: dispenser_id:keypad_id   (e.g. "42:17", "42:18", "43:19")
+            disp_keypad_pairs = [
+                p for p in request.POST.getlist('disp_keypad_map[]') if p
+            ]
+            if disp_keypad_pairs:
+                # Build lookup: dispenser_id → its group button index char
+                gdm_index_map = {
+                    gdm.dispenser_id: gdm.dispenser_button_index
+                    for gdm in GroupDispenserMapping.objects.filter(group=group)
+                }
+                for pair in disp_keypad_pairs:
+                    try:
+                        d_id_str, kp_id_str = pair.split(':', 1)
+                        d_id = int(d_id_str)
+                        kp_id = int(kp_id_str)
+                    except (ValueError, AttributeError):
+                        continue
+                    btn_char = gdm_index_map.get(d_id)
+                    if not btn_char:
+                        continue
+                    try:
+                        dispenser_obj = Device.objects.get(id=d_id, device_type=Device.DeviceType.TOKEN_DISPENSER)
+                        keypad_obj = Device.objects.get(id=kp_id, device_type=Device.DeviceType.KEYPAD)
+                        DispenserKeypadMapping.objects.get_or_create(
+                            group=group,
+                            keypad=keypad_obj,
+                            defaults={
+                                'dispenser': dispenser_obj,
+                                'dispenser_button_index': btn_char,
+                            }
+                        )
+                    except Device.DoesNotExist:
+                        continue
+            # ──────────────────────────────────────────────────────────────────
 
             # session_mapping_ids: IDs of ButtonMapping rows already saved by the
             # wizard during Steps 2-5.  When present, the user has explicitly
@@ -7310,27 +7361,70 @@ def get_token_dispenser_config_api(request):
     # Each entry carries the dispenser's stored group button index.
     # -------------------------------------------------------------------------
 
-    # keypad_index resolved via: ButtonMapping(dispenser, "Button N") → keypad → TVKeypadMapping.keypad_index
+    # keypad_index resolved via:
+    #   1. DispenserKeypadMapping (explicit multi-keypad assignment in group)
+    #   2. ButtonMapping(dispenser, "Button N") → keypad → TVKeypadMapping.keypad_index
     # Cache keyed by dispenser serial_number so each dispenser is queried only once per request.
+    # Returns a list of keypad_index values (may be multi for one dispenser → many keypads).
     _btn_kp_cache = {}
 
-    def _kp_index(disp, local_btn):
+    def _kp_indices(disp, local_btn=None):
+        """
+        Return ALL keypad_index values for the given dispenser.
+        For multi-keypad (one dispenser drives N keypads) returns a list of N values.
+        For single-keypad returns a single-item list.
+        Falls back to dispenser.keypad_index if nothing else resolves.
+        """
         sno = disp.serial_number
         if sno not in _btn_kp_cache:
-            slot = {}
-            for _bm in ButtonMapping.objects.filter(
-                source_device=disp,
-                target_device__device_type=Device.DeviceType.KEYPAD,
-            ).select_related('target_device'):
-                try:
-                    n = int(_bm.source_button.split()[-1])
-                except (ValueError, IndexError):
-                    continue
-                _tkm = TVKeypadMapping.objects.filter(keypad=_bm.target_device).first()
-                if _tkm:
-                    slot[n] = _tkm.keypad_index
-            _btn_kp_cache[sno] = slot
-        return _btn_kp_cache[sno].get(local_btn) or disp.keypad_index
+            indices = []
+
+            # 1. DispenserKeypadMapping — explicit multi-keypad assignment
+            dkm_qs = DispenserKeypadMapping.objects.filter(
+                dispenser=disp
+            ).select_related('keypad')
+            for dkm in dkm_qs:
+                tkm = TVKeypadMapping.objects.filter(keypad=dkm.keypad).first()
+                if tkm and tkm.keypad_index:
+                    if tkm.keypad_index not in indices:
+                        indices.append(tkm.keypad_index)
+                elif dkm.keypad.keypad_index and dkm.keypad.keypad_index not in indices:
+                    indices.append(dkm.keypad.keypad_index)
+
+            if not indices:
+                # 2. ButtonMapping fallback (original behaviour)
+                slot = {}
+                for _bm in ButtonMapping.objects.filter(
+                    source_device=disp,
+                    target_device__device_type=Device.DeviceType.KEYPAD,
+                ).select_related('target_device'):
+                    try:
+                        n = int(_bm.source_button.split()[-1])
+                    except (ValueError, IndexError):
+                        continue
+                    _tkm = TVKeypadMapping.objects.filter(keypad=_bm.target_device).first()
+                    if _tkm and _tkm.keypad_index:
+                        slot[n] = _tkm.keypad_index
+                # Preserve order by button number
+                for n in sorted(slot.keys()):
+                    if slot[n] not in indices:
+                        indices.append(slot[n])
+
+            if not indices and disp.keypad_index:
+                indices.append(disp.keypad_index)
+
+            _btn_kp_cache[sno] = indices
+        return _btn_kp_cache[sno]
+
+    def _format_keypad_index(indices):
+        """
+        Format keypad_index for Token Dispenser API response — returns a concatenated string:
+        - no indices → ""
+        - N indices  → "12" (concatenated, e.g. ["1","2"] → "12")
+        """
+        if not indices:
+            return ""
+        return "".join(str(i) for i in indices)
 
     mapped_counters = []
     try:
@@ -7405,7 +7499,7 @@ def get_token_dispenser_config_api(request):
                     'counter_prefix_code': _counter.counter_prefix_code,
                     'max_token_number': _counter.max_token_number,
                     'status': _counter.status,
-                    'keypad_index': _kp_index(_disp, _fb_idx) or _dispenser_btn_idx,
+                    'keypad_index': _format_keypad_index(_kp_indices(_disp)) or (str(_dispenser_btn_idx) if _dispenser_btn_idx else ""),
                     'button_index': _final_bi,
                     'dispenser_button_index': _dispenser_btn_idx,
                 })
@@ -7488,7 +7582,7 @@ def get_token_dispenser_config_api(request):
                     'counter_prefix_code': counter.counter_prefix_code,
                     'max_token_number': counter.max_token_number,
                     'status': counter.status,
-                    'keypad_index': _kp_index(fam_dispenser, fallback_index) or fam_dispenser_btn_idx,
+                    'keypad_index': _format_keypad_index(_kp_indices(fam_dispenser)) or (str(fam_dispenser_btn_idx) if fam_dispenser_btn_idx else ""),
                     'button_index': final_bi,
                     'dispenser_button_index': fam_dispenser_btn_idx,
                     'dispenser_s_no': fam_dispenser.serial_number,
@@ -7569,7 +7663,7 @@ def get_token_dispenser_config_api(request):
                     'counter_prefix_code': _c.counter_prefix_code,
                     'max_token_number': _c.max_token_number,
                     'status': _c.status,
-                    'keypad_index': _kp_index(dispenser, _own_local_btn) or _odbi,
+                    'keypad_index': _format_keypad_index(_kp_indices(dispenser)) or (str(_odbi) if _odbi else ""),
                     'button_index': _obi,
                     'dispenser_button_index': _odbi,
                 })
@@ -7593,7 +7687,7 @@ def get_token_dispenser_config_api(request):
                     'counter_prefix_code': _c.counter_prefix_code,
                     'max_token_number': _c.max_token_number,
                     'status': _c.status,
-                    'keypad_index': _kp_index(dispenser, _oi) or _odbi,
+                    'keypad_index': _format_keypad_index(_kp_indices(dispenser)) or (str(_odbi) if _odbi else ""),
                     'button_index': _obi,
                     'dispenser_button_index': _odbi,
                 })
@@ -8931,7 +9025,7 @@ def update_group_devices_api(request, group_id):
                 'keypad_id': tkm.keypad.id,
                 'display_name': tkm.keypad.display_name or tkm.keypad.serial_number,
                 'tv_id': tkm.tv.id,
-                'keypad_index': tkm.keypad_index,
+                'keypad_index': tkm.keypad_index or "",
             }
             for tkm in updated_tkm
         ],
@@ -8990,7 +9084,7 @@ def get_group_button_mappings_api(request, group_id):
             'display_name':   tkm.keypad.display_name or tkm.keypad.serial_number,
             'tv_id':          tkm.tv.id,
             'tv_name':        tv_name_map.get(tkm.tv.id, tkm.tv.serial_number),
-            'keypad_index':   tkm.keypad_index,
+            'keypad_index':   tkm.keypad_index or "",
             'dispenser_id':   tkm.dispenser.id if tkm.dispenser else None,
             'dispenser_name': (tkm.dispenser.display_name or tkm.dispenser.serial_number) if tkm.dispenser else None,
         })
@@ -9406,7 +9500,7 @@ def save_group_button_mappings_api(request, group_id):
                 'keypad_name':  kpm.keypad.display_name or kpm.keypad.serial_number,
                 'tv_id':        kpm.tv_id,
                 'tv_name':      kpm.tv.display_name or kpm.tv.serial_number,
-                'keypad_index': kpm.keypad_index,
+                'keypad_index': kpm.keypad_index or "",
                 'dispenser_id': kpm.dispenser_id,
             })
 
@@ -9534,7 +9628,7 @@ def get_android_mapped_counters(request):
             "mapped_dispenser_sn":    mapped_dispenser_sn,
             "button_index":           _parse_pos(button_index),
             "dispenser_button_index": dispenser_button_index,
-            "keypad_index":           keypad_index,
+            "keypad_index":           keypad_indexes,
             "keypad_indexes":         keypad_indexes,
         })
 
