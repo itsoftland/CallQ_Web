@@ -860,6 +860,100 @@ class TokenReport(models.Model):
         return f"TokenReport [{self.customerId}] @ {self.received_dateTime}"
 
 
+class MQTTTokenLog(models.Model):
+    """
+    Parsed and enriched record for every MQTT token message received via
+    POST /api/external/token-report.
+
+    Payload format: $0PABAeCAL0K0001lo-0011*
+      [3]     → message type char  (A / B / C / D / E  or  CLR)
+      [5:15]  → keypad serial number (10 chars)
+      [17]    → keypad index (1 ASCII char)
+      [19:22] → token / message ID (3 chars)
+      [22]    → button_string_id (type C only)
+    """
+
+    MESSAGE_TYPES = [
+        ('NORMAL',   'Normal Token'),
+        ('TRANSFER', 'Transfer'),
+        ('SKIP',     'Skip'),
+        ('SPECIAL',  'Special Message'),
+        ('VIP',      'VIP / Emergency'),
+        ('CLEAR',    'Clear Tokens'),
+        ('UNKNOWN',  'Unknown'),
+    ]
+
+    STATUS_CHOICES = [
+        ('received',  'Received'),
+        ('displayed', 'Displayed'),
+        ('announced', 'Announced'),
+    ]
+
+    ANNOUNCEMENT_CHOICES = [
+        ('pending',   'Pending'),
+        ('completed', 'Completed'),
+    ]
+
+    # Envelope
+    raw_payload  = models.TextField(help_text="Original MQTT payload string")
+    customer_id  = models.CharField(max_length=100)
+    mac_address  = models.CharField(max_length=100, blank=True)
+
+    # Parsed payload fields
+    message_type_char = models.CharField(max_length=5,  blank=True,
+                                          help_text="Raw char from payload[3] (A/B/C/D/E/CLR)")
+    message_type      = models.CharField(max_length=20, choices=MESSAGE_TYPES, default='UNKNOWN')
+    keypad_serial     = models.CharField(max_length=50, blank=True)
+    keypad_index      = models.CharField(max_length=10, blank=True)
+    token_number      = models.CharField(max_length=20, blank=True)
+    button_string_id  = models.CharField(max_length=10, blank=True,
+                                          help_text="For type C: payload[22], selects the button string to display")
+
+    # Resolved references
+    keypad = models.ForeignKey(
+        Device,
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='mqtt_logs',
+        limit_choices_to={'device_type': 'KEYPAD'},
+    )
+    counter = models.ForeignKey(
+        'CounterConfig',
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='mqtt_logs',
+    )
+    counter_name = models.CharField(max_length=150, blank=True)
+
+    # Timestamps
+    received_at  = models.DateTimeField()
+    displayed_at = models.DateTimeField(null=True, blank=True)
+
+    # Status
+    status              = models.CharField(max_length=20, choices=STATUS_CHOICES, default='received')
+    announcement_status = models.CharField(max_length=20, choices=ANNOUNCEMENT_CHOICES, default='pending')
+
+    # Flags
+    is_valid     = models.BooleanField(default=True)
+    is_duplicate = models.BooleanField(default=False)
+    is_uploaded  = models.BooleanField(default=False,
+                                        help_text="Set True once this log has been confirmed uploaded; "
+                                                   "records older than 2 days with this flag are auto-deleted.")
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-received_at']
+        verbose_name        = 'MQTT Token Log'
+        verbose_name_plural = 'MQTT Token Logs'
+        indexes = [
+            models.Index(fields=['customer_id', '-received_at']),
+            models.Index(fields=['keypad_serial', '-received_at']),
+            models.Index(fields=['is_valid', 'is_duplicate']),
+        ]
+
+    def __str__(self):
+        return f"[{self.message_type}] {self.keypad_serial}/{self.token_number} @ {self.received_at}"
+
+
 class VipTokenCounter(models.Model):
     """
     Tracks the current (last issued) VIP token number for each counter.

@@ -5,46 +5,17 @@
 
 {% block extra_css %}
 <style>
-    /* ── Filter Card ─────────────────────────────────────────── */
-    .filter-card {
-        background: var(--card-bg);
-        border-radius: var(--radius-lg);
-        box-shadow: var(--shadow-sm);
-        border: 1px solid var(--border-color);
-        padding: 1.25rem 1.5rem;
-        margin-bottom: 1.5rem;
-    }
-    .filter-card .form-label {
-        font-size: 0.75rem;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        color: var(--text-secondary);
-        margin-bottom: 0.35rem;
-    }
-    .filter-card .form-control,
-    .filter-card .form-select {
-        font-size: 0.875rem;
-        border-color: var(--border-color);
-        border-radius: var(--radius);
-        color: var(--text-primary);
-        transition: border-color var(--transition), box-shadow var(--transition);
-    }
-    .filter-card .form-control:focus,
-    .filter-card .form-select:focus {
-        border-color: var(--primary-color);
-        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
-    }
-
-    /* ── Page Header ─────────────────────────────────────────── */
+    /* ── Layout ───────────────────────────────────────────────── */
     .report-header {
         display: flex;
-        align-items: center;
+        align-items: flex-start;
         justify-content: space-between;
-        margin-bottom: 1.5rem;
+        margin-bottom: 1.25rem;
+        flex-wrap: wrap;
+        gap: .75rem;
     }
     .report-header h2 {
-        font-size: 1.25rem;
+        font-size: 1.2rem;
         font-weight: 700;
         color: var(--text-primary);
         margin: 0;
@@ -52,18 +23,68 @@
     .report-header p {
         font-size: 0.8125rem;
         color: var(--text-secondary);
-        margin: 0.15rem 0 0;
+        margin: .15rem 0 0;
     }
-    .count-badge {
-        display: inline-flex;
+
+    /* ── Stats Row ────────────────────────────────────────────── */
+    .stats-row {
+        display: flex;
+        gap: .75rem;
+        flex-wrap: wrap;
+        margin-bottom: 1.25rem;
+    }
+    .stat-card {
+        flex: 1 1 120px;
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-lg);
+        padding: .75rem 1rem;
+        display: flex;
         align-items: center;
-        gap: 0.35rem;
-        background: var(--primary-light);
-        color: var(--primary-color);
-        font-size: 0.8125rem;
+        gap: .65rem;
+        box-shadow: var(--shadow-sm);
+    }
+    .stat-icon {
+        width: 36px; height: 36px;
+        border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+        font-size: .9rem;
+        flex-shrink: 0;
+    }
+    .stat-icon.blue   { background:#EFF6FF; color:#2563EB; }
+    .stat-icon.green  { background:#F0FDF4; color:#16A34A; }
+    .stat-icon.red    { background:#FEF2F2; color:#DC2626; }
+    .stat-icon.amber  { background:#FFFBEB; color:#D97706; }
+    .stat-value { font-size: 1.25rem; font-weight: 700; color: var(--text-primary); line-height:1; }
+    .stat-label { font-size: .7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing:.04em; margin-top:.15rem; }
+
+    /* ── Filter Card ─────────────────────────────────────────── */
+    .filter-card {
+        background: var(--card-bg);
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-sm);
+        border: 1px solid var(--border-color);
+        padding: 1rem 1.25rem;
+        margin-bottom: 1.25rem;
+    }
+    .filter-card .form-label {
+        font-size: .7rem;
         font-weight: 600;
-        padding: 0.375rem 0.875rem;
-        border-radius: 9999px;
+        text-transform: uppercase;
+        letter-spacing: .05em;
+        color: var(--text-secondary);
+        margin-bottom: .3rem;
+    }
+    .filter-card .form-control,
+    .filter-card .form-select {
+        font-size: .8375rem;
+        border-color: var(--border-color);
+        border-radius: var(--radius);
+    }
+    .filter-card .form-control:focus,
+    .filter-card .form-select:focus {
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 3px rgba(37,99,235,.1);
     }
 
     /* ── Report Card ─────────────────────────────────────────── */
@@ -77,185 +98,238 @@
 
     /* ── Table ───────────────────────────────────────────────── */
     .report-table thead th {
-        background-color: #F9FAFB;
+        background: #F9FAFB;
         color: var(--text-secondary);
-        font-size: 0.72rem;
+        font-size: .7rem;
         font-weight: 600;
         text-transform: uppercase;
-        letter-spacing: 0.055em;
-        padding: 12px 20px;
+        letter-spacing: .05em;
+        padding: 11px 16px;
         border-bottom: 1px solid var(--border-color);
         white-space: nowrap;
     }
     .report-table tbody td {
-        padding: 13px 20px;
-        font-size: 0.8125rem;
+        padding: 11px 16px;
+        font-size: .8125rem;
         color: var(--text-primary);
         border-bottom: 1px solid var(--border-color);
         vertical-align: middle;
     }
-    .report-table tbody tr:last-child td {
-        border-bottom: none;
-    }
-    .report-table tbody tr:hover td {
-        background-color: #F9FAFB;
-    }
+    .report-table tbody tr:last-child td { border-bottom: none; }
+    .report-table tbody tr:hover td { background: #F9FAFB; }
 
-    /* message cell */
-    .msg-cell {
+    /* ── Message-type badges ─────────────────────────────────── */
+    .type-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: .3rem;
+        padding: 3px 9px;
+        border-radius: 9999px;
+        font-size: .7rem;
+        font-weight: 600;
+        letter-spacing: .02em;
+        white-space: nowrap;
+    }
+    .type-NORMAL   { background:#EFF6FF; color:#1D4ED8; }
+    .type-TRANSFER { background:#F0FDF4; color:#15803D; }
+    .type-SKIP     { background:#FFFBEB; color:#B45309; }
+    .type-SPECIAL  { background:#F5F3FF; color:#6D28D9; }
+    .type-VIP      { background:#FEF2F2; color:#B91C1C; }
+    .type-CLEAR    { background:#F1F5F9; color:#475569; }
+    .type-UNKNOWN  { background:#F3F4F6; color:#6B7280; }
+
+    /* ── Token number pill ───────────────────────────────────── */
+    .token-pill {
         font-family: 'SFMono-Regular', Consolas, monospace;
-        font-size: 0.8rem;
+        font-size: .78rem;
+        font-weight: 600;
+        background: #F0FDF4;
+        color: #15803D;
+        padding: 2px 8px;
+        border-radius: var(--radius);
+        display: inline-block;
+    }
+    .token-pill.empty { background:#F3F4F6; color:#9CA3AF; font-style:italic; }
+
+    /* ── Keypad / counter cells ──────────────────────────────── */
+    .kp-serial {
+        font-family: 'SFMono-Regular', Consolas, monospace;
+        font-size: .75rem;
         color: #1D4ED8;
         background: #EFF6FF;
         border-radius: 4px;
-        padding: 3px 8px;
+        padding: 2px 7px;
         display: inline-block;
-        max-width: 420px;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
     }
-
-    /* time cell */
-    .time-primary {
+    .kp-index {
+        font-size: .7rem;
+        color: var(--text-muted);
+        margin-top: .2rem;
+    }
+    .counter-name {
         font-weight: 500;
-        color: var(--text-primary);
-        white-space: nowrap;
+        font-size: .8125rem;
     }
-    .time-secondary {
-        font-size: 0.75rem;
-        color: var(--text-muted);
-        white-space: nowrap;
-    }
-    .time-null {
-        color: var(--text-muted);
-        font-style: italic;
-        font-size: 0.75rem;
-    }
+    .counter-null { color: var(--text-muted); font-style: italic; font-size: .75rem; }
 
-    /* customer / mac chips */
+    /* ── Status badges ───────────────────────────────────────── */
+    .status-flag {
+        display: inline-flex;
+        align-items: center;
+        gap: .25rem;
+        font-size: .68rem;
+        font-weight: 600;
+        padding: 2px 7px;
+        border-radius: 9999px;
+    }
+    .flag-valid   { background:#F0FDF4; color:#15803D; }
+    .flag-invalid { background:#FEF2F2; color:#B91C1C; }
+    .flag-dup     { background:#FFFBEB; color:#B45309; }
+
+    /* ── Time cells ──────────────────────────────────────────── */
+    .time-primary  { font-weight: 500; white-space: nowrap; }
+    .time-secondary { font-size: .72rem; color: var(--text-muted); }
+    .time-null     { color: var(--text-muted); font-style: italic; font-size: .75rem; }
+
+    /* ── Chip (MAC / Customer) ───────────────────────────────── */
     .chip {
         display: inline-flex;
         align-items: center;
-        gap: 0.3rem;
-        padding: 3px 10px;
+        gap: .3rem;
+        padding: 2px 9px;
         border-radius: 9999px;
-        font-size: 0.75rem;
+        font-size: .72rem;
         font-weight: 500;
         white-space: nowrap;
     }
-    .chip-customer {
-        background: #F0FDF4;
-        color: #166534;
+    .chip-mac { background:#F5F3FF; color:#5B21B6; font-family:'SFMono-Regular',Consolas,monospace; }
+
+    /* ── Raw payload tooltip toggle ──────────────────────────── */
+    .raw-toggle {
+        cursor: pointer;
+        font-size: .68rem;
+        color: var(--text-muted);
+        text-decoration: underline dotted;
+        user-select: none;
     }
-    .chip-mac {
-        background: #F5F3FF;
-        color: #5B21B6;
+    .raw-payload-text {
         font-family: 'SFMono-Regular', Consolas, monospace;
+        font-size: .72rem;
+        color: #374151;
+        background: #F3F4F6;
+        border-radius: 4px;
+        padding: 3px 7px;
+        display: none;
+        margin-top: 3px;
+        word-break: break-all;
     }
 
-    /* ── Empty State ──────────────────────────────────────────── */
+    /* ── Empty state ─────────────────────────────────────────── */
     .empty-state {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        padding: 4rem 2rem;
-        gap: 1rem;
+        display: flex; flex-direction: column;
+        align-items: center; justify-content: center;
+        padding: 4rem 2rem; gap: 1rem;
     }
     .empty-state .icon-ring {
-        width: 64px;
-        height: 64px;
-        border-radius: 50%;
-        background: var(--primary-light);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: var(--primary-color);
-        font-size: 1.5rem;
+        width:64px; height:64px; border-radius:50%;
+        background:var(--primary-light);
+        display:flex; align-items:center; justify-content:center;
+        color:var(--primary-color); font-size:1.5rem;
     }
-    .empty-state p {
-        color: var(--text-secondary);
-        font-size: 0.9rem;
-        margin: 0;
-        text-align: center;
-    }
+    .empty-state p { color:var(--text-secondary); font-size:.9rem; margin:0; text-align:center; }
 
     /* ── Pagination ───────────────────────────────────────────── */
     .pagination-wrapper {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 0.875rem 1.25rem;
+        display: flex; align-items: center; justify-content: space-between;
+        padding: .75rem 1.25rem;
         border-top: 1px solid var(--border-color);
         background: #FAFAFA;
     }
-    .pagination-info {
-        font-size: 0.8125rem;
-        color: var(--text-secondary);
-    }
+    .pagination-info { font-size: .8125rem; color: var(--text-secondary); }
     .pagination .page-link {
-        border-radius: var(--radius);
-        font-size: 0.8125rem;
-        color: var(--primary-color);
-        border-color: var(--border-color);
-        padding: 0.3rem 0.7rem;
+        border-radius: var(--radius); font-size: .8125rem;
+        color: var(--primary-color); border-color: var(--border-color); padding: .3rem .7rem;
     }
-    .pagination .page-item.active .page-link {
-        background-color: var(--primary-color);
-        border-color: var(--primary-color);
-        color: #fff;
-    }
-    .pagination .page-link:hover:not(.disabled) {
-        background: var(--primary-light);
-        border-color: var(--primary-color);
-        color: var(--primary-color);
-    }
+    .pagination .page-item.active .page-link { background:var(--primary-color); border-color:var(--primary-color); color:#fff; }
+    .pagination .page-link:hover:not(.disabled) { background:var(--primary-light); border-color:var(--primary-color); color:var(--primary-color); }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="container-fluid py-4 px-4">
 
-    <!-- Page Header -->
+    <!-- Header -->
     <div class="report-header">
         <div>
-            <h2><i class="fas fa-file-invoice me-2 text-primary"></i>Token Report</h2>
-            <p>Token events received from embedded devices</p>
+            <h2><i class="fas fa-satellite-dish me-2 text-primary"></i>Token Report</h2>
+            <p>Parsed MQTT token events from embedded devices</p>
         </div>
-        <span class="count-badge">
-            <i class="fas fa-list-ol"></i>
-            {{ total_count }} Record{{ total_count|pluralize }}
-        </span>
     </div>
 
-    <!-- Filter Bar -->
+    <!-- Summary Stats -->
+    <div class="stats-row">
+        <div class="stat-card">
+            <div class="stat-icon blue"><i class="fas fa-envelope-open-text"></i></div>
+            <div>
+                <div class="stat-value">{{ total_count }}</div>
+                <div class="stat-label">Total</div>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon green"><i class="fas fa-check-circle"></i></div>
+            <div>
+                <div class="stat-value">{{ valid_count }}</div>
+                <div class="stat-label">Valid</div>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon red"><i class="fas fa-times-circle"></i></div>
+            <div>
+                <div class="stat-value">{{ invalid_count }}</div>
+                <div class="stat-label">Invalid</div>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon amber"><i class="fas fa-copy"></i></div>
+            <div>
+                <div class="stat-value">{{ dup_count }}</div>
+                <div class="stat-label">Duplicates</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filters -->
     <div class="filter-card">
         <form method="GET" id="filterForm">
-            <div class="row g-3 align-items-end">
-                <div class="col-md-4">
-                    <label for="filterMac" class="form-label">MAC Address</label>
-                    <div class="input-group input-group-sm">
-                        <span class="input-group-text bg-white border-end-0">
-                            <i class="fas fa-network-wired text-muted" style="font-size:.7rem;"></i>
-                        </span>
-                        <input type="text" class="form-control border-start-0"
-                               id="filterMac" name="mac_address"
-                               value="{{ filter_mac }}"
-                               placeholder="AA:BB:CC…">
-                    </div>
+            <div class="row g-2 align-items-end">
+                <div class="col-md-2">
+                    <label class="form-label">MAC Address</label>
+                    <input type="text" class="form-control form-control-sm"
+                           name="mac_address" value="{{ filter_mac }}" placeholder="AA:BB:CC…">
                 </div>
-                <div class="col-md-3">
-                    <label for="filterFrom" class="form-label">From Date</label>
-                    <input type="date" class="form-control form-control-sm"
-                           id="filterFrom" name="date_from"
-                           value="{{ filter_date_from }}">
+                <div class="col-md-2">
+                    <label class="form-label">Keypad Serial</label>
+                    <input type="text" class="form-control form-control-sm"
+                           name="keypad_serial" value="{{ filter_keypad }}" placeholder="SN…">
                 </div>
-                <div class="col-md-3">
-                    <label for="filterTo" class="form-label">To Date</label>
+                <div class="col-md-2">
+                    <label class="form-label">Message Type</label>
+                    <select class="form-select form-select-sm" name="message_type">
+                        <option value="">All Types</option>
+                        {% for val, label in message_type_choices %}
+                        <option value="{{ val }}" {% if filter_type == val %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">From Date</label>
                     <input type="date" class="form-control form-control-sm"
-                           id="filterTo" name="date_to"
-                           value="{{ filter_date_to }}">
+                           name="date_from" value="{{ filter_date_from }}">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">To Date</label>
+                    <input type="date" class="form-control form-control-sm"
+                           name="date_to" value="{{ filter_date_to }}">
                 </div>
                 <div class="col-md-2 d-flex gap-2">
                     <button type="submit" class="btn btn-primary btn-sm flex-grow-1">
@@ -276,67 +350,124 @@
             <table class="table report-table mb-0">
                 <thead>
                     <tr>
-                        <th style="width:4%;">#</th>
-                        <th style="width:25%;">Message</th>
-                        <th style="width:18%;">Received</th>
-                        <th style="width:18%;">Displayed</th>
-                        <th style="width:15%;">Customer ID</th>
-                        <th style="width:20%;">MAC Address</th>
+                        <th style="width:3%;">#</th>
+                        <th style="width:10%;">Type</th>
+                        <th style="width:7%;">Token</th>
+                        <th style="width:15%;">Keypad</th>
+                        <th style="width:14%;">Counter</th>
+                        <th style="width:14%;">Received</th>
+                        <th style="width:14%;">Displayed</th>
+                        <th style="width:10%;">Status</th>
+                        <th style="width:13%;">MAC Address</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for report in reports %}
                     <tr>
-                        <!-- Row number (global across pages) -->
-                        <td class="text-muted" style="font-size:.75rem;">
+                        <!-- Row # -->
+                        <td class="text-muted" style="font-size:.72rem;">
                             {{ forloop.counter0|add:reports.start_index }}
                         </td>
 
-                        <!-- Message -->
+                        <!-- Message Type -->
                         <td>
-                            <span class="msg-cell" title="{{ report.received_message }}">
-                                {{ report.received_message }}
+                            <span class="type-badge type-{{ report.message_type }}">
+                                {% if report.message_type == "NORMAL" %}<i class="fas fa-ticket-alt"></i>
+                                {% elif report.message_type == "TRANSFER" %}<i class="fas fa-exchange-alt"></i>
+                                {% elif report.message_type == "SKIP" %}<i class="fas fa-forward"></i>
+                                {% elif report.message_type == "SPECIAL" %}<i class="fas fa-star"></i>
+                                {% elif report.message_type == "VIP" %}<i class="fas fa-crown"></i>
+                                {% elif report.message_type == "CLEAR" %}<i class="fas fa-eraser"></i>
+                                {% else %}<i class="fas fa-question"></i>{% endif %}
+                                {{ report.message_type }}
                             </span>
                         </td>
 
-                        <!-- Received DateTime -->
+                        <!-- Token Number -->
                         <td>
-                            <div class="time-primary">
-                                {{ report.received_dateTime|date:"d M Y" }}
-                            </div>
-                            <div class="time-secondary">
-                                {{ report.received_dateTime|time:"H:i:s" }}
-                            </div>
+                            {% if report.token_number %}
+                                <span class="token-pill">{{ report.token_number }}</span>
+                            {% else %}
+                                <span class="token-pill empty">—</span>
+                            {% endif %}
                         </td>
 
-                        <!-- Displayed DateTime -->
+                        <!-- Keypad Serial + Index -->
                         <td>
-                            {% if report.displayed_dateTime %}
-                                <div class="time-primary">
-                                    {{ report.displayed_dateTime|date:"d M Y" }}
+                            {% if report.keypad_serial %}
+                                <span class="kp-serial">{{ report.keypad_serial }}</span>
+                                {% if report.keypad_index %}
+                                <div class="kp-index">
+                                    <i class="fas fa-hashtag" style="font-size:.6rem;"></i> idx {{ report.keypad_index }}
                                 </div>
-                                <div class="time-secondary">
-                                    {{ report.displayed_dateTime|time:"H:i:s" }}
+                                {% endif %}
+                                <!-- Raw payload toggle -->
+                                <div class="mt-1">
+                                    <span class="raw-toggle" onclick="toggleRaw(this)">show raw</span>
+                                    <div class="raw-payload-text">{{ report.raw_payload }}</div>
                                 </div>
+                            {% else %}
+                                <span class="counter-null">unknown</span>
+                            {% endif %}
+                        </td>
+
+                        <!-- Counter -->
+                        <td>
+                            {% if report.counter_name %}
+                                <span class="counter-name">{{ report.counter_name }}</span>
+                            {% elif report.counter %}
+                                <span class="counter-name">{{ report.counter.counter_name }}</span>
+                            {% else %}
+                                <span class="counter-null">— not mapped —</span>
+                            {% endif %}
+                        </td>
+
+                        <!-- Received -->
+                        <td>
+                            <div class="time-primary">{{ report.received_at|date:"d M Y" }}</div>
+                            <div class="time-secondary">{{ report.received_at|time:"H:i:s" }}</div>
+                        </td>
+
+                        <!-- Displayed -->
+                        <td>
+                            {% if report.displayed_at %}
+                                <div class="time-primary">{{ report.displayed_at|date:"d M Y" }}</div>
+                                <div class="time-secondary">{{ report.displayed_at|time:"H:i:s" }}</div>
                             {% else %}
                                 <span class="time-null">— not set —</span>
                             {% endif %}
                         </td>
 
-                        <!-- Customer ID -->
+                        <!-- Status flags -->
                         <td>
-                            <span class="chip chip-customer">
-                                <i class="fas fa-building" style="font-size:.65rem;"></i>
-                                {{ report.customerId }}
-                            </span>
+                            <div class="d-flex flex-column gap-1">
+                                {% if report.is_valid %}
+                                    <span class="status-flag flag-valid">
+                                        <i class="fas fa-check" style="font-size:.6rem;"></i> Valid
+                                    </span>
+                                {% else %}
+                                    <span class="status-flag flag-invalid">
+                                        <i class="fas fa-times" style="font-size:.6rem;"></i> Invalid
+                                    </span>
+                                {% endif %}
+                                {% if report.is_duplicate %}
+                                    <span class="status-flag flag-dup">
+                                        <i class="fas fa-copy" style="font-size:.6rem;"></i> Duplicate
+                                    </span>
+                                {% endif %}
+                            </div>
                         </td>
 
-                        <!-- MAC Address -->
+                        <!-- MAC -->
                         <td>
-                            <span class="chip chip-mac">
-                                <i class="fas fa-wifi" style="font-size:.65rem;"></i>
-                                {{ report.mac_address }}
-                            </span>
+                            {% if report.mac_address %}
+                                <span class="chip chip-mac">
+                                    <i class="fas fa-wifi" style="font-size:.6rem;"></i>
+                                    {{ report.mac_address }}
+                                </span>
+                            {% else %}
+                                <span class="time-null">—</span>
+                            {% endif %}
                         </td>
                     </tr>
                     {% endfor %}
@@ -354,25 +485,23 @@
                 <ul class="pagination pagination-sm mb-0 gap-1">
                     {% if reports.has_previous %}
                     <li class="page-item">
-                        <a class="page-link" href="?{% if filter_mac %}mac_address={{ filter_mac }}&{% endif %}{% if filter_date_from %}date_from={{ filter_date_from }}&{% endif %}{% if filter_date_to %}date_to={{ filter_date_to }}&{% endif %}page={{ reports.previous_page_number }}">
+                        <a class="page-link" href="?mac_address={{ filter_mac }}&keypad_serial={{ filter_keypad }}&message_type={{ filter_type }}&date_from={{ filter_date_from }}&date_to={{ filter_date_to }}&page={{ reports.previous_page_number }}">
                             <i class="fas fa-chevron-left" style="font-size:.7rem;"></i>
                         </a>
                     </li>
                     {% endif %}
-
                     {% for num in reports.paginator.page_range %}
                         {% if reports.number == num %}
                         <li class="page-item active"><span class="page-link">{{ num }}</span></li>
                         {% elif num > reports.number|add:'-3' and num < reports.number|add:'3' %}
                         <li class="page-item">
-                            <a class="page-link" href="?{% if filter_mac %}mac_address={{ filter_mac }}&{% endif %}{% if filter_date_from %}date_from={{ filter_date_from }}&{% endif %}{% if filter_date_to %}date_to={{ filter_date_to }}&{% endif %}page={{ num }}">{{ num }}</a>
+                            <a class="page-link" href="?mac_address={{ filter_mac }}&keypad_serial={{ filter_keypad }}&message_type={{ filter_type }}&date_from={{ filter_date_from }}&date_to={{ filter_date_to }}&page={{ num }}">{{ num }}</a>
                         </li>
                         {% endif %}
                     {% endfor %}
-
                     {% if reports.has_next %}
                     <li class="page-item">
-                        <a class="page-link" href="?{% if filter_mac %}mac_address={{ filter_mac }}&{% endif %}{% if filter_date_from %}date_from={{ filter_date_from }}&{% endif %}{% if filter_date_to %}date_to={{ filter_date_to }}&{% endif %}page={{ reports.next_page_number }}">
+                        <a class="page-link" href="?mac_address={{ filter_mac }}&keypad_serial={{ filter_keypad }}&message_type={{ filter_type }}&date_from={{ filter_date_from }}&date_to={{ filter_date_to }}&page={{ reports.next_page_number }}">
                             <i class="fas fa-chevron-right" style="font-size:.7rem;"></i>
                         </a>
                     </li>
@@ -383,22 +512,30 @@
         {% endif %}
 
         {% else %}
-        <!-- Empty state -->
         <div class="empty-state">
-            <div class="icon-ring">
-                <i class="fas fa-inbox"></i>
-            </div>
-            {% if filter_mac or filter_date_from or filter_date_to %}
+            <div class="icon-ring"><i class="fas fa-inbox"></i></div>
+            {% if filter_mac or filter_keypad or filter_type or filter_date_from or filter_date_to %}
                 <p>No records match your current filters.</p>
                 <a href="{% url 'token_report_list' %}" class="btn btn-sm btn-outline-primary">
                     <i class="fas fa-undo me-1"></i>Clear Filters
                 </a>
             {% else %}
-                <p>No token reports have been received yet.</p>
+                <p>No MQTT token logs have been received yet.</p>
             {% endif %}
         </div>
         {% endif %}
     </div>
 
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function toggleRaw(el) {
+    const box = el.nextElementSibling;
+    const visible = box.style.display === 'block';
+    box.style.display = visible ? 'none' : 'block';
+    el.textContent = visible ? 'show raw' : 'hide raw';
+}
+</script>
 {% endblock %}

@@ -8427,109 +8427,276 @@ def register_device_api(request):
 # Token Report API
 # ---------------------------------------------------------------------------
 
+# Mapping of payload[3] to human-readable message type
+_MQTT_TYPE_MAP = {
+    'A': 'NORMAL',
+    'B': 'TRANSFER',
+    'E': 'SKIP',
+    'C': 'SPECIAL',
+    'D': 'VIP',
+}
+
+
+def _parse_mqtt_payload(payload):
+    """
+    Parse an MQTT payload string.
+
+    Format: $0PA<TYPE><...><KEYPAD_SERIAL(11)><KEYPAD_IDX><...><TOKEN(4)>[BTN_ID]*
+    Verified positions (example: $0PA-AeCAL0K0001lo-0007*):
+      [3]     → message type char  (A/B/C/D/E  or start of CLR)
+      [5:16]  → keypad serial (11 chars, e.g. 'AeCAL0K0001')
+      [17]    → keypad index  (1 ASCII char)
+      [19:23] → token / message ID (4 chars, e.g. '0007')
+      [23]    → button_string_id (type C only)
+
+    Returns a dict with parsed fields (all strings, never None).
+    """
+    result = {
+        'message_type_char': '',
+        'message_type':      'UNKNOWN',
+        'keypad_serial':     '',
+        'keypad_index':      '',
+        'token_number':      '',
+        'button_string_id':  '',
+    }
+    if not payload or len(payload) < 4:
+        return result
+
+    # CLR is a 3-char type starting at index 3
+    if len(payload) >= 6 and payload[3:6] == 'CLR':
+        result['message_type_char'] = 'CLR'
+        result['message_type']      = 'CLEAR'
+        if len(payload) > 15:
+            result['keypad_serial'] = payload[5:16]
+        if len(payload) > 17:
+            result['keypad_index'] = payload[17]
+        return result
+
+    type_char = payload[3]
+    result['message_type_char'] = type_char
+    result['message_type']      = _MQTT_TYPE_MAP.get(type_char, 'UNKNOWN')
+
+    if len(payload) > 15:
+        result['keypad_serial'] = payload[5:16]
+    if len(payload) > 17:
+        result['keypad_index'] = payload[17]
+    if len(payload) >= 23:
+        result['token_number'] = payload[19:23]
+    if type_char == 'C' and len(payload) > 23:
+        result['button_string_id'] = payload[23]
+
+    return result
+
+
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def token_report_api(request):
     """
-    Store a token report entry.
-
     POST /api/external/token-report
+
+    Receives an MQTT token payload, parses and classifies it, resolves
+    keypad → counter, stores in MQTTTokenLog (and legacy TokenReport),
+    and returns a detailed report.
 
     Request Body:
     {
-        "received_message"  : "<raw token string>",
-        "received_dateTime" : "2026-05-05T12:00:00",   // ISO-8601
-        "displayed_dateTime": "2026-05-05T12:00:05",   // ISO-8601 (optional)
+        "received_message"  : "$0PABAeCAL0K0001lo-0011*",
+        "received_dateTime" : "2026-05-05T12:00:00",      // ISO-8601
+        "displayed_dateTime": "2026-05-05T12:00:05",      // optional
         "customerId"        : "CUST-001",
-        "mac_address"       : "AA:BB:CC:DD:EE:FF"
+        "mac_address"       : "AA:BB:CC:DD:EE:FF"         // optional
     }
 
-    Returns:
+    Returns a detailed report:
     {
-        "status" : "success",
-        "message": "Token report saved",
-        "id"     : <pk of created record>
+        "status"          : "success",
+        "id"              : <MQTTTokenLog pk>,
+        "total_messages"  : 1,
+        "valid_messages"  : 0|1,
+        "invalid_messages": 0|1,
+        "tokens": [ { ...parsed details... } ]
     }
     """
-    from .models import TokenReport
+    from .models import TokenReport, MQTTTokenLog
+    from django.utils.dateparse import parse_datetime
+    from django.utils import timezone
+    from datetime import timedelta
 
     log_api_request('token_report_api', request)
 
-    received_message   = request.data.get('received_message')
+    # ── 1. Extract envelope fields ────────────────────────────────────────────
+    received_message   = (request.data.get('received_message') or '').strip()
     received_dateTime  = request.data.get('received_dateTime')
     displayed_dateTime = request.data.get('displayed_dateTime')
     customerId         = request.data.get('customerId')
-    mac_address        = request.data.get('mac_address')
+    mac_address        = request.data.get('mac_address') or ''
 
-    # If customerId is purely numeric (e.g. "0166"), convert to int to strip leading zeros
     if customerId:
         try:
             customerId = int(customerId)
         except (ValueError, TypeError):
             pass
 
-    # --- Validate required fields ---
     missing = [
-        field for field, val in [
+        f for f, v in [
             ('received_message',  received_message),
             ('received_dateTime', received_dateTime),
             ('customerId',        customerId),
-            ('mac_address',       mac_address),
         ]
-        if not val
+        if not v
     ]
     if missing:
         err = f"Missing required fields: {', '.join(missing)}"
         log_api_response('token_report_api', 400, error=err)
         return Response({'status': 'error', 'message': err}, status=400)
 
-    # --- Parse datetimes ---
-    from django.utils.dateparse import parse_datetime
-    from django.utils import timezone
-
-    def parse_dt(value, field_name):
-        """Parse an ISO-8601 datetime string; return (dt, error_str)."""
+    # ── 2. Parse datetimes ────────────────────────────────────────────────────
+    def _parse_dt(value, field_name):
         if not value:
             return None, None
-        dt = parse_datetime(value)
+        dt = parse_datetime(str(value))
         if dt is None:
             return None, f"Invalid datetime format for '{field_name}': {value!r}"
-        # Make timezone-aware if naive
         if timezone.is_naive(dt):
             dt = timezone.make_aware(dt, timezone.get_current_timezone())
         return dt, None
 
-    received_dt, err = parse_dt(received_dateTime, 'received_dateTime')
+    received_dt, err = _parse_dt(received_dateTime, 'received_dateTime')
     if err:
         log_api_response('token_report_api', 400, error=err)
         return Response({'status': 'error', 'message': err}, status=400)
+    if not received_dt:
+        received_dt = timezone.now()
 
-    displayed_dt, err = parse_dt(displayed_dateTime, 'displayed_dateTime')
-    if err:
-        log_api_response('token_report_api', 400, error=err)
-        return Response({'status': 'error', 'message': err}, status=400)
+    displayed_dt, _ = _parse_dt(displayed_dateTime, 'displayed_dateTime')
 
-    # --- Save ---
+    # ── 3. Parse MQTT payload ─────────────────────────────────────────────────
+    parsed = _parse_mqtt_payload(received_message)
+
+    # ── 4. Validate keypad exists in DB ───────────────────────────────────────
+    keypad_device = None
+    if parsed['keypad_serial']:
+        keypad_device = Device.objects.filter(
+            serial_number=parsed['keypad_serial'],
+            device_type=Device.DeviceType.KEYPAD,
+        ).first()
+
+    is_valid = keypad_device is not None
+
+    # ── 5. Resolve counter from keypad ────────────────────────────────────────
+    counter_obj  = None
+    counter_name = ''
+
+    if keypad_device:
+        # Primary: TVKeypadMapping → dispenser → CounterTokenDispenserMapping
+        tkm = TVKeypadMapping.objects.filter(
+            keypad=keypad_device,
+        ).select_related('dispenser').first()
+
+        if tkm and tkm.dispenser:
+            ctdm = CounterTokenDispenserMapping.objects.filter(
+                dispenser=tkm.dispenser,
+            ).select_related('counter').first()
+            if ctdm:
+                counter_obj  = ctdm.counter
+                counter_name = counter_obj.counter_name
+
+        if not counter_obj:
+            # Fallback: ButtonMapping dispenser → counter
+            bm = ButtonMapping.objects.filter(
+                target_device=keypad_device,
+                source_device__device_type=Device.DeviceType.TOKEN_DISPENSER,
+            ).select_related('source_device').first()
+            if bm:
+                ctdm = CounterTokenDispenserMapping.objects.filter(
+                    dispenser=bm.source_device,
+                ).select_related('counter').first()
+                if ctdm:
+                    counter_obj  = ctdm.counter
+                    counter_name = counter_obj.counter_name
+
+        if not counter_obj:
+            is_valid = False
+
+    # ── 6. Duplicate detection (same raw payload within 10 seconds) ───────────
+    window_start = received_dt - timedelta(seconds=10)
+    is_duplicate = MQTTTokenLog.objects.filter(
+        raw_payload=received_message,
+        received_at__gte=window_start,
+        received_at__lte=received_dt,
+    ).exists()
+
+    # ── 7. Persist — legacy TokenReport (backward compat) ────────────────────
     try:
-        report = TokenReport.objects.create(
+        TokenReport.objects.create(
             received_message=received_message,
             received_dateTime=received_dt,
             displayed_dateTime=displayed_dt,
-            customerId=customerId,
+            customerId=str(customerId),
             mac_address=mac_address,
+        )
+    except Exception:
+        pass
+
+    # ── 8. Persist — MQTTTokenLog (structured) ───────────────────────────────
+    try:
+        log_entry = MQTTTokenLog.objects.create(
+            raw_payload=received_message,
+            customer_id=str(customerId),
+            mac_address=mac_address,
+            message_type_char=parsed['message_type_char'],
+            message_type=parsed['message_type'],
+            keypad_serial=parsed['keypad_serial'],
+            keypad_index=parsed['keypad_index'],
+            token_number=parsed['token_number'],
+            button_string_id=parsed['button_string_id'],
+            keypad=keypad_device,
+            counter=counter_obj,
+            counter_name=counter_name,
+            received_at=received_dt,
+            displayed_at=displayed_dt,
+            status='displayed' if displayed_dt else 'received',
+            announcement_status='pending',
+            is_valid=is_valid,
+            is_duplicate=is_duplicate,
         )
     except Exception as e:
         log_api_response('token_report_api', 500, error=str(e))
         return Response({
             'status': 'error',
-            'message': f'Failed to save token report: {str(e)}'
+            'message': f'Failed to save token log: {str(e)}',
         }, status=500)
 
-    log_api_response('token_report_api', 201, response_data={'id': report.id})
+    # ── 9. Cleanup — delete uploaded logs older than 2 days ──────────────────
+    try:
+        cutoff = timezone.now() - timedelta(days=2)
+        MQTTTokenLog.objects.filter(is_uploaded=True, created_at__lt=cutoff).delete()
+    except Exception:
+        pass
+
+    # ── 10. Build detailed report ─────────────────────────────────────────────
+    token_entry = {
+        'raw_payload':         received_message,
+        'keypad_serial':       parsed['keypad_serial'],
+        'keypad_index':        parsed['keypad_index'],
+        'counter_name':        counter_name,
+        'token_number':        parsed['token_number'],
+        'message_type':        parsed['message_type'],
+        'received_time':       received_dt.isoformat(),
+        'displayed_time':      displayed_dt.isoformat() if displayed_dt else None,
+        'announcement_status': 'pending',
+        'duplicate':           is_duplicate,
+    }
+
+    log_api_response('token_report_api', 201, response_data={'id': log_entry.id})
     return Response({
-        'status': 'success',
-        'message': 'Token report saved',
-        'id': report.id,
+        'status':           'success',
+        'message':          'Token report processed',
+        'id':               log_entry.id,
+        'total_messages':   1,
+        'valid_messages':   1 if is_valid else 0,
+        'invalid_messages': 0 if is_valid else 1,
+        'tokens':           [token_entry],
     }, status=201)
 
 
@@ -8540,89 +8707,67 @@ def token_report_api(request):
 @login_required
 def token_report_list(request):
     """
-    Paginated HTML page showing all TokenReport records.
-    Supports GET filters: customer_id, mac_address, date_from, date_to.
+    Paginated HTML page showing parsed MQTTTokenLog records.
+    Supports GET filters: mac_address, keypad_serial, message_type, date_from, date_to.
     Scoped to the logged-in user's company / dealer customer.
     """
-    from .models import TokenReport
-    from companydetails.models import DealerCustomer
-    from django.db.models import Q
-    from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
+    from .models import MQTTTokenLog
 
-    # --- Determine scope ---
     user = request.user
-    qs = TokenReport.objects.all().order_by('-received_dateTime')
+    qs = MQTTTokenLog.objects.select_related('keypad', 'counter').order_by('-received_at')
 
-    # Scope by company / dealer customer if not super-admin / admin
-    if hasattr(user, 'role'):
-        if user.role not in ('SUPER_ADMIN', 'ADMIN'):
-            scoped_ids = set()
-            if hasattr(user, 'dealer_customer_relation') and user.dealer_customer_relation:
-                dc = user.dealer_customer_relation
-                raw = dc.customer_id
+    # --- Scope to company / dealer customer ---
+    if hasattr(user, 'role') and user.role not in ('SUPER_ADMIN', 'ADMIN'):
+        scoped_ids = set()
+        if hasattr(user, 'dealer_customer_relation') and user.dealer_customer_relation:
+            raw = user.dealer_customer_relation.customer_id
+            scoped_ids.add(raw)
+            try:
+                n = int(raw)
+                scoped_ids |= {str(n), str(n).zfill(3), str(n).zfill(4)}
+            except (ValueError, TypeError):
+                pass
+        elif hasattr(user, 'company_relation') and user.company_relation:
+            c = user.company_relation
+            for raw in filter(None, [c.company_id, str(c.id)]):
                 scoped_ids.add(raw)
                 try:
-                    num = int(raw)
-                    scoped_ids.add(str(num))         # strip leading zeros: "0166" → "166"
-                    scoped_ids.add(str(num).zfill(3))# "166" → "166" or "016"
-                    scoped_ids.add(str(num).zfill(4))# "166" → "0166"
+                    n = int(raw)
+                    scoped_ids |= {str(n), str(n).zfill(3), str(n).zfill(4)}
                 except (ValueError, TypeError):
                     pass
-            elif hasattr(user, 'company_relation') and user.company_relation:
-                c = user.company_relation
-                # Collect raw candidate IDs (company_id CharField + DB primary key)
-                raw_candidates = []
-                if c.company_id:
-                    raw_candidates.append(c.company_id)
-                raw_candidates.append(str(c.id))
-                # For each candidate, add raw value, int-normalised form, and zero-padded forms
-                for raw in raw_candidates:
-                    scoped_ids.add(raw)
-                    try:
-                        num = int(raw)
-                        scoped_ids.add(str(num))         # "166"
-                        scoped_ids.add(str(num).zfill(3))# "166" or "016"
-                        scoped_ids.add(str(num).zfill(4))# "0166"
-                    except (ValueError, TypeError):
-                        pass
-            if scoped_ids:
-                qs = qs.filter(customerId__in=list(scoped_ids))
+        if scoped_ids:
+            qs = qs.filter(customer_id__in=list(scoped_ids))
 
     # --- Filters ---
-    filter_customer = request.GET.get('customer_id', '').strip()
     filter_mac      = request.GET.get('mac_address', '').strip()
+    filter_keypad   = request.GET.get('keypad_serial', '').strip()
+    filter_type     = request.GET.get('message_type', '').strip()
     filter_date_from = request.GET.get('date_from', '').strip()
     filter_date_to   = request.GET.get('date_to', '').strip()
 
-    if filter_customer:
-        try:
-            # If user searches for '0166', also search for '166'
-            filter_customer_int = str(int(filter_customer))
-            qs = qs.filter(
-                Q(customerId__icontains=filter_customer) | 
-                Q(customerId__icontains=filter_customer_int)
-            )
-        except ValueError:
-            qs = qs.filter(customerId__icontains=filter_customer)
-
     if filter_mac:
         qs = qs.filter(mac_address__icontains=filter_mac)
+    if filter_keypad:
+        qs = qs.filter(keypad_serial__icontains=filter_keypad)
+    if filter_type:
+        qs = qs.filter(message_type=filter_type)
     if filter_date_from:
         try:
-            from django.utils.dateparse import parse_date
-            d = parse_date(filter_date_from)
-            if d:
-                qs = qs.filter(received_dateTime__date__gte=d)
-        except Exception:
+            qs = qs.filter(received_at__date__gte=date.fromisoformat(filter_date_from))
+        except ValueError:
             pass
     if filter_date_to:
         try:
-            from django.utils.dateparse import parse_date
-            d = parse_date(filter_date_to)
-            if d:
-                qs = qs.filter(received_dateTime__date__lte=d)
-        except Exception:
+            qs = qs.filter(received_at__date__lte=date.fromisoformat(filter_date_to))
+        except ValueError:
             pass
+
+    # --- Summary stats (over the filtered queryset) ---
+    total_count   = qs.count()
+    valid_count   = qs.filter(is_valid=True).count()
+    invalid_count = qs.filter(is_valid=False).count()
+    dup_count     = qs.filter(is_duplicate=True).count()
 
     # --- Paginate ---
     paginator = Paginator(qs, 25)
@@ -8635,12 +8780,17 @@ def token_report_list(request):
         reports = paginator.page(paginator.num_pages)
 
     context = {
-        'reports':        reports,
-        'total_count':    paginator.count,
-        'filter_customer': filter_customer,
-        'filter_mac':      filter_mac,
+        'reports':          reports,
+        'total_count':      total_count,
+        'valid_count':      valid_count,
+        'invalid_count':    invalid_count,
+        'dup_count':        dup_count,
+        'filter_mac':       filter_mac,
+        'filter_keypad':    filter_keypad,
+        'filter_type':      filter_type,
         'filter_date_from': filter_date_from,
         'filter_date_to':   filter_date_to,
+        'message_type_choices': MQTTTokenLog.MESSAGE_TYPES,
     }
     return render(request, 'configdetails/token_report_list.html', context)
 
