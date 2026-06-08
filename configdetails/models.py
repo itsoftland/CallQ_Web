@@ -459,6 +459,8 @@ class TVConfig(models.Model):
     blink_seconds = models.IntegerField(default=1)
     token_format = models.CharField(max_length=10, choices=[('T1', 'T1'), ('T2', 'T2'), ('T3', 'T3')], default='T1')
     
+    is_offline = models.BooleanField(default=False)
+
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):

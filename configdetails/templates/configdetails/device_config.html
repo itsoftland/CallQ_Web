@@ -994,6 +994,14 @@
                         </div>
                         {% endif %}
                         <div class="col-12 mt-4">
+                            <h5 class="text-muted mb-3"><i class="fas fa-power-off me-2"></i>Device Status</h5>
+                            <div class="form-check form-switch mb-2">
+                                <input class="form-check-input" type="checkbox" name="is_offline" id="is_offline" {% if tv_config.is_offline %}checked{% endif %}>
+                                <label class="form-check-label fw-bold" for="is_offline">TV is Offline</label>
+                            </div>
+                            <small class="text-muted d-block mb-3">When enabled, this TV is treated as offline.</small>
+                        </div>
+                        <div class="col-12 mt-4">
                             <h5 class="text-muted mb-3"><i class="fas fa-scroll me-2"></i>Scrolling Text Settings</h5>
                         </div>
                         <div class="col-12">

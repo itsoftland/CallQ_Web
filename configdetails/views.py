@@ -1063,7 +1063,9 @@ def get_android_tv_config(request):
         'previous_token_color': '#888888',
         'blink_current_token': False,
         'blink_seconds': 1,
-        'token_format': 'T1'
+        'token_format': 'T1',
+
+        'is_offline': False,
     }
     
     tv_config_data = default_tv_config.copy()
@@ -1099,7 +1101,8 @@ def get_android_tv_config(request):
             'token_format': getattr(tv_config, 'token_format', 'T1'),
             'ad_interval': tv_config.ad_interval or 5,
             'show_ads': 'on' if tv_config.show_ads else 'off',
-            'ad_placement': getattr(tv_config, 'ad_placement', 'right')
+            'ad_placement': getattr(tv_config, 'ad_placement', 'right'),
+            'is_offline': tv_config.is_offline,
         }
         
         # Include ad_files only if ads feature is enabled for the company
@@ -1648,13 +1651,19 @@ def _get_tv_flag_config(request, device, company, dealer_customer, is_dealer_cus
             kp_counters = _build_counters_for_dispenser(dispenser, kp_mapping.keypad_index)  # dispenser_index resolved inside
             mapped_counters_list.extend(kp_counters)
 
+            def _ki_to_str(val):
+                # keypad_index is array only in top-level counters; convert to string everywhere else
+                if isinstance(val, list):
+                    return val[0] if len(val) == 1 else "".join(str(v) for v in val)
+                return val or ""
+
             mapped_keypads_list.append({
                 'keypad_sn':           format_tv_serial_number(kp.serial_number),
                 'keypad_display_name': kp.display_name or format_tv_serial_number(kp.serial_number),
-                'keypad_index':        [kp_mapping.keypad_index] if kp_mapping.keypad_index else [],
+                'keypad_index':        kp_mapping.keypad_index or "",
                 'dispenser_sn':        format_tv_serial_number(dispenser.serial_number) if dispenser else None,
                 'button_strings':      button_strings,
-                'counters':            kp_counters,
+                'counters':            [{**c, 'keypad_index': _ki_to_str(c['keypad_index'])} for c in kp_counters],
             })
     except Exception:
         mapped_keypads_list = []
@@ -1689,6 +1698,20 @@ def _get_tv_flag_config(request, device, company, dealer_customer, is_dealer_cus
             c for c in mapped_counters_list
             if c.get('dispenser_sn') in tv_wired_dispenser_sns
         ]
+
+    # Deduplicate counters that appear across multiple keypads: merge keypad_index arrays
+    # into one entry per unique counter so the TV doesn't receive redundant rows.
+    _merged = {}
+    for c in mapped_counters_list:
+        key = c.get('counter_config_id')
+        if key not in _merged:
+            _merged[key] = dict(c)
+        else:
+            existing_ki = _merged[key]['keypad_index']
+            for idx in c.get('keypad_index', []):
+                if idx not in existing_ki:
+                    existing_ki.append(idx)
+    mapped_counters_list = list(_merged.values())
 
     # Sort the counters by button_index to ensure correct TV UI ordering
     mapped_counters_list.sort(key=lambda x: x.get('button_index', ''))
@@ -2028,6 +2051,7 @@ def device_config(request, device_id):
             tv_config.enable_counter_announcement = request.POST.get('enable_counter_announcement') == 'on'
             tv_config.enable_token_announcement = request.POST.get('enable_token_announcement') == 'on'
             tv_config.enable_counter_prifix = request.POST.get('enable_counter_prifix') == 'on'
+            tv_config.is_offline = request.POST.get('is_offline') == 'on'
             
             # Audio Language
             tv_config.audio_language = request.POST.get('audio_language', 'en')
@@ -2736,6 +2760,7 @@ def tv_config(request, tv_id):
         config.show_ads = False # Hidden from UI - Disabled by default
         config.ad_interval = request.POST.get('ad_interval', 5)
         config.orientation = request.POST.get('orientation', 'landscape')
+        config.is_offline = request.POST.get('is_offline') == 'on'
         config.save()
         
         # Save Scrolling Text to DeviceConfig
@@ -8437,17 +8462,44 @@ _MQTT_TYPE_MAP = {
 }
 
 
+def _unformat_serial(sn):
+    """
+    Reverse of format_tv_serial_number: convert the encoded payload serial back
+    to the real DB-stored serial number.
+
+    format_tv_serial_number encodes the year prefix as a letter:
+        '2026eCAL0K0001'  →  'AeCAL0K0001'   (A = 2026)
+        '2027eCAL0K0001'  →  'BeCAL0K0001'   (B = 2027)
+
+    This function reverses that:
+        'AeCAL0K0001'  →  '2026eCAL0K0001'
+        'BeCAL0K0001'  →  '2027eCAL0K0001'
+
+    If the serial doesn't start with an uppercase letter it is already in DB
+    format and is returned unchanged.
+    """
+    if not sn:
+        return sn
+    c = sn[0]
+    if 'A' <= c <= 'Z':
+        year = 2026 + (ord(c) - ord('A'))
+        return str(year) + sn[1:]
+    return sn
+
+
 def _parse_mqtt_payload(payload):
     """
     Parse an MQTT payload string.
 
-    Format: $0PA<TYPE><...><KEYPAD_SERIAL(11)><KEYPAD_IDX><...><TOKEN(4)>[BTN_ID]*
+    Format: $0PA<TYPE><...><KEYPAD_SERIAL(11)><DISP_IDX><KP_IDX>-<TOKEN(4)>[BTN_ID]*
     Verified positions (example: $0PA-AeCAL0K0001lo-0007*):
-      [3]     → message type char  (A/B/C/D/E  or start of CLR)
-      [5:16]  → keypad serial (11 chars, e.g. 'AeCAL0K0001')
-      [17]    → keypad index  (1 ASCII char)
-      [19:23] → token / message ID (4 chars, e.g. '0007')
-      [23]    → button_string_id (type C only)
+      [3]     → message type char     (A/B/C/D/E  or start of CLR)
+      [5:16]  → keypad serial encoded (11 chars, e.g. 'AeCAL0K0001')
+                year-as-letter prefix; use _unformat_serial() to get the DB serial
+      [16]    → dispenser slot index  (1 ASCII char, e.g. 'l')
+      [17]    → keypad slot index     (1 ASCII char, e.g. 'o')
+      [19:23] → token / message ID   (4 chars, e.g. '0007')
+      [23]    → button_string_id      (type C only)
 
     Returns a dict with parsed fields (all strings, never None).
     """
@@ -8455,6 +8507,7 @@ def _parse_mqtt_payload(payload):
         'message_type_char': '',
         'message_type':      'UNKNOWN',
         'keypad_serial':     '',
+        'dispenser_index':   '',
         'keypad_index':      '',
         'token_number':      '',
         'button_string_id':  '',
@@ -8468,6 +8521,8 @@ def _parse_mqtt_payload(payload):
         result['message_type']      = 'CLEAR'
         if len(payload) > 15:
             result['keypad_serial'] = payload[5:16]
+        if len(payload) > 16:
+            result['dispenser_index'] = payload[16]
         if len(payload) > 17:
             result['keypad_index'] = payload[17]
         return result
@@ -8478,6 +8533,8 @@ def _parse_mqtt_payload(payload):
 
     if len(payload) > 15:
         result['keypad_serial'] = payload[5:16]
+    if len(payload) > 16:
+        result['dispenser_index'] = payload[16]
     if len(payload) > 17:
         result['keypad_index'] = payload[17]
     if len(payload) >= 23:
@@ -8574,10 +8631,15 @@ def token_report_api(request):
     parsed = _parse_mqtt_payload(received_message)
 
     # ── 4. Validate keypad exists in DB ───────────────────────────────────────
+    # The payload serial is year-encoded (e.g. 'AeCAL0K0001'); decode to the
+    # actual DB serial (e.g. '2026eCAL0K0001') before looking up the device.
+    encoded_serial = parsed['keypad_serial']
+    decoded_serial = _unformat_serial(encoded_serial)
+
     keypad_device = None
-    if parsed['keypad_serial']:
+    if decoded_serial:
         keypad_device = Device.objects.filter(
-            serial_number=parsed['keypad_serial'],
+            serial_number__in=[decoded_serial, encoded_serial],
             device_type=Device.DeviceType.KEYPAD,
         ).first()
 
@@ -8586,23 +8648,48 @@ def token_report_api(request):
     # ── 5. Resolve counter from keypad ────────────────────────────────────────
     counter_obj  = None
     counter_name = ''
+    disp_idx = parsed['dispenser_index']   # payload[16] — dispenser slot
+    kp_idx   = parsed['keypad_index']      # payload[17] — keypad slot
 
     if keypad_device:
-        # Primary: TVKeypadMapping → dispenser → CounterTokenDispenserMapping
+        # Primary: TVKeypadMapping scoped to this keypad's slot index
         tkm = TVKeypadMapping.objects.filter(
             keypad=keypad_device,
+            keypad_index=kp_idx,
         ).select_related('dispenser').first()
 
+        # Fallback: any TVKeypadMapping for this keypad (ignore slot index)
+        if not tkm:
+            tkm = TVKeypadMapping.objects.filter(
+                keypad=keypad_device,
+            ).select_related('dispenser').first()
+
         if tkm and tkm.dispenser:
-            ctdm = CounterTokenDispenserMapping.objects.filter(
+            # Preferred: GroupDispenserMapping with dispenser_index → group → GCBM → counter
+            gdm = GroupDispenserMapping.objects.filter(
                 dispenser=tkm.dispenser,
-            ).select_related('counter').first()
-            if ctdm:
-                counter_obj  = ctdm.counter
-                counter_name = counter_obj.counter_name
+                dispenser_button_index=disp_idx,
+            ).select_related('group').first()
+            if gdm:
+                gcbm = GroupCounterButtonMapping.objects.filter(
+                    group=gdm.group,
+                    dispenser=tkm.dispenser,
+                ).select_related('counter').first()
+                if gcbm:
+                    counter_obj  = gcbm.counter
+                    counter_name = gcbm.counter.counter_name
+
+            if not counter_obj:
+                # Fallback: CounterTokenDispenserMapping (single counter per dispenser)
+                ctdm = CounterTokenDispenserMapping.objects.filter(
+                    dispenser=tkm.dispenser,
+                ).select_related('counter').first()
+                if ctdm:
+                    counter_obj  = ctdm.counter
+                    counter_name = ctdm.counter.counter_name
 
         if not counter_obj:
-            # Fallback: ButtonMapping dispenser → counter
+            # Last-resort: ButtonMapping dispenser → counter
             bm = ButtonMapping.objects.filter(
                 target_device=keypad_device,
                 source_device__device_type=Device.DeviceType.TOKEN_DISPENSER,
@@ -8613,7 +8700,7 @@ def token_report_api(request):
                 ).select_related('counter').first()
                 if ctdm:
                     counter_obj  = ctdm.counter
-                    counter_name = counter_obj.counter_name
+                    counter_name = ctdm.counter.counter_name
 
         if not counter_obj:
             is_valid = False
@@ -8646,7 +8733,7 @@ def token_report_api(request):
             mac_address=mac_address,
             message_type_char=parsed['message_type_char'],
             message_type=parsed['message_type'],
-            keypad_serial=parsed['keypad_serial'],
+            keypad_serial=decoded_serial,   # store actual DB serial, not encoded payload serial
             keypad_index=parsed['keypad_index'],
             token_number=parsed['token_number'],
             button_string_id=parsed['button_string_id'],
@@ -8677,8 +8764,9 @@ def token_report_api(request):
     # ── 10. Build detailed report ─────────────────────────────────────────────
     token_entry = {
         'raw_payload':         received_message,
-        'keypad_serial':       parsed['keypad_serial'],
+        'keypad_serial':       decoded_serial,
         'keypad_index':        parsed['keypad_index'],
+        'dispenser_index':     parsed['dispenser_index'],
         'counter_name':        counter_name,
         'token_number':        parsed['token_number'],
         'message_type':        parsed['message_type'],
@@ -9778,7 +9866,7 @@ def get_android_mapped_counters(request):
             "mapped_dispenser_sn":    mapped_dispenser_sn,
             "button_index":           _parse_pos(button_index),
             "dispenser_button_index": dispenser_button_index,
-            "keypad_index":           keypad_indexes,
+            "keypad_index":           "".join(str(k) for k in keypad_indexes) if keypad_indexes else "",
             "keypad_indexes":         keypad_indexes,
         })
 

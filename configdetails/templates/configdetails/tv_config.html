@@ -84,7 +84,24 @@
                 </div>
             </div>
 
-            <!-- Container 3: Counter Settings -->
+            <!-- Container 3: Offline Status -->
+            <div class="col-lg-4 mb-4">
+                <div class="card h-100 shadow-sm border-0">
+                    <div class="card-header bg-danger text-white">
+                        <h5 class="mb-0"><i class="fas fa-power-off me-2"></i>Device Status</h5>
+                    </div>
+                    <div class="card-body d-flex flex-column justify-content-center">
+                        <p class="text-muted small">Mark this TV as offline to hide it from active displays.</p>
+                        <div class="form-check form-switch mb-2">
+                            <input class="form-check-input" type="checkbox" name="is_offline" id="is_offline" {% if config.is_offline %}checked{% endif %}>
+                            <label class="form-check-label fw-bold" for="is_offline">TV is Offline</label>
+                        </div>
+                        <small class="text-muted">When enabled, this TV is treated as offline.</small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Container 5: Counter Settings -->
             <div class="col-lg-4 mb-4">
                 <div class="card h-100 shadow-sm border-0">
                     <div class="card-header bg-info text-white">
