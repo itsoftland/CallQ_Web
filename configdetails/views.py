@@ -9867,7 +9867,6 @@ def get_android_mapped_counters(request):
             "button_index":           _parse_pos(button_index),
             "dispenser_button_index": dispenser_button_index,
             "keypad_index":           "".join(str(k) for k in keypad_indexes) if keypad_indexes else "",
-            "keypad_indexes":         keypad_indexes,
         })
 
     return Response({"counters": mapped_counters})
