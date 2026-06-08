@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -1855,34 +1856,53 @@ def device_config(request, device_id):
     # Fetch mapped devices for Keypad auto-configuration
     mapped_dispenser_sl_no = None
     mapped_keypads = []
-    
-    if device.device_type == Device.DeviceType.KEYPAD:
-        # Find mapping where this device is one of the keypads
-        mapping = Mapping.objects.filter(
-            Q(keypad=device) | 
-            Q(keypad_2=device) | 
-            Q(keypad_3=device) | 
-            Q(keypad_4=device)
-        ).first()
-        
-        if mapping:
-            if mapping.token_dispenser:
-                mapped_dispenser_sl_no = mapping.token_dispenser.serial_number
-            
-            # Collect all mapped keypads in order
-            if mapping.keypad: mapped_keypads.append(mapping.keypad.serial_number)
-            if mapping.keypad_2: mapped_keypads.append(mapping.keypad_2.serial_number)
-            if mapping.keypad_3: mapped_keypads.append(mapping.keypad_3.serial_number)
-            if mapping.keypad_4: mapped_keypads.append(mapping.keypad_4.serial_number)
 
-        # Fallback: Check ButtonMapping if dispenser not found in main mapping
+    if device.device_type == Device.DeviceType.KEYPAD:
+        # 1. Primary: DispenserKeypadMapping — direct dispenser→keypad link in new group system
+        dkm = DispenserKeypadMapping.objects.filter(keypad=device).select_related('dispenser').first()
+        if dkm and dkm.dispenser:
+            mapped_dispenser_sl_no = dkm.dispenser.serial_number
+
+        # 2. Primary: GroupMapping — get all keypads in this keypad's group
+        group = GroupMapping.objects.filter(keypads=device).first()
+        if group:
+            mapped_keypads = list(
+                group.keypads.order_by('id').values_list('serial_number', flat=True)
+            )
+            # If dispenser still not found, get it from the group's dispenser mapping
+            if not mapped_dispenser_sl_no:
+                gdm = GroupDispenserMapping.objects.filter(group=group).select_related('dispenser').first()
+                if gdm and gdm.dispenser:
+                    mapped_dispenser_sl_no = gdm.dispenser.serial_number
+
+        # 3. Fallback: TVKeypadMapping — dispenser assigned at the TV slot level
         if not mapped_dispenser_sl_no:
-            # Look for any button mapping where this keypad is the Target and Source is a Token Dispenser
+            tkm = TVKeypadMapping.objects.filter(keypad=device).select_related('dispenser').first()
+            if tkm and tkm.dispenser:
+                mapped_dispenser_sl_no = tkm.dispenser.serial_number
+
+        # 4. Fallback: old Mapping model (legacy)
+        if not mapped_dispenser_sl_no or not mapped_keypads:
+            mapping = Mapping.objects.filter(
+                Q(keypad=device) |
+                Q(keypad_2=device) |
+                Q(keypad_3=device) |
+                Q(keypad_4=device)
+            ).first()
+            if mapping:
+                if not mapped_dispenser_sl_no and mapping.token_dispenser:
+                    mapped_dispenser_sl_no = mapping.token_dispenser.serial_number
+                if not mapped_keypads:
+                    for kp_field in [mapping.keypad, mapping.keypad_2, mapping.keypad_3, mapping.keypad_4]:
+                        if kp_field:
+                            mapped_keypads.append(kp_field.serial_number)
+
+        # 5. Last resort: ButtonMapping where dispenser is the source
+        if not mapped_dispenser_sl_no:
             btn_mapping = ButtonMapping.objects.filter(
                 target_device=device,
                 source_device__device_type=Device.DeviceType.TOKEN_DISPENSER
             ).first()
-            
             if btn_mapping:
                 mapped_dispenser_sl_no = btn_mapping.source_device.serial_number
 
@@ -6090,7 +6110,7 @@ def mapping_list_view(request):
         button_mappings = ButtonMapping.objects.filter(
             Q(source_device__in=all_group_devices) | Q(target_device__in=all_group_devices)
         ).select_related('source_device', 'target_device')
-        
+
         # Group devices by type
         devices_by_type = {
             'TOKEN_DISPENSER': list(fm.dispensers.all()),
@@ -6099,23 +6119,23 @@ def mapping_list_view(request):
             'BROKER': list(fm.brokers.all()),
             'TV': list(fm.tvs.all())
         }
-        
+
         # Organize button mappings by source device
         button_ordered_mappings = {}
         device_mappings = {}
-        
+
         for bm in button_mappings:
             source = bm.source_device
             if source not in device_mappings:
                 device_mappings[source] = []
-            
+
             device_mappings[source].append(bm)
-            
+
             # For keypads, separate broker and LED mappings
             if source.device_type == Device.DeviceType.KEYPAD:
                 if source not in button_ordered_mappings:
                     button_ordered_mappings[source] = {'broker': [], 'led': [], 'broker_count': 0, 'led_count': 0}
-                
+
                 target = bm.target_device
                 if target.device_type == Device.DeviceType.BROKER:
                     button_ordered_mappings[source]['broker'].append({
@@ -6133,6 +6153,28 @@ def mapping_list_view(request):
                 if source not in button_ordered_mappings:
                     button_ordered_mappings[source] = []
                 button_ordered_mappings[source].append(bm)
+
+        # Override dispenser rows with DispenserKeypadMapping entries so all
+        # keypads in a multi-keypad group are shown (not just the first ButtonMapping).
+        dkm_qs = DispenserKeypadMapping.objects.filter(
+            group=fm
+        ).select_related('dispenser', 'keypad').order_by('dispenser_button_index', 'keypad__id')
+
+        dkm_by_dispenser = {}
+        for dkm in dkm_qs:
+            d = dkm.dispenser
+            if d not in dkm_by_dispenser:
+                dkm_by_dispenser[d] = []
+            btn_num = ord(dkm.dispenser_button_index) - 0x30
+            dkm_by_dispenser[d].append(SimpleNamespace(
+                id=None,
+                source_button=f'Button {btn_num}',
+                target_device=dkm.keypad,
+            ))
+
+        for dispenser, dkm_entries in dkm_by_dispenser.items():
+            device_mappings[dispenser] = dkm_entries
+            button_ordered_mappings[dispenser] = dkm_entries
         
         # TV devices (as targets)
         tv_devices = {}
@@ -8977,6 +9019,12 @@ def get_group_devices_api(request, group_id):
         .order_by('display_name', 'serial_number')
     )
 
+    # Build keypad → dispenser lookup from DispenserKeypadMapping
+    dkm_by_keypad = {
+        dkm.keypad_id: dkm.dispenser_id
+        for dkm in DispenserKeypadMapping.objects.filter(group=group)
+    }
+
     return Response({
         'group_id': group.id,
         'group_name': group.group_name,
@@ -8985,7 +9033,10 @@ def get_group_devices_api(request, group_id):
                 {**device_dict(gdm.dispenser), 'dispenser_button_index': gdm.dispenser_button_index}
                 for gdm in current_dispensers
             ],
-            'keypads':  [device_dict(d) for d in current_keypads],
+            'keypads': [
+                {**device_dict(d), 'dispenser_id': dkm_by_keypad.get(d.id)}
+                for d in current_keypads
+            ],
             'leds':     [device_dict(d) for d in current_leds],
             'brokers':  [device_dict(d) for d in current_brokers],
             'tvs':      [device_dict(d) for d in current_tvs],
@@ -9115,9 +9166,20 @@ def update_group_devices_api(request, group_id):
         # Keypads
         if removed_keypad_ids:
             TVKeypadMapping.objects.filter(keypad__in=removed_keypads).delete()
+            DispenserKeypadMapping.objects.filter(keypad__in=removed_keypads, group=group).delete()
             ButtonMapping.objects.filter(
                 Q(source_device__in=removed_keypads) | Q(target_device__in=removed_keypads)
             ).delete()
+            # Clear stale dispenser_sl_no and keypad_sl_no_* from removed keypads' config
+            for rk in removed_keypads:
+                rk_cfg_obj = DeviceConfig.objects.filter(device=rk).first()
+                if rk_cfg_obj and rk_cfg_obj.config_json:
+                    cfg = rk_cfg_obj.config_json
+                    cfg.pop('dispenser_sl_no', None)
+                    for i in range(1, 6):
+                        cfg.pop(f'keypad_sl_no_{i}', None)
+                    rk_cfg_obj.config_json = cfg
+                    rk_cfg_obj.save(update_fields=['config_json', 'updated_at'])
             group.keypads.remove(*removed_keypads)
 
         # LEDs
@@ -9177,6 +9239,19 @@ def update_group_devices_api(request, group_id):
         if added_keypad_ids:
             keypads_to_add = [k for k in new_keypads if k.id in added_keypad_ids]
             group.keypads.add(*keypads_to_add)
+            # Create DispenserKeypadMapping rows for the new keypads so they
+            # appear in multi-keypad display and APIs. Link to the first dispenser.
+            first_gdm = GroupDispenserMapping.objects.filter(group=group).order_by('dispenser_button_index').first()
+            if first_gdm:
+                for kp in keypads_to_add:
+                    DispenserKeypadMapping.objects.get_or_create(
+                        group=group,
+                        keypad=kp,
+                        defaults={
+                            'dispenser': first_gdm.dispenser,
+                            'dispenser_button_index': first_gdm.dispenser_button_index,
+                        }
+                    )
 
         # LEDs
         added_led_ids = set(new_led_ids) - old_led_ids
@@ -9225,6 +9300,28 @@ def update_group_devices_api(request, group_id):
             Q(source_device__in=current_exclusive_devices) | Q(target_device__in=current_exclusive_devices)
         ).delete()
         create_group_button_mappings(group, group.company, group.branch, group.dealer_customer)
+
+        # ── Sync each keypad's config_json with live group dispenser + peer keypads ──
+        group_keypads_qs = list(group.keypads.order_by('id'))
+        group_dispenser_sn = None
+        first_gdm = GroupDispenserMapping.objects.filter(group=group).select_related('dispenser').first()
+        if first_gdm and first_gdm.dispenser:
+            group_dispenser_sn = first_gdm.dispenser.serial_number
+        keypad_serials = [kp.serial_number for kp in group_keypads_qs]
+
+        for kp in group_keypads_qs:
+            kp_config, _ = DeviceConfig.objects.get_or_create(device=kp)
+            cfg = kp_config.config_json or {}
+            if group_dispenser_sn:
+                cfg['dispenser_sl_no'] = group_dispenser_sn
+            # Write peer serial numbers into keypad_sl_no_1 … keypad_sl_no_N
+            for slot_i, sn in enumerate(keypad_serials, start=1):
+                cfg[f'keypad_sl_no_{slot_i}'] = sn
+            # Clear any leftover slots beyond current group size
+            for slot_i in range(len(keypad_serials) + 1, 6):
+                cfg.pop(f'keypad_sl_no_{slot_i}', None)
+            kp_config.config_json = cfg
+            kp_config.save(update_fields=['config_json', 'updated_at'])
 
         log_activity(
             request.user, "Group Devices Updated",

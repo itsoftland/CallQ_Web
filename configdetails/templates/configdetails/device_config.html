@@ -461,7 +461,7 @@
                         <div class="col-md-6">
                             <label class="form-label fw-bold">Dispenser Serial Number</label>
                             <input type="text" name="dispenser_sl_no" class="form-control"
-                                value="{{  config.config_json.dispenser_sl_no|default:mapped_dispenser_sl_no|default:''  }}">
+                                value="{{  mapped_dispenser_sl_no|default:config.config_json.dispenser_sl_no|default:''  }}">
                         </div>
                         <div class="col-12 mt-3">
                             <h5 class="text-muted mb-3"><i class="fas fa-keyboard me-2"></i>Button String IDs <small class="text-muted fs-6">(Buttons B, C, D)</small></h5>
