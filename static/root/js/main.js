@@ -1,6 +1,7 @@
 document.addEventListener('DOMContentLoaded', function () {
     const sidebar = document.getElementById('sidebar');
     const toggleBtn = document.getElementById('sidebarToggle');
+    const brandToggle = document.getElementById('brandToggle');
 
     // Restore sidebar state (Manual Lock)
     const isManualLocked = localStorage.getItem('sidebar-locked') === 'true';
@@ -28,13 +29,25 @@ document.addEventListener('DOMContentLoaded', function () {
     toggleBtn?.addEventListener('click', toggleLock);
     brandToggle?.addEventListener('click', toggleLock);
 
-    // Hover activation (Dynamic)
-    sidebar?.addEventListener('mouseenter', function () {
+    // Hover activation — only triggered by hovering over the logo/brand area
+    brandToggle?.addEventListener('mouseenter', function () {
         if (!sidebar.classList.contains('locked')) {
             sidebar.classList.remove('collapsed');
         }
     });
 
+    // Collapse when mouse leaves the brand area (logo)
+    brandToggle?.addEventListener('mouseleave', function (e) {
+        if (!sidebar.classList.contains('locked')) {
+            // Only collapse if the mouse isn't moving into the rest of the sidebar
+            const related = e.relatedTarget;
+            if (!sidebar.contains(related)) {
+                sidebar.classList.add('collapsed');
+            }
+        }
+    });
+
+    // Collapse when mouse leaves the full sidebar (after entering via brand hover)
     sidebar?.addEventListener('mouseleave', function () {
         if (!sidebar.classList.contains('locked')) {
             sidebar.classList.add('collapsed');

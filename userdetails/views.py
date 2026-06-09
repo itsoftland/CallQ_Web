@@ -284,10 +284,15 @@ def user_create(request):
         else:
             if company_id: user.company_relation_id = company_id
             if branch_id: user.branch_relation_id = branch_id
-        
+
         user.save()
         log_activity(request.user, "User Created", f"Created user {user.email} with role {user.role}")
-        messages.success(request, f"User {email} created successfully.")
+
+        # Warn if a role that requires a company was saved without one
+        if role in ('DEALER_ADMIN', 'COMPANY_ADMIN', 'BRANCH_ADMIN') and not user.company_relation_id:
+            messages.warning(request, f"User {email} created successfully but has no company assigned. Edit the user to assign a company.")
+        else:
+            messages.success(request, f"User {email} created successfully.")
         
         # Redirect dealers to My Users page, others to user_list
         if request.user.role == 'DEALER_ADMIN':
@@ -425,9 +430,15 @@ def user_edit(request, pk):
                     user_to_edit.dealer_customer_relation = None
                     user_to_edit.company_relation = request.user.company_relation
             else:
-                # FIX: Preserve original company — do NOT overwrite from form.
-                # The company field is read-only in the edit form.
-                user_to_edit.company_relation = original_company
+                # Preserve existing company — the form locks it when already set.
+                # When currently unassigned (e.g. DEALER_ADMIN created without a company),
+                # allow assigning via the form so admins can fix the missing link.
+                if original_company:
+                    user_to_edit.company_relation = original_company
+                elif company_id:
+                    user_to_edit.company_relation_id = company_id
+                else:
+                    user_to_edit.company_relation = None
                 user_to_edit.dealer_customer_relation = None
                 
             user_to_edit.branch_relation_id = branch_id

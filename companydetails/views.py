@@ -912,17 +912,16 @@ def customer_registration(request):
                         number_of_licence=number_of_licence
                     )
 
-                    # Auto-create branch if SINGLE
-                    if not is_multiple:
-                        Branch.objects.create(
-                            company=company,
-                            branch_name="Main Branch",
-                            address=address,
-                            city=city,
-                            district=district,
-                            state=state,
-                            zip_code=zip_code
-                        )
+                    # Always create at least one default branch so devices/users can be assigned
+                    Branch.objects.create(
+                        company=company,
+                        branch_name=f"{company_name} - Main" if is_multiple else "Main Branch",
+                        address=address,
+                        city=city,
+                        district=district or '',
+                        state=state,
+                        zip_code=zip_code
+                    )
 
                     log_activity(request.user, "Dealer Customer Registered", f"Registered customer {company_name} (ID: {customer_id})")
                     messages.success(request, f"Customer {company_name} registered successfully.")
@@ -957,17 +956,16 @@ def customer_registration(request):
                     branch_configuration=branch_cfg,
                     ads_enabled=ads_enabled
                 )
-                # Auto-create Default Branch if 'SINGLE' configuration is selected
-                if branch_cfg == 'SINGLE':
-                    Branch.objects.create(
-                        company=company,
-                        branch_name=company.city if company.city else company.company_name, # Use city as branch name
-                        address=company.address,
-                        city=company.city,
-                        district=company.district,
-                        state=company.state,
-                        zip_code=company.zip_code
-                    )
+                # Always create at least one default branch so devices/users can be assigned
+                Branch.objects.create(
+                    company=company,
+                    branch_name=f"{company.company_name} - Main" if branch_cfg == 'MULTIPLE' else (company.city if company.city else company.company_name),
+                    address=company.address,
+                    city=company.city,
+                    district=company.district or '',
+                    state=company.state,
+                    zip_code=company.zip_code
+                )
 
                 log_activity(request.user, f"{company.get_company_type_display()} Created", f"Created {company.company_name} (Requires API validation)")
                 messages.success(request, f'{company.get_company_type_display()} "{company.company_name}" created successfully.')
@@ -1026,9 +1024,22 @@ def branch_list(request):
 @login_required
 @user_passes_test(company_required)
 def branch_create(request):
+    user = request.user
+
+    # Resolve the company based on user role
+    company = None
+    if user.role in ['COMPANY_ADMIN', 'DEALER_ADMIN', 'DEALER_CUSTOMER']:
+        company = user.company_relation
+    elif user.role == 'BRANCH_ADMIN' and user.branch_relation:
+        company = user.branch_relation.company
+
     if request.method == 'POST':
+        if not company:
+            messages.error(request, 'Your account is not linked to a company. Cannot create branch.')
+            return redirect('branch_list')
+
         Branch.objects.create(
-            company=request.user.company_relation,
+            company=company,
             branch_name=request.POST.get('branch_name'),
             address=request.POST.get('address'),
             city=request.POST.get('city'),
@@ -1037,8 +1048,11 @@ def branch_create(request):
             zip_code=request.POST.get('zip_code'),
             country=request.POST.get('country', 'India')
         )
+        log_activity(user, "Branch Created", f"Created branch '{request.POST.get('branch_name')}' for {company.company_name}")
+        messages.success(request, f"Branch '{request.POST.get('branch_name')}' created successfully.")
         return redirect('branch_list')
-    return render(request, 'companydetails/branch_form.html')
+
+    return render(request, 'companydetails/branch_form.html', {'company': company})
 
 @login_required
 @user_passes_test(company_required)

@@ -2,6 +2,7 @@ from types import SimpleNamespace
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.http import HttpResponse, HttpResponseForbidden, FileResponse, JsonResponse
@@ -171,12 +172,12 @@ class EmbeddedProfileViewSet(viewsets.ModelViewSet):
 class CounterConfigViewSet(viewsets.ModelViewSet):
     """
     ViewSet for Counter CRUD operations.
-    Counters are scoped to the requesting user's company.
+    Counters are scoped to the requesting user's company hierarchy.
     """
     # Required by DRF router for basename auto-detection; actual filtering is in get_queryset()
     queryset = CounterConfig.objects.none()
     serializer_class = CounterConfigSerializer
-    permission_classes = [company_required]
+    permission_classes = [IsAuthenticated]
 
     def _get_user_company(self):
         """Return the Company for the currently logged-in user, or None."""
@@ -186,11 +187,24 @@ class CounterConfigViewSet(viewsets.ModelViewSet):
         return None
 
     def get_queryset(self):
-        """Return counters belonging to the current user's company only."""
-        company = self._get_user_company()
+        """Return counters scoped to the current user's company hierarchy."""
+        from django.db.models import Q as _Q
+        user = self.request.user
         qs = CounterConfig.objects.all()
-        if company:
-            qs = qs.filter(company=company)
+
+        if user.role in ('SUPER_ADMIN', 'ADMIN'):
+            pass  # SUPER_ADMIN/ADMIN sees all counters
+        elif user.role == 'DEALER_ADMIN' and user.company_relation:
+            # Dealer sees their own company's counters AND all child companies' counters
+            qs = qs.filter(
+                _Q(company=user.company_relation) |
+                _Q(company__parent_company=user.company_relation)
+            )
+        elif user.company_relation:
+            qs = qs.filter(company=user.company_relation)
+        else:
+            qs = qs.none()
+
         return qs.filter(status=True).order_by('counter_name')
 
     def perform_create(self, serializer):
@@ -213,7 +227,7 @@ class TVCounterMappingViewSet(viewsets.ModelViewSet):
     """
     queryset = TVCounterMapping.objects.all()
     serializer_class = TVCounterMappingSerializer
-    permission_classes = [company_required]
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         """Filter by TV device if provided"""
@@ -230,7 +244,7 @@ class CounterTokenDispenserMappingViewSet(viewsets.ModelViewSet):
     """
     queryset = CounterTokenDispenserMapping.objects.all()
     serializer_class = CounterTokenDispenserMappingSerializer
-    permission_classes = [company_required]
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         """Filter by counter or dispenser if provided"""
@@ -6553,12 +6567,33 @@ def get_dealer_customer_mappings_api(request, customer_id):
 @api_view(['GET'])
 @login_required
 def get_counters_api(request):
-    """Get list of active counters scoped to the current user's company."""
+    """Get list of active counters scoped to the current user's company hierarchy.
+
+    Accepts optional ?company_id=<id> to fetch counters for a specific company
+    (DEALER_ADMIN may query any company within their hierarchy).
+    """
+    from django.db.models import Q as _Q
     log_api_request('get_counters_api', request)
-    company = getattr(request.user, 'company_relation', None)
+    user = request.user
     qs = CounterConfig.objects.filter(status=True)
-    if company:
-        qs = qs.filter(company=company)
+
+    requested_company_id = request.query_params.get('company_id') or request.GET.get('company_id')
+
+    if user.role in ('SUPER_ADMIN', 'ADMIN'):
+        if requested_company_id:
+            qs = qs.filter(company_id=requested_company_id)
+        # else: no filter — SUPER_ADMIN sees everything
+    elif user.role == 'DEALER_ADMIN' and user.company_relation:
+        # Build the set of companies this dealer may access
+        allowed = _Q(company=user.company_relation) | _Q(company__parent_company=user.company_relation)
+        if requested_company_id:
+            allowed = allowed & _Q(company_id=requested_company_id)
+        qs = qs.filter(allowed)
+    elif user.company_relation:
+        qs = qs.filter(company=user.company_relation)
+    else:
+        qs = qs.none()
+
     qs = qs.order_by('counter_name')
     serializer = CounterConfigSerializer(qs, many=True)
     log_api_response('get_counters_api', 200, {'counters_count': len(serializer.data)})
@@ -8046,17 +8081,27 @@ def external_device_counter_api(request):
 
 @login_required
 def counter_list(request):
-    """List counters for the current user's company."""
-    company = getattr(request.user, 'company_relation', None)
+    """List counters scoped to the current user's company hierarchy."""
+    from django.db.models import Q as _Q
+    user = request.user
     try:
         qs = CounterConfig.objects.all()
-        if company:
-            qs = qs.filter(company=company)
+        if user.role in ('SUPER_ADMIN', 'ADMIN'):
+            pass  # see all counters
+        elif user.role == 'DEALER_ADMIN' and user.company_relation:
+            qs = qs.filter(
+                _Q(company=user.company_relation) |
+                _Q(company__parent_company=user.company_relation)
+            )
+        elif user.company_relation:
+            qs = qs.filter(company=user.company_relation)
+        else:
+            qs = qs.none()
         counters = qs.order_by('counter_name')
     except Exception:
         counters = []
         messages.warning(request, 'Counter tables not found. Please run migrations first.')
-    
+
     return render(request, 'configdetails/counter_list.html', {
         'counters': counters
     })
