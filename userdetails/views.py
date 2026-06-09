@@ -49,7 +49,7 @@ def user_list(request):
              users = User.objects.filter(
                 Q(company_relation=user.company_relation) |
                 Q(branch_relation__company=user.company_relation)
-            ).exclude(role='PRODUCTION_ADMIN')  # Company Admin cannot see Production Admins
+            ).exclude(role__in=['PRODUCTION_ADMIN', 'DEALER_ADMIN'])  # Company Admin cannot see Production Admins or Dealer Admins
         else:
             users = User.objects.none()
     elif user.role == "BRANCH_ADMIN":
@@ -318,9 +318,26 @@ def user_create(request):
 def get_roles_for_user(user):
     """Helper to get allowed roles based on the current user's role."""
     if user.role == "SUPER_ADMIN":
-        return [("SUPER_ADMIN", "Super Admin"), ("ADMIN", "Admin"), ("DEALER_ADMIN", "Dealer Admin"), ("COMPANY_ADMIN", "Company Admin"), ("BRANCH_ADMIN", "Branch Admin"), ("PRODUCTION_ADMIN", "Production Admin"), ("EMPLOYEE", "Employee"), ("COMPANY_EMPLOYEE", "Company Employee")]
+        # Super Admin cannot create another Super Admin
+        return [
+            ("COMPANY_ADMIN", "Company Admin"),
+            ("DEALER_ADMIN", "Dealer Admin"),
+            ("ADMIN", "Admin"),
+            ("BRANCH_ADMIN", "Branch Admin"),
+            ("PRODUCTION_ADMIN", "Production Admin"),
+            ("EMPLOYEE", "Employee"),
+            ("COMPANY_EMPLOYEE", "Company Employee"),
+        ]
     elif user.role == "ADMIN":
-        return [("DEALER_ADMIN", "Dealer Admin"), ("COMPANY_ADMIN", "Company Admin"), ("BRANCH_ADMIN", "Branch Admin"), ("PRODUCTION_ADMIN", "Production Admin"), ("EMPLOYEE", "Employee"), ("COMPANY_EMPLOYEE", "Company Employee")]
+        return [
+            ("COMPANY_ADMIN", "Company Admin"),
+            ("DEALER_ADMIN", "Dealer Admin"),
+            ("ADMIN", "Admin"),
+            ("BRANCH_ADMIN", "Branch Admin"),
+            ("PRODUCTION_ADMIN", "Production Admin"),
+            ("EMPLOYEE", "Employee"),
+            ("COMPANY_EMPLOYEE", "Company Employee"),
+        ]
     elif user.role == "DEALER_ADMIN":
         return [("COMPANY_ADMIN", "Company Admin"), ("BRANCH_ADMIN", "Branch Admin"), ("COMPANY_EMPLOYEE", "Company Employee")]
     elif user.role == "COMPANY_ADMIN":

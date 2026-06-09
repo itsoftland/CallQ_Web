@@ -142,10 +142,12 @@
                     <td class="pe-4 py-3 text-end">
                         <a href="{% url 'user_edit' u.id %}" class="btn btn-sm btn-link text-secondary p-1"
                             title="Edit"><i class="fas fa-pen"></i></a>
+                        {% if u.role != "SUPER_ADMIN" %}
                         <button type="button" class="btn btn-sm btn-link text-danger p-1" title="Delete"
                             onclick="confirmDelete('{{ u.id }}', '{{ u.email }}')">
                             <i class="fas fa-trash"></i>
                         </button>
+                        {% endif %}
                     </td>
                 </tr>
                 {% empty %}

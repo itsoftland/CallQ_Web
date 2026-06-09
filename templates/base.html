@@ -93,6 +93,11 @@
                 class="{% if request.resolver_match.url_name == 'user_list' %}active{% endif %}">
                 <i class="fas fa-user-friends"></i> <span class="nav-text">Users</span>
             </a>
+            {# Scheduler and Config Profiles hidden from sidebar #}
+            <a href="{% url 'counter_list' %}"
+                class="{% if 'counter' in request.resolver_match.url_name %}active{% endif %}">
+                <i class="fas fa-list-ol"></i> <span class="nav-text">Counters</span>
+            </a>
             <a href="{% url 'device_list' %}"
                 class="{% if request.resolver_match.url_name == 'device_list' %}active{% endif %}">
                 <i class="fas fa-desktop"></i> <span class="nav-text">Devices</span>
@@ -105,11 +110,6 @@
             <a href="{% url 'mapping_list' %}"
                 class="{% if request.resolver_match.url_name == 'mapping_list' %}active{% endif %}">
                 <i class="fas fa-list-alt"></i> <span class="nav-text">Group List</span>
-            </a>
-            {# Scheduler and Config Profiles hidden from sidebar #}
-            <a href="{% url 'counter_list' %}"
-                class="{% if 'counter' in request.resolver_match.url_name %}active{% endif %}">
-                <i class="fas fa-list-ol"></i> <span class="nav-text">Counters</span>
             </a>
             <a href="{% url 'token_report_list' %}"
                 class="{% if request.resolver_match.url_name == 'token_report_list' %}active{% endif %}">
@@ -137,6 +137,11 @@
                 <i class="fas fa-code-branch"></i> <span class="nav-text">Branches</span>
             </a>
 
+            {# Scheduler and Config Profiles hidden from sidebar #}
+            <a href="{% url 'counter_list' %}"
+                class="{% if 'counter' in request.resolver_match.url_name %}active{% endif %}">
+                <i class="fas fa-list-ol"></i> <span class="nav-text">Counters</span>
+            </a>
             <a href="{% url 'device_list' %}"
                 class="{% if request.resolver_match.url_name == 'device_list' %}active{% endif %}">
                 <i class="fas fa-desktop"></i> <span class="nav-text">Devices</span>
@@ -149,11 +154,6 @@
             <a href="{% url 'mapping_list' %}"
                 class="{% if request.resolver_match.url_name == 'mapping_list' %}active{% endif %}">
                 <i class="fas fa-list-alt"></i> <span class="nav-text">Group List</span>
-            </a>
-            {# Scheduler and Config Profiles hidden from sidebar #}
-            <a href="{% url 'counter_list' %}"
-                class="{% if 'counter' in request.resolver_match.url_name %}active{% endif %}">
-                <i class="fas fa-list-ol"></i> <span class="nav-text">Counters</span>
             </a>
             <a href="{% url 'token_report_list' %}"
                 class="{% if request.resolver_match.url_name == 'token_report_list' %}active{% endif %}">
@@ -168,6 +168,11 @@
 
             {% if user.role == 'BRANCH_ADMIN' %}
             <!-- Branch Admin Menu -->
+            {# Scheduler and Config Profiles hidden from sidebar #}
+            <a href="{% url 'counter_list' %}"
+                class="{% if 'counter' in request.resolver_match.url_name %}active{% endif %}">
+                <i class="fas fa-list-ol"></i> <span class="nav-text">Counters</span>
+            </a>
             <a href="{% url 'device_list' %}"
                 class="{% if request.resolver_match.url_name == 'device_list' %}active{% endif %}">
                 <i class="fas fa-desktop"></i> <span class="nav-text">Devices</span>
@@ -179,11 +184,6 @@
             <a href="{% url 'mapping_list' %}"
                 class="{% if request.resolver_match.url_name == 'mapping_list' %}active{% endif %}">
                 <i class="fas fa-list-alt"></i> <span class="nav-text">Group List</span>
-            </a>
-            {# Scheduler and Config Profiles hidden from sidebar #}
-            <a href="{% url 'counter_list' %}"
-                class="{% if 'counter' in request.resolver_match.url_name %}active{% endif %}">
-                <i class="fas fa-list-ol"></i> <span class="nav-text">Counters</span>
             </a>
             <a href="{% url 'token_report_list' %}"
                 class="{% if request.resolver_match.url_name == 'token_report_list' %}active{% endif %}">
