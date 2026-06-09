@@ -390,7 +390,10 @@
                                             </div>
                                             {% endwith %}
                                             {% endif %}
+                                            {# Only render arrow if there are more blocks after this one OR tv_devices follow #}
+                                            {% if not forloop.last or group.tv_devices %}
                                             <span class="chain-arrow"><i class="fas fa-arrow-right"></i></span>
+                                            {% endif %}
                                         </div>
                                         {% endfor %}
                                         {% comment %} Then show TV devices (if any) at the end {% endcomment %}

@@ -2848,6 +2848,7 @@ def device_config(request, device_id):
     # Resolve the family (GroupMapping) this device belongs to, for display in the
     # config page header. A device may be a member via any of the group's device sets.
     family_name = None
+    led_source_devices = []  # List of devices (dispensers/keypads) sending data to this LED
     try:
         family_group = GroupMapping.objects.filter(
             Q(dispensers=device) | Q(keypads=device) | Q(tvs=device) |
@@ -2855,8 +2856,25 @@ def device_config(request, device_id):
         ).distinct().first()
         if family_group:
             family_name = family_group.group_name
+            # For LED devices: find only the keypads specifically mapped to this LED
+            # via ButtonMapping (source=KEYPAD → target=this LED).
+            if device.device_type == Device.DeviceType.LED:
+                led_bm_qs = ButtonMapping.objects.filter(
+                    target_device=device,
+                    source_device__device_type=Device.DeviceType.KEYPAD,
+                ).select_related('source_device')
+                for bm in led_bm_qs:
+                    k = bm.source_device
+                    led_source_devices.append({
+                        'serial_number': k.serial_number,
+                        'display_name': k.display_name or '',
+                        'device_type': 'Keypad',
+                        'icon': 'fas fa-keyboard',
+                        'color': 'success',
+                    })
     except Exception:
         family_name = None
+        led_source_devices = []
 
     return render(request, 'configdetails/device_config.html', {
         'device': device,
@@ -2887,6 +2905,7 @@ def device_config(request, device_id):
         'default_company_name': fixed_company_name,
         'default_location': fixed_location,
         'dispenser_button_index_display': dispenser_button_index_display,
+        'led_source_devices': led_source_devices,
     })
 
 
@@ -6285,12 +6304,16 @@ def mapping_list_view(request):
         ).select_related('source_device', 'target_device')
 
         # Group devices by type (TV excluded — rendered separately via tv_devices block)
-        devices_by_type = {
-            'TOKEN_DISPENSER': list(fm.dispensers.all()),
-            'KEYPAD': list(fm.keypads.all()),
-            'LED': list(fm.leds.all()),
-            'BROKER': list(fm.brokers.all()),
-        }
+        devices_by_type = {}
+        for dtype, qs in [
+            ('TOKEN_DISPENSER', fm.dispensers.all()),
+            ('KEYPAD',          fm.keypads.all()),
+            ('LED',             fm.leds.all()),
+            ('BROKER',          fm.brokers.all()),
+        ]:
+            devs = list(qs)
+            if devs:
+                devices_by_type[dtype] = devs
 
         # Organize button mappings by source device
         button_ordered_mappings = {}

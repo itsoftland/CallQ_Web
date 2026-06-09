@@ -1134,6 +1134,57 @@
                                 </div>
                                 <input type="hidden" name="no_of_digits" value="{{ config.config_json.no_of_digits|default:'' }}">
                             </div>
+
+                            {# ── Receiving Data From (read-only, derived from Group Mapping) ── #}
+                            <div class="col-12 mt-2">
+                                <div class="rounded-3 border p-3" style="background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); border-color: #bae6fd !important;">
+                                    <div class="d-flex align-items-center gap-2 mb-2">
+                                        <span class="d-inline-flex align-items-center justify-content-center rounded-circle"
+                                              style="width:28px;height:28px;background:#0ea5e9;flex-shrink:0;">
+                                            <i class="fas fa-arrow-down text-white" style="font-size:12px;"></i>
+                                        </span>
+                                        <span class="fw-bold text-dark" style="font-size:0.875rem;">Receiving Data From</span>
+                                        <span class="badge ms-auto" style="background:#e0f2fe;color:#0369a1;font-size:0.7rem;font-weight:600;border:1px solid #bae6fd;">
+                                            <i class="fas fa-lock me-1" style="font-size:0.65rem;"></i>Read-only
+                                        </span>
+                                    </div>
+                                    {% if led_source_devices %}
+                                        <div class="d-flex flex-wrap gap-2 mt-1">
+                                            {% for src in led_source_devices %}
+                                            <div class="d-inline-flex align-items-center gap-2 px-3 py-2 rounded-3"
+                                                 style="background:#fff;border:1.5px solid {% if src.color == 'primary' %}#93c5fd{% else %}#86efac{% endif %};min-width:0;">
+                                                <span class="d-inline-flex align-items-center justify-content-center rounded-circle"
+                                                      style="width:24px;height:24px;background:{% if src.color == 'primary' %}#dbeafe{% else %}#dcfce7{% endif %};flex-shrink:0;">
+                                                    <i class="{{ src.icon }}" style="font-size:10px;color:{% if src.color == 'primary' %}#2563eb{% else %}#16a34a{% endif %};"></i>
+                                                </span>
+                                                <div class="lh-sm">
+                                                    <div class="fw-semibold text-dark" style="font-size:0.8rem;white-space:nowrap;">
+                                                        {{ src.serial_number }}
+                                                    </div>
+                                                    {% if src.display_name %}
+                                                    <div class="text-muted" style="font-size:0.7rem;white-space:nowrap;">{{ src.display_name }}</div>
+                                                    {% else %}
+                                                    <div class="text-muted" style="font-size:0.7rem;">{{ src.device_type }}</div>
+                                                    {% endif %}
+                                                </div>
+                                            </div>
+                                            {% endfor %}
+                                        </div>
+                                    {% else %}
+                                        <div class="d-flex align-items-center gap-2 text-muted mt-1" style="font-size:0.82rem;">
+                                            <i class="fas fa-unlink"></i>
+                                            <span>No devices mapped to this LED in any group yet.</span>
+                                        </div>
+                                    {% endif %}
+                                    <div class="mt-2 pt-2" style="border-top:1px dashed #bae6fd;">
+                                        <small class="text-muted" style="font-size:0.72rem;">
+                                            <i class="fas fa-info-circle me-1" style="color:#0ea5e9;"></i>
+                                            Source devices are determined by the Group Mapping this LED belongs to. Configure group mappings to change this.
+                                        </small>
+                                    </div>
+                                </div>
+                            </div>
+
                             <div class="col-12">
                                 <small class="text-muted">
                                     <i class="fas fa-info-circle me-1"></i>
