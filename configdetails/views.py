@@ -6284,13 +6284,12 @@ def mapping_list_view(request):
             Q(source_device__in=all_group_devices) | Q(target_device__in=all_group_devices)
         ).select_related('source_device', 'target_device')
 
-        # Group devices by type
+        # Group devices by type (TV excluded — rendered separately via tv_devices block)
         devices_by_type = {
             'TOKEN_DISPENSER': list(fm.dispensers.all()),
             'KEYPAD': list(fm.keypads.all()),
             'LED': list(fm.leds.all()),
             'BROKER': list(fm.brokers.all()),
-            'TV': list(fm.tvs.all())
         }
 
         # Organize button mappings by source device
