@@ -56,6 +56,8 @@
                         <td>
                             {% if item.is_dealer %}
                             <span class="badge bg-info text-dark">{{ item.type }}</span>
+                            {% elif item.is_dealer_customer %}
+                            <span class="badge bg-warning text-dark">{{ item.type }}</span>
                             {% else %}
                             <span class="badge bg-light text-dark border">{{ item.type }}</span>
                             {% endif %}

@@ -1334,11 +1334,24 @@ def device_report(request):
         # Annotate with device counts
         for company in companies:
             device_count = Device.objects.filter(company=company).count()
+            if company.company_type == 'DEALER':
+                type_label = 'Dealer'
+                is_dealer = True
+                is_dealer_customer = False
+            elif company.is_dealer_created:
+                type_label = 'Dealer Customer'
+                is_dealer = False
+                is_dealer_customer = True
+            else:
+                type_label = 'Direct Customer'
+                is_dealer = False
+                is_dealer_customer = False
             report_data.append({
                 'name': company.company_name,
-                'type': company.get_company_type_display(),
+                'type': type_label,
                 'device_count': device_count,
-                'is_dealer': company.company_type == 'DEALER'
+                'is_dealer': is_dealer,
+                'is_dealer_customer': is_dealer_customer,
             })
     
     elif user.role == 'DEALER_ADMIN':
