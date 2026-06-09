@@ -222,7 +222,14 @@ class GroupMapping(models.Model):
     tvs = models.ManyToManyField(Device, related_name='group_tvs', limit_choices_to={'device_type': Device.DeviceType.TV}, blank=True)
     brokers = models.ManyToManyField(Device, related_name='group_brokers', limit_choices_to={'device_type': Device.DeviceType.BROKER}, blank=True)
     leds = models.ManyToManyField(Device, related_name='group_leds', limit_choices_to={'device_type': Device.DeviceType.LED}, blank=True)
-    
+
+    # Pool mode: counters are mapped directly to keypads instead of dispensers.
+    # When True, all keypads in the group have keypad_pool_mode auto-applied.
+    pool_mode = models.BooleanField(
+        default=False,
+        help_text="Pool mode enables keypad-based counter mapping.",
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -776,6 +783,47 @@ class CounterTokenDispenserMapping(models.Model):
 
     def __str__(self):
         return f"{self.counter.counter_name} -> {self.dispenser.serial_number}"
+
+
+class KeypadCounterMapping(models.Model):
+    """
+    Pool mode: maps ONE CounterConfig directly to ONE KEYPAD within a group.
+
+    Each keypad has exactly one counter in pool mode. The TV slot position is
+    determined by TVKeypadMapping.keypad_index (the keypad's slot on the TV),
+    so no button_index field is needed here.
+    """
+    group = models.ForeignKey(
+        GroupMapping,
+        on_delete=models.CASCADE,
+        related_name='keypad_counter_mappings',
+    )
+    keypad = models.ForeignKey(
+        Device,
+        on_delete=models.CASCADE,
+        related_name='pool_counter_mappings',
+        limit_choices_to={'device_type': Device.DeviceType.KEYPAD},
+    )
+    counter = models.ForeignKey(
+        'CounterConfig',
+        on_delete=models.CASCADE,
+        related_name='pool_keypad_positions',
+    )
+
+    class Meta:
+        unique_together = [
+            ('group', 'keypad'),
+            ('group', 'counter'),
+        ]
+        ordering = ['group', 'keypad']
+        verbose_name = 'Keypad Counter Mapping'
+        verbose_name_plural = 'Keypad Counter Mappings'
+
+    def __str__(self):
+        return (
+            f"{self.group.group_name} → "
+            f"{self.keypad.serial_number} / {self.counter.counter_name}"
+        )
 
 
 class DeviceConfigProfile(models.Model):

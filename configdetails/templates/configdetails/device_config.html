@@ -515,7 +515,8 @@
                         </div>
                         <div class="col-md-4">
                             <label class="form-label fw-bold">Keypad Pool Mode</label>
-                            <select name="keypad_pool_mode" class="form-select">
+                            <select name="keypad_pool_mode" id="keypad_pool_mode_select" class="form-select"
+                                    onchange="togglePoolCounterSection(this.value)">
                                 {% if config.config_json.keypad_pool_mode == '0' %}
                                 <option value="0" selected>Normal</option>
                                 <option value="1">Pool</option>
@@ -524,6 +525,30 @@
                                 <option value="1" selected>Pool</option>
                                 {% endif %}
                             </select>
+                        </div>
+
+                        <!-- Pool Mode Counter Mapping — visible only when Pool is selected -->
+                        <div id="pool-counter-section" class="col-md-4{% if config.config_json.keypad_pool_mode != '1' %} d-none{% endif %}">
+                            <label class="form-label fw-bold">
+                                <i class="fas fa-list-ol me-1"></i>Counter (Pool Mode)
+                            </label>
+                            {% if all_counters %}
+                            <select name="pool_counter_id" class="form-select">
+                                <option value="">-- None --</option>
+                                {% for counter in all_counters %}
+                                <option value="{{ counter.id }}"
+                                    {% if pool_counter_id == counter.id %}selected{% endif %}>
+                                    {{ counter.counter_name }} ({{ counter.counter_prefix_code }})
+                                </option>
+                                {% endfor %}
+                            </select>
+                            <small class="text-muted">This counter is mapped directly to the keypad.</small>
+                            {% else %}
+                            <div class="alert alert-info py-2 mb-0 mt-1">
+                                <i class="fas fa-info-circle me-1"></i>
+                                Assign this keypad to a group first.
+                            </div>
+                            {% endif %}
                         </div>
                         <div class="col-md-4">
                             <label class="form-label fw-bold">Serving Mode</label>
@@ -1438,6 +1463,17 @@
         input.addEventListener('input', updateCount);
         updateCount();
     });
+
+    /* Pool Mode — show/hide counter mapping section */
+    window.togglePoolCounterSection = function(val) {
+        var section = document.getElementById('pool-counter-section');
+        if (!section) return;
+        if (val === '1') {
+            section.classList.remove('d-none');
+        } else {
+            section.classList.add('d-none');
+        }
+    };
 
 </script>
 

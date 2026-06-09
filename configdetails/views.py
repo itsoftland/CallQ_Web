@@ -6,7 +6,7 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.http import HttpResponse, HttpResponseForbidden, FileResponse, JsonResponse
 from django.contrib import messages
-from .models import Device, DeviceConfig, TVConfig, Mapping, Counter, TVCounter, TVAd, LedConfig, EmbeddedProfile, ProductionBatch, ProductionSerialNumber, ButtonMapping, CounterConfig, TVCounterMapping, CounterTokenDispenserMapping, ExternalDeviceCounterLog, GroupMapping, GroupDispenserMapping, GroupCounterButtonMapping, TVDispenserMapping, TVKeypadMapping, DispenserKeypadMapping, get_button_index_char, BUTTON_INDEX_SEQUENCE
+from .models import Device, DeviceConfig, TVConfig, Mapping, Counter, TVCounter, TVAd, LedConfig, EmbeddedProfile, ProductionBatch, ProductionSerialNumber, ButtonMapping, CounterConfig, TVCounterMapping, CounterTokenDispenserMapping, ExternalDeviceCounterLog, GroupMapping, GroupDispenserMapping, GroupCounterButtonMapping, TVDispenserMapping, TVKeypadMapping, DispenserKeypadMapping, KeypadCounterMapping, get_button_index_char, BUTTON_INDEX_SEQUENCE
 from django.db import transaction
 from .serializers.config_serializers import DeviceSerializer, DeviceConfigSerializer, TVConfigSerializer, MappingSerializer, EmbeddedProfileSerializer, CounterConfigSerializer, TVCounterMappingSerializer, CounterTokenDispenserMappingSerializer, ExternalDeviceCounterLogSerializer, TVDispenserMappingSerializer, TVKeypadMappingSerializer
 from companydetails.models import Company, Branch
@@ -294,55 +294,97 @@ def generate_tv_counters_data(device, tv_config=None):
 
     counters = []
 
-    # 1. Fetch ONLY counters from dispensers explicitly mapped to this TV via TVKeypadMapping.
-    #    Chain: TV → TVKeypadMapping.dispenser → GroupCounterButtonMapping → counter
-    #    This guarantees we never show counters from unrelated groups or dispensers.
-    mapped_counters = {}
+    # 1. Fetch counters for this TV from dispensers (normal mode) or keypads (pool mode).
+    #
+    #    Normal mode chain:  TV → TVKeypadMapping.dispenser → GroupCounterButtonMapping → counter
+    #    Pool mode chain:    TV → TVKeypadMapping.keypad   → KeypadCounterMapping → counter
+    #
+    #    A keypad triggers pool mode when its group has pool_mode=True.
+    #    Mixed groups are handled per-keypad: each slot uses whichever source applies.
+    mapped_counters = {}  # idx (1-8) -> ('normal', gcbm) | ('pool', kcm)
 
-    # Collect all dispensers wired to this TV through keypad slots (skip slots with no dispenser)
-    tv_keypad_mappings = TVKeypadMapping.objects.filter(tv=device).select_related('dispenser')
-    tv_dispenser_ids = [
-        kpm.dispenser_id
-        for kpm in tv_keypad_mappings
-        if kpm.dispenser_id is not None
-    ]
+    tv_keypad_mappings = TVKeypadMapping.objects.filter(tv=device).select_related('dispenser', 'keypad')
 
-    if tv_dispenser_ids:
-        from configdetails.models import GroupCounterButtonMapping
+    normal_dispenser_ids = []
+    pool_kpm_list = []  # (TVKeypadMapping, keypad_id) for pool mode slots
+
+    for kpm in tv_keypad_mappings:
+        # Check if this keypad belongs to a pool mode group
+        if kpm.keypad_id:
+            group = GroupMapping.objects.filter(keypads=kpm.keypad).first()
+            if group and group.pool_mode:
+                pool_kpm_list.append(kpm)
+                continue  # pool mode: skip dispenser path for this slot
+        if kpm.dispenser_id is not None:
+            normal_dispenser_ids.append(kpm.dispenser_id)
+
+    # Normal mode: counters come from dispensers (existing logic — unchanged)
+    if normal_dispenser_ids:
         gcbms = (
             GroupCounterButtonMapping.objects
-            .filter(dispenser_id__in=tv_dispenser_ids)
+            .filter(dispenser_id__in=normal_dispenser_ids)
             .select_related('dispenser', 'counter')
             .order_by('button_index')
         )
         for gcbm in gcbms:
             try:
-                # Convert ASCII button_index (e.g., '1' = 0x31) to 1-based integer
                 idx = ord(gcbm.button_index) - 0x31 + 1
-                if 1 <= idx <= 8:
-                    # First mapping wins; later ones (same slot) are ignored
-                    if idx not in mapped_counters:
-                        mapped_counters[idx] = gcbm
+                if 1 <= idx <= 8 and idx not in mapped_counters:
+                    mapped_counters[idx] = ('normal', gcbm)
+            except Exception:
+                pass
+
+    # Pool mode: one counter per keypad — slot position from keypad_index on TV
+    if pool_kpm_list:
+        pool_keypad_ids = [kpm.keypad_id for kpm in pool_kpm_list]
+        kcm_by_keypad = {
+            kcm.keypad_id: kcm
+            for kcm in KeypadCounterMapping.objects
+                .filter(keypad_id__in=pool_keypad_ids)
+                .select_related('keypad', 'counter')
+        }
+        for kpm in pool_kpm_list:
+            kcm = kcm_by_keypad.get(kpm.keypad_id)
+            if not kcm:
+                continue
+            try:
+                idx = ord(kpm.keypad_index) - 0x31 + 1
+                if 1 <= idx <= 8 and idx not in mapped_counters:
+                    mapped_counters[idx] = ('pool', kcm)
             except Exception:
                 pass
 
     # 2. Iterate and Fill Slots (Always 8 slots for real-time frontend toggling)
     for i in range(1, 9):
         counter_data = None
-        
+
         if i in mapped_counters:
-            gcbm = mapped_counters[i]
-            counter_data = {
-                'counter_id': f"{gcbm.dispenser.serial_number}-C{i}",
-                'default_name': gcbm.counter.counter_name,
-                'default_code': gcbm.counter.counter_prefix_code or f"C{i:02d}",
-                'source_device': gcbm.dispenser.serial_number,
-                'button_index': i,
-                'name': gcbm.counter.counter_name,
-                'code': gcbm.counter.counter_prefix_code or f"C{i:02d}",
-                'is_live': False
-            }
-            
+            mode, obj = mapped_counters[i]
+            if mode == 'normal':
+                # Normal mode: source is the dispenser
+                counter_data = {
+                    'counter_id': f"{obj.dispenser.serial_number}-C{i}",
+                    'default_name': obj.counter.counter_name,
+                    'default_code': obj.counter.counter_prefix_code or f"C{i:02d}",
+                    'source_device': obj.dispenser.serial_number,
+                    'button_index': i,
+                    'name': obj.counter.counter_name,
+                    'code': obj.counter.counter_prefix_code or f"C{i:02d}",
+                    'is_live': False,
+                }
+            else:
+                # Pool mode: source is the keypad
+                counter_data = {
+                    'counter_id': f"{obj.keypad.serial_number}-C{i}",
+                    'default_name': obj.counter.counter_name,
+                    'default_code': obj.counter.counter_prefix_code or f"C{i:02d}",
+                    'source_device': obj.keypad.serial_number,
+                    'button_index': i,
+                    'name': obj.counter.counter_name,
+                    'code': obj.counter.counter_prefix_code or f"C{i:02d}",
+                    'is_live': False,
+                }
+
         if not counter_data:
             counter_data = {
                 'counter_id': f"Counter-{i}",
@@ -352,7 +394,7 @@ def generate_tv_counters_data(device, tv_config=None):
                 'button_index': i,
                 'name': f"Counter {i}",
                 'code': f"C{i:02d}",
-                'is_live': False
+                'is_live': False,
             }
 
         # Common attributes
@@ -1622,6 +1664,52 @@ def _get_tv_flag_config(request, device, company, dealer_customer, is_dealer_cus
             return bm.source_device, bm.source_button
         return None, None
 
+    # Pre-fetch pool-mode group memberships for all keypads on this TV in one query.
+    # Maps keypad_id -> group (only for groups with pool_mode=True).
+    tv_kp_ids = list(
+        TVKeypadMapping.objects.filter(tv=device).values_list('keypad_id', flat=True)
+    )
+    pool_group_by_keypad = {}  # keypad_id -> GroupMapping (pool mode only)
+    if tv_kp_ids:
+        for gm in GroupMapping.objects.filter(keypads__id__in=tv_kp_ids, pool_mode=True).prefetch_related('keypads'):
+            for kp_obj in gm.keypads.filter(id__in=tv_kp_ids):
+                pool_group_by_keypad[kp_obj.id] = gm
+
+    # Pre-fetch KeypadCounterMappings for all pool-mode keypads.
+    pool_kp_ids = list(pool_group_by_keypad.keys())
+    kcm_by_keypad = {}  # keypad_id -> KeypadCounterMapping
+    if pool_kp_ids:
+        for kcm in KeypadCounterMapping.objects.filter(keypad_id__in=pool_kp_ids).select_related('counter', 'keypad'):
+            kcm_by_keypad[kcm.keypad_id] = kcm
+
+    def _build_counters_for_pool_keypad(kp, keypad_index_char):
+        """
+        Build counter dict for a pool-mode keypad.
+        Source: KeypadCounterMapping (one counter per keypad, no dispenser involved).
+        The keypad SN is used as 'dispenser_sn' so the wired-filter can recognise it.
+        """
+        kcm = kcm_by_keypad.get(kp.id)
+        if not kcm:
+            return []
+        c = kcm.counter
+        slot = _parse_pos(keypad_index_char)
+        return [{
+            'counter_id':             c.counter_name,
+            'default_code':           c.counter_prefix_code,
+            'keypad_index':           [keypad_index_char] if keypad_index_char else [],
+            'button_index':           slot,
+            'dispenser_button_index': keypad_index_char or '1',
+            'name':                   c.counter_display_name,
+            'code':                   c.counter_prefix_code,
+            'row_span':               1,
+            'col_span':               1,
+            'is_enabled':             c.status,
+            'counter_config_id':      c.id,
+            'max_token_number':       c.max_token_number,
+            # Use keypad SN as sentinel so the TV-wired filter keeps pool-mode counters.
+            'dispenser_sn':           kp.serial_number,
+        }]
+
     try:
         tv_keypad_mappings = (
             TVKeypadMapping.objects
@@ -1647,9 +1735,20 @@ def _get_tv_flag_config(request, device, company, dealer_customer, is_dealer_cus
                 _btn_entry('D', '3', kp_cfg),
             ]
 
-            # --- Resolve dispenser and counters ---
-            dispenser, _ = _resolve_dispenser_for_keypad(kp, kp_mapping.dispenser)
-            kp_counters = _build_counters_for_dispenser(dispenser, kp_mapping.keypad_index)  # dispenser_index resolved inside
+            # --- Detect pool mode for this keypad ---
+            is_pool_mode = kp.id in pool_group_by_keypad
+
+            if is_pool_mode:
+                # Pool mode: counters come directly from KeypadCounterMapping.
+                # No dispenser is involved for this keypad slot.
+                kp_counters = _build_counters_for_pool_keypad(kp, kp_mapping.keypad_index)
+                dispenser_sn_for_entry = format_tv_serial_number(kp.serial_number)  # No dispenser — use keypad SN
+            else:
+                # Normal mode: counters come from the linked dispenser via GCBM.
+                dispenser, _ = _resolve_dispenser_for_keypad(kp, kp_mapping.dispenser)
+                kp_counters = _build_counters_for_dispenser(dispenser, kp_mapping.keypad_index)
+                dispenser_sn_for_entry = format_tv_serial_number(dispenser.serial_number) if dispenser else None
+
             mapped_counters_list.extend(kp_counters)
 
             def _ki_to_str(val):
@@ -1662,7 +1761,7 @@ def _get_tv_flag_config(request, device, company, dealer_customer, is_dealer_cus
                 'keypad_sn':           format_tv_serial_number(kp.serial_number),
                 'keypad_display_name': kp.display_name or format_tv_serial_number(kp.serial_number),
                 'keypad_index':        kp_mapping.keypad_index or "",
-                'dispenser_sn':        format_tv_serial_number(dispenser.serial_number) if dispenser else None,
+                'dispenser_sn':        dispenser_sn_for_entry,
                 'button_strings':      button_strings,
                 'counters':            [{**c, 'keypad_index': _ki_to_str(c['keypad_index'])} for c in kp_counters],
             })
@@ -1686,9 +1785,13 @@ def _get_tv_flag_config(request, device, company, dealer_customer, is_dealer_cus
     # exist yet.
     # ----------------------------------------------------------------
     tv_wired_dispenser_sns = set()
-    for kpm in TVKeypadMapping.objects.filter(tv=device).select_related('dispenser'):
+    for kpm in TVKeypadMapping.objects.filter(tv=device).select_related('keypad', 'dispenser'):
         if kpm.dispenser:
             tv_wired_dispenser_sns.add(kpm.dispenser.serial_number)
+        # Pool-mode keypads use the keypad SN as the sentinel in 'dispenser_sn'.
+        # Always include the keypad SN so pool-mode counters pass the filter.
+        if kpm.keypad_id in pool_group_by_keypad:
+            tv_wired_dispenser_sns.add(kpm.keypad.serial_number)
     if not tv_wired_dispenser_sns:
         for tdm in TVDispenserMapping.objects.filter(tv=device).select_related('dispenser'):
             if tdm.dispenser:
@@ -1807,6 +1910,7 @@ def device_config(request, device_id):
     mapped_keypad_by_position = {}       # slot int (1-8) -> keypad device id
     all_dispensers_for_tv = []           # dispensers in same company (for keypad slot dropdown)
     mapped_dispenser_by_kp_position = {} # slot int (1-8) -> dispenser_id (from kp_mapping.dispenser)
+    pool_counter_id = None               # pool mode: the single counter mapped to this keypad (or None)
     
     if device.device_type == Device.DeviceType.TV:
         tv_config, _ = TVConfig.objects.get_or_create(tv=device)
@@ -1906,6 +2010,21 @@ def device_config(request, device_id):
             if btn_mapping:
                 mapped_dispenser_sl_no = btn_mapping.source_device.serial_number
 
+        # Pool mode context: available counters + existing slot mappings
+        try:
+            _qs = CounterConfig.objects.filter(status=True)
+            if device.company_id:
+                _qs = _qs.filter(company_id=device.company_id)
+            all_counters = list(_qs.order_by('counter_name'))
+        except Exception:
+            all_counters = []
+
+        _kcm = (
+            KeypadCounterMapping.objects.filter(group=group, keypad=device).first()
+            if group else None
+        )
+        pool_counter_id = _kcm.counter_id if _kcm else None
+
     # Fetch available keypads for dropdowns
     available_keypads = []
     if device.device_type == Device.DeviceType.KEYPAD:
@@ -1958,7 +2077,7 @@ def device_config(request, device_id):
         # Do not remove new LED config keys: sound_mode, display_type, no_of_digits
         
         # Also remove counter specific keys dynamic keys
-        keys_to_remove = [k for k in data.keys() if k.startswith('counter_') or k.startswith('row_') or k.startswith('col_') or k.startswith('enable_c_')]
+        keys_to_remove = [k for k in data.keys() if k.startswith('counter_') or k.startswith('row_') or k.startswith('col_') or k.startswith('enable_c_')] + ['pool_counter_id']
         
         json_data = data.copy()
         for k in tv_specific_keys + keys_to_remove:
@@ -2036,7 +2155,24 @@ def device_config(request, device_id):
         config.config_json.update(json_data)
         config.config_json = json_data
         config.save()
-        
+
+        # Pool mode: save single KeypadCounterMapping for this KEYPAD
+        if device.device_type == Device.DeviceType.KEYPAD:
+            _pool_group = GroupMapping.objects.filter(keypads=device).first()
+            if _pool_group:
+                KeypadCounterMapping.objects.filter(group=_pool_group, keypad=device).delete()
+                _cid = request.POST.get('pool_counter_id')
+                if _cid:
+                    try:
+                        _counter = CounterConfig.objects.get(id=int(_cid))
+                        KeypadCounterMapping.objects.create(
+                            group=_pool_group,
+                            keypad=device,
+                            counter=_counter,
+                        )
+                    except Exception:
+                        pass
+
         # TVConfig update
         if tv_config:
             # Check if ads feature is enabled for the company
@@ -2717,6 +2853,7 @@ def device_config(request, device_id):
         'ads': ads,
         'ads_enabled': ads_enabled,
         'all_counters': all_counters,
+        'pool_counter_id': pool_counter_id,
         # TV keypad mapping context
         'all_keypads_for_tv': all_keypads_for_tv,
         'mapped_keypad_by_position': mapped_keypad_by_position,
@@ -3417,6 +3554,22 @@ def assign_device_branch(request, device_id):
         
     return redirect('device_list')
 
+def _apply_pool_mode_to_keypads(group):
+    """
+    Pool mode: auto-set keypad_pool_mode='1' in every keypad's config_json
+    for the given group. Called at group-creation time when pool_mode is True.
+    Only affects KEYPAD devices in this group — no other logic is touched.
+    """
+    for keypad in group.keypads.all():
+        config, _ = DeviceConfig.objects.get_or_create(
+            device=keypad, defaults={'config_json': {}}
+        )
+        if not isinstance(config.config_json, dict):
+            config.config_json = {}
+        config.config_json['keypad_pool_mode'] = '1'
+        config.save(update_fields=['config_json'])
+
+
 def _create_tv_slot_mappings(group, new_dispenser_ids=None, new_tv_ids=None, new_keypad_ids=None):
     """
     Create (or update) TVDispenserMapping and TVKeypadMapping rows for every
@@ -3842,6 +3995,7 @@ def mapping_view(request):
             no_of_tvs = int(request.POST.get('qty_tv', 1) or 1)
             no_of_brokers = int(request.POST.get('qty_broker', 0) or 0)
             no_of_leds = int(request.POST.get('qty_led', 0) or 0)
+            pool_mode = request.POST.get('pool_mode') == 'on'
 
             # Validation: Check device counts match quantities
             error_msgs = []
@@ -3916,7 +4070,8 @@ def mapping_view(request):
                 no_of_keypads=no_of_keypads,
                 no_of_tvs=no_of_tvs,
                 no_of_brokers=no_of_brokers,
-                no_of_leds=no_of_leds
+                no_of_leds=no_of_leds,
+                pool_mode=pool_mode,
             )
 
             # Helper to assign dispensers using the through model (stores button index)
@@ -3947,6 +4102,10 @@ def mapping_view(request):
             assign_devices(tvs, group.tvs)
             assign_devices(brokers, group.brokers)
             assign_devices(leds, group.leds)
+
+            # Pool mode: auto-apply keypad_pool_mode to all keypads in this group
+            if pool_mode:
+                _apply_pool_mode_to_keypads(group)
 
             # ─── Multi-keypad: store DispenserKeypadMapping rows ───────────────
             # The wizard submits disp_keypad_map[] as "dispenser_id:keypad_id"

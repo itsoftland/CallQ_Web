@@ -29,6 +29,7 @@ let state = {
   pool: {TOKEN_DISPENSER:[], KEYPAD:[], LED:[], BROKER:[], TV:[]},
   asn: {included:{}, dispToKeypad:{}, keypadToLed:{}, keypadToBroker:{}, brokerToTv:{}},
   // dispToKeypad: { dispId: [kpId1, kpId2, ...] }  — multi-keypad per dispenser
+  poolMode: false,
   cur: 0,
   loading: false,
 };
@@ -125,6 +126,9 @@ function renderCountCards() {
   }).join('');
 }
 
+/* ── Pool Mode ── */
+function wzSetPoolMode(on) { state.poolMode = !!on; wzRender(); }
+
 /* ── Render: Config Step ── */
 function renderConfig() {
   const steps=buildSteps();
@@ -133,7 +137,8 @@ function renderConfig() {
   const selHtml=WZ.isDealerView
     ?`<div class="field"><label>Dealer Customer <span class="req">*</span></label><select class="select" id="wz-dc" onchange="wzSetDc(this.value)"><option value="">-- Select Customer --</option>${(WZ.dealerCustomers||[]).map(dc=>`<option value="${dc.id}"${state.dcId===String(dc.id)?' selected':''}>${dc.name}</option>`).join('')}</select></div>`
     :`<div class="field"><label>Branch <span class="req">*</span></label><select class="select" id="wz-br" onchange="wzSetBr(this.value)">${(WZ.branches||[]).map(b=>`<option value="${b.id}"${state.brId===String(b.id)?' selected':''}>${b.name}</option>`).join('')}</select></div>`;
-  return `<div style="padding:26px"><div style="display:flex;align-items:center;gap:13px;margin-bottom:22px"><div style="width:40px;height:40px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:16px;background:var(--cq-primary-light);color:var(--cq-primary)">${ico('fa-sliders')}</div><div><div style="font-size:16px;font-weight:800">Group configuration</div><div style="font-size:12.5px;color:var(--ink-3);margin-top:1px">Name the group and tell us how many of each device it contains.</div></div></div><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:24px">${selHtml}<div class="field" style="grid-column:span 2"><label>Group name <span class="req">*</span></label><input class="input" id="wz-gname" placeholder="e.g. Counter 1 Setup" value="${state.gName.replace(/"/g,'&quot;')}" oninput="wzSetName(this.value)"/></div></div>${state.loading?'<div style="text-align:center;padding:20px;color:var(--ink-3);font-size:13px">⟳ Loading devices…</div>':''}<div class="field"><label>Devices in this group</label></div><div class="countgrid" style="margin-bottom:22px">${renderCountCards()}</div><div style="background:var(--bg);border-radius:14px;padding:16px 18px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:12px"><span style="font-size:12px;font-weight:700;color:var(--ink-2);text-transform:uppercase;letter-spacing:.5px">Your mapping flow</span><span class="statchip neutral">${steps.length} steps</span></div>${renderChain([])}<div style="margin-top:12px;font-size:12.5px;color:var(--ink-3);display:flex;align-items:center;gap:7px">${ico('fa-circle-info')} <span>${skipMsg}</span></div></div></div>`;
+  const poolToggleHtml=`<div style="background:var(--bg);border-radius:12px;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;border:1.5px solid ${state.poolMode?'var(--cq-primary)':'var(--border)'}"><div><div style="font-size:13.5px;font-weight:700;color:var(--ink-1);display:flex;align-items:center;gap:7px">${ico('fa-water')} Pool Mode${state.poolMode?` <span class="statchip ok" style="font-size:10px">Enabled</span>`:''}</div><div style="font-size:11.5px;color:var(--ink-3);margin-top:3px">Counters map directly to keypads — no dispenser chain</div></div><div class="switch${state.poolMode?' on':''}" onclick="wzSetPoolMode(${!state.poolMode})" style="flex-shrink:0;margin-left:16px"><div class="knob"></div></div></div>`;
+  return `<div style="padding:26px"><div style="display:flex;align-items:center;gap:13px;margin-bottom:22px"><div style="width:40px;height:40px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:16px;background:var(--cq-primary-light);color:var(--cq-primary)">${ico('fa-sliders')}</div><div><div style="font-size:16px;font-weight:800">Group configuration</div><div style="font-size:12.5px;color:var(--ink-3);margin-top:1px">Name the group and tell us how many of each device it contains.</div></div></div><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:24px">${selHtml}<div class="field" style="grid-column:span 2"><label>Group name <span class="req">*</span></label><input class="input" id="wz-gname" placeholder="e.g. Counter 1 Setup" value="${state.gName.replace(/"/g,'&quot;')}" oninput="wzSetName(this.value)"/></div></div>${state.loading?'<div style="text-align:center;padding:20px;color:var(--ink-3);font-size:13px">⟳ Loading devices…</div>':''}<div class="field"><label>Devices in this group</label></div><div class="countgrid" style="margin-bottom:22px">${renderCountCards()}</div>${poolToggleHtml}<div style="background:var(--bg);border-radius:14px;padding:16px 18px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:12px"><span style="font-size:12px;font-weight:700;color:var(--ink-2);text-transform:uppercase;letter-spacing:.5px">Your mapping flow</span><span class="statchip neutral">${steps.length} steps</span></div>${renderChain([])}<div style="margin-top:12px;font-size:12.5px;color:var(--ink-3);display:flex;align-items:center;gap:7px">${ico('fa-circle-info')} <span>${skipMsg}</span></div></div></div>`;
 }
 
 /* ── Render: Dropdown ── */
@@ -384,6 +389,7 @@ function wzFinish() {
   const h=(n,v)=>{const i=document.createElement('input');i.type='hidden';i.name=n;i.value=v;form.appendChild(i);};
   h('csrfmiddlewaretoken',WZ.csrfToken); h('action','create'); h('group_name',state.gName.trim());
   if(WZ.isDealerView) h('dealer_customer_id',state.dcId); else h('branch_id',state.brId);
+  h('pool_mode', state.poolMode ? 'on' : 'off');
   h('qty_dispenser',state.counts.TOKEN_DISPENSER); h('qty_keypad',state.counts.KEYPAD);
   h('qty_led',state.counts.LED); h('qty_broker',state.counts.BROKER); h('qty_tv',state.counts.TV);
   dispIds.forEach(id=>h('dispensers[]',id));
