@@ -850,7 +850,7 @@ def customer_registration(request):
         district = request.POST.get('district')
         state = request.POST.get('state')
         zip_code = request.POST.get('zip_code')
-        number_of_licence = request.POST.get('number_of_licence')
+        number_of_licence = request.POST.get('number_of_licence') or 1
         if Company.objects.filter(company_email=company_email).exists() or \
            DealerCustomer.objects.filter(company_email=company_email).exists():
             messages.error(request, f'A customer with email "{company_email}" already exists. Please use a different email address.')
@@ -951,7 +951,7 @@ def customer_registration(request):
                     district=request.POST.get('district'),
                     country=request.POST.get('country', 'India'),
                     gst_number=request.POST.get('gst_number'),
-                    number_of_licence=request.POST.get('number_of_licence'),
+                    number_of_licence=request.POST.get('number_of_licence') or 1,
                     is_dealer_created=False,
                     branch_configuration=branch_cfg,
                     ads_enabled=ads_enabled

@@ -9041,10 +9041,12 @@ def token_report_api(request):
 def token_report_list(request):
     """
     Paginated HTML page showing parsed MQTTTokenLog records.
-    Supports GET filters: mac_address, keypad_serial, message_type, date_from, date_to.
+    Supports GET filters: mac_address, keypad_serial, message_type, date_from, date_to,
+    and customer_id (SUPER_ADMIN only).
     Scoped to the logged-in user's company / dealer customer.
     """
     from .models import MQTTTokenLog
+    from companydetails.models import Company
 
     user = request.user
     qs = MQTTTokenLog.objects.select_related('keypad', 'counter').order_by('-received_at')
@@ -9073,11 +9075,12 @@ def token_report_list(request):
             qs = qs.filter(customer_id__in=list(scoped_ids))
 
     # --- Filters ---
-    filter_mac      = request.GET.get('mac_address', '').strip()
-    filter_keypad   = request.GET.get('keypad_serial', '').strip()
-    filter_type     = request.GET.get('message_type', '').strip()
+    filter_mac       = request.GET.get('mac_address', '').strip()
+    filter_keypad    = request.GET.get('keypad_serial', '').strip()
+    filter_type      = request.GET.get('message_type', '').strip()
     filter_date_from = request.GET.get('date_from', '').strip()
     filter_date_to   = request.GET.get('date_to', '').strip()
+    filter_customer  = request.GET.get('customer_id', '').strip()
 
     if filter_mac:
         qs = qs.filter(mac_address__icontains=filter_mac)
@@ -9096,6 +9099,27 @@ def token_report_list(request):
         except ValueError:
             pass
 
+    # Customer filter — SUPER_ADMIN only
+    all_companies = []
+    if hasattr(user, 'role') and user.role == 'SUPER_ADMIN':
+        all_companies = Company.objects.order_by('company_name').values('id', 'company_id', 'company_name')
+        if filter_customer:
+            # filter_customer holds the Company.id (PK)
+            try:
+                selected_company = Company.objects.get(pk=int(filter_customer))
+                scoped_ids = set()
+                for raw in filter(None, [selected_company.company_id, str(selected_company.id)]):
+                    scoped_ids.add(raw)
+                    try:
+                        n = int(raw)
+                        scoped_ids |= {str(n), str(n).zfill(3), str(n).zfill(4)}
+                    except (ValueError, TypeError):
+                        pass
+                if scoped_ids:
+                    qs = qs.filter(customer_id__in=list(scoped_ids))
+            except (Company.DoesNotExist, ValueError):
+                pass
+
     # --- Summary stats (over the filtered queryset) ---
     total_count   = qs.count()
     valid_count   = qs.filter(is_valid=True).count()
@@ -9113,19 +9137,22 @@ def token_report_list(request):
         reports = paginator.page(paginator.num_pages)
 
     context = {
-        'reports':          reports,
-        'total_count':      total_count,
-        'valid_count':      valid_count,
-        'invalid_count':    invalid_count,
-        'dup_count':        dup_count,
-        'filter_mac':       filter_mac,
-        'filter_keypad':    filter_keypad,
-        'filter_type':      filter_type,
-        'filter_date_from': filter_date_from,
-        'filter_date_to':   filter_date_to,
+        'reports':            reports,
+        'total_count':        total_count,
+        'valid_count':        valid_count,
+        'invalid_count':      invalid_count,
+        'dup_count':          dup_count,
+        'filter_mac':         filter_mac,
+        'filter_keypad':      filter_keypad,
+        'filter_type':        filter_type,
+        'filter_date_from':   filter_date_from,
+        'filter_date_to':     filter_date_to,
+        'filter_customer':    filter_customer,
+        'all_companies':      all_companies,
         'message_type_choices': MQTTTokenLog.MESSAGE_TYPES,
     }
     return render(request, 'configdetails/token_report_list.html', context)
+
 
 
 # ============================================================================

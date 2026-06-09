@@ -718,30 +718,8 @@
                                         <span class="badge bg-primary fw-semibold px-3 py-2">Slot {{ slot_num }}</span>
                                     </div>
 
-                                    {# Row 1: Keypad + Dispenser selectors #}
+                                    {# Row 1: Dispenser + Keypad selectors #}
                                     <div class="row g-3 mb-3">
-                                        <div class="col-md-6">
-                                            <label class="form-label small fw-bold">
-                                                <i class="fas fa-keyboard me-1 text-primary"></i>Select Keypad
-                                            </label>
-                                            <select name="keypad_selection_{{ slot_num }}" class="form-select form-select-sm keypad-selection-dropdown">
-                                                <option value="">-- Select Keypad --</option>
-                                                {% for kp in all_keypads_for_tv %}
-                                                <option value="{{ kp.id }}"
-                                                    {% if slot_num == '1' and mapped_keypad_by_position.1 == kp.id %}selected
-                                                    {% elif slot_num == '2' and mapped_keypad_by_position.2 == kp.id %}selected
-                                                    {% elif slot_num == '3' and mapped_keypad_by_position.3 == kp.id %}selected
-                                                    {% elif slot_num == '4' and mapped_keypad_by_position.4 == kp.id %}selected
-                                                    {% elif slot_num == '5' and mapped_keypad_by_position.5 == kp.id %}selected
-                                                    {% elif slot_num == '6' and mapped_keypad_by_position.6 == kp.id %}selected
-                                                    {% elif slot_num == '7' and mapped_keypad_by_position.7 == kp.id %}selected
-                                                    {% elif slot_num == '8' and mapped_keypad_by_position.8 == kp.id %}selected
-                                                    {% endif %}>
-                                                    {{ kp.serial_number }}{% if kp.display_name %} — {{ kp.display_name }}{% endif %}
-                                                </option>
-                                                {% endfor %}
-                                            </select>
-                                        </div>
                                         <div class="col-md-6">
                                             <label class="form-label small fw-bold">
                                                 <i class="fas fa-ticket-alt me-1 text-success"></i>Dispenser for Button A
@@ -760,6 +738,28 @@
                                                     {% elif slot_num == '8' and mapped_dispenser_by_kp_position.8 == disp.id %}selected
                                                     {% endif %}>
                                                     {{ disp.serial_number }}{% if disp.display_name %} — {{ disp.display_name }}{% endif %}
+                                                </option>
+                                                {% endfor %}
+                                            </select>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label small fw-bold">
+                                                <i class="fas fa-keyboard me-1 text-primary"></i>Select Keypad
+                                            </label>
+                                            <select name="keypad_selection_{{ slot_num }}" class="form-select form-select-sm keypad-selection-dropdown">
+                                                <option value="">-- Select Keypad --</option>
+                                                {% for kp in all_keypads_for_tv %}
+                                                <option value="{{ kp.id }}"
+                                                    {% if slot_num == '1' and mapped_keypad_by_position.1 == kp.id %}selected
+                                                    {% elif slot_num == '2' and mapped_keypad_by_position.2 == kp.id %}selected
+                                                    {% elif slot_num == '3' and mapped_keypad_by_position.3 == kp.id %}selected
+                                                    {% elif slot_num == '4' and mapped_keypad_by_position.4 == kp.id %}selected
+                                                    {% elif slot_num == '5' and mapped_keypad_by_position.5 == kp.id %}selected
+                                                    {% elif slot_num == '6' and mapped_keypad_by_position.6 == kp.id %}selected
+                                                    {% elif slot_num == '7' and mapped_keypad_by_position.7 == kp.id %}selected
+                                                    {% elif slot_num == '8' and mapped_keypad_by_position.8 == kp.id %}selected
+                                                    {% endif %}>
+                                                    {{ kp.serial_number }}{% if kp.display_name %} — {{ kp.display_name }}{% endif %}
                                                 </option>
                                                 {% endfor %}
                                             </select>

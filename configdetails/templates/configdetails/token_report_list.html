@@ -302,6 +302,19 @@
     <div class="filter-card">
         <form method="GET" id="filterForm">
             <div class="row g-2 align-items-end">
+                {% if user.role == 'SUPER_ADMIN' %}
+                <div class="col-md-3">
+                    <label class="form-label">Customer</label>
+                    <select class="form-select form-select-sm" name="customer_id">
+                        <option value="">— All Customers —</option>
+                        {% for company in all_companies %}
+                        <option value="{{ company.id }}" {% if filter_customer == company.id|stringformat:'s' %}selected{% endif %}>
+                            {{ company.company_name }}{% if company.company_id %} ({{ company.company_id }}){% endif %}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% endif %}
                 <div class="col-md-2">
                     <label class="form-label">MAC Address</label>
                     <input type="text" class="form-control form-control-sm"
@@ -331,7 +344,7 @@
                     <input type="date" class="form-control form-control-sm"
                            name="date_to" value="{{ filter_date_to }}">
                 </div>
-                <div class="col-md-2 d-flex gap-2">
+                <div class="col-md-1 d-flex gap-2">
                     <button type="submit" class="btn btn-primary btn-sm flex-grow-1">
                         <i class="fas fa-search me-1"></i>Filter
                     </button>
@@ -485,7 +498,7 @@
                 <ul class="pagination pagination-sm mb-0 gap-1">
                     {% if reports.has_previous %}
                     <li class="page-item">
-                        <a class="page-link" href="?mac_address={{ filter_mac }}&keypad_serial={{ filter_keypad }}&message_type={{ filter_type }}&date_from={{ filter_date_from }}&date_to={{ filter_date_to }}&page={{ reports.previous_page_number }}">
+                        <a class="page-link" href="?mac_address={{ filter_mac }}&keypad_serial={{ filter_keypad }}&message_type={{ filter_type }}&date_from={{ filter_date_from }}&date_to={{ filter_date_to }}&customer_id={{ filter_customer }}&page={{ reports.previous_page_number }}">
                             <i class="fas fa-chevron-left" style="font-size:.7rem;"></i>
                         </a>
                     </li>
@@ -495,13 +508,13 @@
                         <li class="page-item active"><span class="page-link">{{ num }}</span></li>
                         {% elif num > reports.number|add:'-3' and num < reports.number|add:'3' %}
                         <li class="page-item">
-                            <a class="page-link" href="?mac_address={{ filter_mac }}&keypad_serial={{ filter_keypad }}&message_type={{ filter_type }}&date_from={{ filter_date_from }}&date_to={{ filter_date_to }}&page={{ num }}">{{ num }}</a>
+                            <a class="page-link" href="?mac_address={{ filter_mac }}&keypad_serial={{ filter_keypad }}&message_type={{ filter_type }}&date_from={{ filter_date_from }}&date_to={{ filter_date_to }}&customer_id={{ filter_customer }}&page={{ num }}">{{ num }}</a>
                         </li>
                         {% endif %}
                     {% endfor %}
                     {% if reports.has_next %}
                     <li class="page-item">
-                        <a class="page-link" href="?mac_address={{ filter_mac }}&keypad_serial={{ filter_keypad }}&message_type={{ filter_type }}&date_from={{ filter_date_from }}&date_to={{ filter_date_to }}&page={{ reports.next_page_number }}">
+                        <a class="page-link" href="?mac_address={{ filter_mac }}&keypad_serial={{ filter_keypad }}&message_type={{ filter_type }}&date_from={{ filter_date_from }}&date_to={{ filter_date_to }}&customer_id={{ filter_customer }}&page={{ reports.next_page_number }}">
                             <i class="fas fa-chevron-right" style="font-size:.7rem;"></i>
                         </a>
                     </li>
