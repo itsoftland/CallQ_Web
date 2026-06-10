@@ -127,11 +127,13 @@
                     </td>
                     <td class="py-3">
                         <div class="d-flex align-items-center gap-2">
+                            {% if u.role != "SUPER_ADMIN" %}
                             <form action="{% url 'user_toggle_status' u.id %}" method="post" class="d-inline">
                                 {% csrf_token %}
                                 <input class="form-check-input" type="checkbox" onchange="this.form.submit()"
                                     style="cursor:pointer" {% if u.is_active %}checked{% endif %}>
                             </form>
+                            {% endif %}
                             {% if u.is_active %}
                             <span class="badge bg-success text-white px-2 py-1 rounded-pill small">Active</span>
                             {% else %}
@@ -140,9 +142,9 @@
                         </div>
                     </td>
                     <td class="pe-4 py-3 text-end">
+                        {% if u.role != "SUPER_ADMIN" %}
                         <a href="{% url 'user_edit' u.id %}" class="btn btn-sm btn-link text-secondary p-1"
                             title="Edit"><i class="fas fa-pen"></i></a>
-                        {% if u.role != "SUPER_ADMIN" %}
                         <button type="button" class="btn btn-sm btn-link text-danger p-1" title="Delete"
                             onclick="confirmDelete('{{ u.id }}', '{{ u.email }}')">
                             <i class="fas fa-trash"></i>

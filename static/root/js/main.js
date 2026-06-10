@@ -1,62 +1,22 @@
 document.addEventListener('DOMContentLoaded', function () {
     const sidebar = document.getElementById('sidebar');
-    const toggleBtn = document.getElementById('sidebarToggle');
     const brandToggle = document.getElementById('brandToggle');
 
-    // Restore sidebar state (Manual Lock)
-    const isManualLocked = localStorage.getItem('sidebar-locked') === 'true';
-    if (isManualLocked && sidebar) {
-        sidebar.classList.add('locked');
-    } else if (sidebar) {
-        sidebar.classList.add('collapsed');
+    // Sidebar is always open by default on every page load.
+    // Only the logo click can collapse/expand it (no hover, no lock persistence).
+    if (sidebar) {
+        sidebar.classList.remove('collapsed', 'locked');
     }
 
-    // Toggle manual lock
-    const toggleLock = (e) => {
-        if (e) e.stopPropagation();
+    // Only the brand logo toggles the sidebar (minimise / restore)
+    brandToggle?.addEventListener('click', function (e) {
+        e.stopPropagation();
         if (!sidebar) return;
-
-        const isLocked = sidebar.classList.toggle('locked');
-        localStorage.setItem('sidebar-locked', isLocked);
-
-        if (isLocked) {
-            sidebar.classList.remove('collapsed');
-        } else {
-            sidebar.classList.add('collapsed');
-        }
-    };
-
-    toggleBtn?.addEventListener('click', toggleLock);
-    brandToggle?.addEventListener('click', toggleLock);
-
-    // Hover activation — only triggered by hovering over the logo/brand area
-    brandToggle?.addEventListener('mouseenter', function () {
-        if (!sidebar.classList.contains('locked')) {
-            sidebar.classList.remove('collapsed');
-        }
+        sidebar.classList.toggle('collapsed');
     });
 
-    // Collapse when mouse leaves the brand area (logo)
-    brandToggle?.addEventListener('mouseleave', function (e) {
-        if (!sidebar.classList.contains('locked')) {
-            // Only collapse if the mouse isn't moving into the rest of the sidebar
-            const related = e.relatedTarget;
-            if (!sidebar.contains(related)) {
-                sidebar.classList.add('collapsed');
-            }
-        }
-    });
-
-    // Collapse when mouse leaves the full sidebar (after entering via brand hover)
-    sidebar?.addEventListener('mouseleave', function () {
-        if (!sidebar.classList.contains('locked')) {
-            sidebar.classList.add('collapsed');
-        }
-    });
-
-    // Mobile check
+    // Mobile: always start collapsed on small screens
     if (window.innerWidth < 768 && sidebar) {
-        sidebar.classList.remove('locked');
         sidebar.classList.add('collapsed');
     }
 

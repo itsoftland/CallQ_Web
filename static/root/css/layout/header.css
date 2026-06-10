@@ -230,16 +230,18 @@
 /* Main Content Wrapper (Layout related) */
 .main-content {
     margin-left: var(--sidebar-width);
+    width: calc(100% - var(--sidebar-width));
     height: 100vh;
     display: flex;
     flex-direction: column;
-    transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1), width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     background-color: var(--content-bg);
 }
 
 .sidebar.collapsed+.main-content,
 .sidebar.collapsed~.main-content {
     margin-left: var(--sidebar-collapsed-width);
+    width: calc(100% - var(--sidebar-collapsed-width));
 }
 
 .content {

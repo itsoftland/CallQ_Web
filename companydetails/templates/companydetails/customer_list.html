@@ -33,9 +33,9 @@
         {% endif %}
     </div>
 </div>
-<div class="card" style="overflow: visible;">
-    <div class="card-body p-0" style="overflow: visible;">
-        <div class="table-responsive" style="overflow: visible;">
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
             {% if is_dealer_view %}
             <!-- Users Table for Dealers -->
             <table class="table table-hover align-middle mb-0" id="customerTable">
@@ -210,7 +210,7 @@
 
                                 <div class="btn-group">
                                     <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle"
-                                        data-bs-toggle="dropdown" aria-expanded="false" title="Actions">
+                                        data-bs-toggle="dropdown" data-bs-boundary="window" aria-expanded="false" title="Actions">
                                         <i class="fas fa-ellipsis-v"></i>
                                     </button>
                                     <ul class="dropdown-menu dropdown-menu-end">

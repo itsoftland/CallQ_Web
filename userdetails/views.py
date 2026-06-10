@@ -349,6 +349,11 @@ def get_roles_for_user(user):
 def user_edit(request, pk):
     user_to_edit = get_object_or_404(User, pk=pk)
 
+    # Super Admin accounts cannot be edited by anyone
+    if user_to_edit.role == 'SUPER_ADMIN':
+        messages.error(request, "Super Admin accounts cannot be edited.")
+        return redirect('user_list')
+
     # ── Snapshot the original company & branch from the DB record ──
     # These are preserved during edit to prevent accidental overwrites.
     original_company = user_to_edit.company_relation
