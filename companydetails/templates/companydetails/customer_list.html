@@ -170,8 +170,8 @@
                         <td>
                             {% if company.parent_company %}
                             {{ company.parent_company.company_name }}
-                            {% elif company.dealer %}
-                            {{ company.dealer.company_name }}
+                            {% elif company.company_type == 'DEALER' %}
+                            <span class="badge bg-info text-dark">Dealer</span>
                             {% else %}
                             Direct
                             {% endif %}
