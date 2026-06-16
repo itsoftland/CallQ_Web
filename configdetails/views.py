@@ -2057,6 +2057,18 @@ def device_config(request, device_id):
 
     available_keypads_serials = [k.serial_number for k in available_keypads]
 
+    # Resolve mapped_dispenser_sl_no fallback safely in Python so the template
+    # never has to evaluate `config.config_json.dispenser_sl_no` as a filter
+    # argument (which raises VariableDoesNotExist when config_json is {}).
+    if device.device_type == Device.DeviceType.KEYPAD and not mapped_dispenser_sl_no:
+        try:
+            mapped_dispenser_sl_no = (
+                config.config_json.get('dispenser_sl_no', '')
+                if isinstance(config.config_json, dict) else ''
+            )
+        except Exception:
+            mapped_dispenser_sl_no = ''
+
     # Ensure fixed fields (company_name/location) are always derived from device context
     # Location is taken as branch city (fallback to branch name), else company city.
     def _fixed_company_and_location(dev: Device):
