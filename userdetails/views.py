@@ -1254,19 +1254,8 @@ def android_config_login(request):
 
     elif user.role == "DEALER_ADMIN":
         if user.company_relation:
-            # Dealer's own company
             customers_data.append(serialize_company_full(user.company_relation))
             company_ids.append(user.company_relation.id)
-            
-            # Dealer's child companies (Dealer-created Companies)
-            for child in Company.objects.filter(parent_company=user.company_relation):
-                customers_data.append(serialize_company_full(child))
-                company_ids.append(child.id)
-
-            # Dealer's customers (DealerCustomer records)
-            for dc in DealerCustomer.objects.filter(dealer=user.company_relation):
-                customers_data.append(serialize_dealer_customer_full(dc))
-                dealer_customer_ids.append(dc.id)
 
     elif user.role == "DEALER_CUSTOMER":
         # Specific dealer customer
