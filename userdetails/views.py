@@ -543,6 +543,26 @@ def serialize_company_full(company):
         "zip_code": company.zip_code
     }
 
+def serialize_dealer_customer_as_customer(dc):
+    """Serialize a DealerCustomer using the same contract keys as serialize_company_full."""
+    if not dc: return None
+    return {
+        "id": dc.id,
+        "company_id": dc.customer_id,
+        "name": dc.company_name,
+        "type": "CUSTOMER",
+        "email": dc.company_email,
+        "gst": dc.gst_number,
+        "contact_person": dc.contact_person,
+        "contact_number": dc.contact_number,
+        "address": dc.address,
+        "address_2": dc.address_2,
+        "city": dc.city,
+        "district": dc.district,
+        "state": dc.state,
+        "zip_code": dc.zip_code
+    }
+
 def serialize_dealer_customer_full(dc):
     if not dc: return None
     return {
@@ -1221,6 +1241,10 @@ def android_config_login(request):
             user_dc = DealerCustomer.objects.filter(dealer=user.company_relation).first()
         if user_dc:
             route_dc_ids.append(user_dc.id)
+    elif user.role == "DEALER_ADMIN":
+        if device and device.dealer_customer and device.dealer_customer.dealer == user.company_relation:
+            route_c_ids = []
+            route_dc_ids = [device.dealer_customer.id]
 
     customers_data = []
     company_ids = []
@@ -1254,8 +1278,12 @@ def android_config_login(request):
 
     elif user.role == "DEALER_ADMIN":
         if user.company_relation:
-            customers_data.append(serialize_company_full(user.company_relation))
-            company_ids.append(user.company_relation.id)
+            if device and device.dealer_customer and device.dealer_customer.dealer == user.company_relation:
+                customers_data.append(serialize_dealer_customer_as_customer(device.dealer_customer))
+                dealer_customer_ids.append(device.dealer_customer.id)
+            else:
+                customers_data.append(serialize_company_full(user.company_relation))
+                company_ids.append(user.company_relation.id)
 
     elif user.role == "DEALER_CUSTOMER":
         # Specific dealer customer
