@@ -1344,6 +1344,26 @@ def getDeviceByCustomer(request):
     # Fetch all devices for this customer
     if dealer_customer:
         all_devices = Device.objects.filter(dealer_customer=dealer_customer)
+    elif company.company_type == Company.CompanyType.DEALER:
+        # Dealer-based device aggregation: own devices + all child customer devices
+        dealer_own_ids = set(
+            Device.objects.filter(company=company, dealer_customer__isnull=True)
+            .values_list('id', flat=True)
+        )
+        # Devices assigned to DealerCustomer contacts managed by this dealer
+        managed_dc_ids = DealerCustomer.objects.filter(dealer=company).values_list('id', flat=True)
+        dealer_contact_ids = set(
+            Device.objects.filter(dealer_customer_id__in=managed_dc_ids)
+            .values_list('id', flat=True)
+        )
+        # Devices assigned to dealer-created Company customers (parent_company == dealer)
+        child_company_ids = Company.objects.filter(parent_company=company).values_list('id', flat=True)
+        child_company_device_ids = set(
+            Device.objects.filter(company_id__in=child_company_ids, dealer_customer__isnull=True)
+            .values_list('id', flat=True)
+        )
+        all_device_ids = dealer_own_ids | dealer_contact_ids | child_company_device_ids
+        all_devices = Device.objects.filter(id__in=all_device_ids)
     else:
         all_devices = Device.objects.filter(company=company, dealer_customer__isnull=True)
 
