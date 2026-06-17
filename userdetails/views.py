@@ -710,7 +710,9 @@ def serialize_device_minimal(device):
     }
     
     # Mappings (Legacy)
-    mappings = Mapping.objects.filter(Q(tv=device) | Q(token_dispenser=device) | Q(keypad=device) | Q(broker=device) | Q(led=device))
+    mappings = Mapping.objects.select_related(
+        'tv', 'token_dispenser', 'keypad', 'broker', 'led'
+    ).filter(Q(tv=device) | Q(token_dispenser=device) | Q(keypad=device) | Q(broker=device) | Q(led=device))
     data["mappings"] = []
     for m in mappings:
         m_data = {
@@ -1439,31 +1441,27 @@ def getDeviceByCustomer(request):
             "message": f"Could not find a customer with ID '{customer_id}'."
         }, status=status.HTTP_404_NOT_FOUND)
 
-    # Fetch all devices for this customer
+    # Fetch all devices for this customer — prefetch all relations touched
+    # during serialization to avoid per-device N+1 queries.
+    _device_qs_base = Device.objects.select_related(
+        'company', 'branch', 'dealer_customer', 'config', 'tv_config',
+    ).prefetch_related(
+        'group_dispensers', 'group_keypads', 'group_leds', 'group_brokers', 'group_tvs',
+    )
+
     if dealer_customer:
-        all_devices = Device.objects.filter(dealer_customer=dealer_customer)
+        all_devices = _device_qs_base.filter(dealer_customer=dealer_customer)
     elif company.company_type == Company.CompanyType.DEALER:
         # Dealer-based device aggregation: own devices + all child customer devices
-        dealer_own_ids = set(
-            Device.objects.filter(company=company, dealer_customer__isnull=True)
-            .values_list('id', flat=True)
-        )
-        # Devices assigned to DealerCustomer contacts managed by this dealer
         managed_dc_ids = DealerCustomer.objects.filter(dealer=company).values_list('id', flat=True)
-        dealer_contact_ids = set(
-            Device.objects.filter(dealer_customer_id__in=managed_dc_ids)
-            .values_list('id', flat=True)
-        )
-        # Devices assigned to dealer-created Company customers (parent_company == dealer)
         child_company_ids = Company.objects.filter(parent_company=company).values_list('id', flat=True)
-        child_company_device_ids = set(
-            Device.objects.filter(company_id__in=child_company_ids, dealer_customer__isnull=True)
-            .values_list('id', flat=True)
-        )
-        all_device_ids = dealer_own_ids | dealer_contact_ids | child_company_device_ids
-        all_devices = Device.objects.filter(id__in=all_device_ids)
+        all_devices = _device_qs_base.filter(
+            Q(company=company, dealer_customer__isnull=True) |
+            Q(dealer_customer_id__in=managed_dc_ids) |
+            Q(company_id__in=child_company_ids, dealer_customer__isnull=True)
+        ).distinct()
     else:
-        all_devices = Device.objects.filter(company=company, dealer_customer__isnull=True)
+        all_devices = _device_qs_base.filter(company=company, dealer_customer__isnull=True)
 
     # Separate devices: non-TV devices and TV devices
     non_tv_devices = all_devices.exclude(device_type='TV')

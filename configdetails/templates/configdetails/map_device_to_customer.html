@@ -20,15 +20,16 @@
         <form method="post" id="assignForm">
             {% csrf_token %}
 
-            <div class="row mb-4 align-items-end">
-                <div class="col-md-6">
+            <div class="row mb-4 g-3 align-items-end">
+                <div class="col-md-4">
                     <label for="customer_target" class="form-label fw-bold">Select Customer</label>
                     <select name="customer_target" id="customer_target" class="form-select" required>
                         <option value="">-- Select Customer --</option>
                         {% if dealer_customers %}
                         <optgroup label="Dealer Customers">
                             {% for customer in dealer_customers %}
-                            <option value="dc_{{ customer.id }}">
+                            <option value="dc_{{ customer.id }}"
+                                data-company-id="{{ customer.linked_company_id }}">
                                 {{ customer.company_name }} ({{ customer.customer_id }})
                             </option>
                             {% endfor %}
@@ -37,15 +38,22 @@
                         {% if child_companies %}
                         <optgroup label="Dealer-Created Companies">
                             {% for co in child_companies %}
-                            <option value="co_{{ co.id }}">{{ co.company_name }}</option>
+                            <option value="co_{{ co.id }}"
+                                data-company-id="{{ co.id }}">{{ co.company_name }}</option>
                             {% endfor %}
                         </optgroup>
                         {% endif %}
                     </select>
                 </div>
-                <div class="col-md-6">
+                <div class="col-md-4" id="branch-field" style="display:none;">
+                    <label for="branch_id" class="form-label fw-bold">Select Branch</label>
+                    <select name="branch_id" id="branch_id" class="form-select">
+                        <option value="">-- Loading branches... --</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
                     <button type="submit" class="btn btn-primary w-100"
-                        onclick="return confirm('Assign selected devices to this customer? Any existing Branch assignment will be removed.');">
+                        onclick="return confirm('Assign selected devices to this customer?');">
                         <i class="fas fa-save me-2"></i>Assign Selected Devices
                     </button>
                 </div>
@@ -131,14 +139,46 @@
     document.addEventListener('DOMContentLoaded', function () {
         const checkAll = document.getElementById('checkAll');
         const checkboxes = document.querySelectorAll('.device-checkbox');
+        const customerSelect = document.getElementById('customer_target');
+        const branchField = document.getElementById('branch-field');
+        const branchSelect = document.getElementById('branch_id');
 
         if (checkAll) {
             checkAll.addEventListener('change', function () {
-                checkboxes.forEach(cb => {
-                    cb.checked = this.checked;
-                });
+                checkboxes.forEach(cb => { cb.checked = this.checked; });
             });
         }
+
+        customerSelect.addEventListener('change', function () {
+            const selected = this.options[this.selectedIndex];
+            const companyId = selected.getAttribute('data-company-id');
+
+            if (!companyId) {
+                branchField.style.display = 'none';
+                branchSelect.innerHTML = '<option value="">-- No branches --</option>';
+                return;
+            }
+
+            branchSelect.innerHTML = '<option value="">Loading...</option>';
+            branchField.style.display = 'block';
+
+            const url = "{% url 'ajax_get_company_branches' company_id=999999 %}".replace('999999', companyId);
+            fetch(url)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.branches && data.branches.length > 0) {
+                        branchSelect.innerHTML = '<option value="">-- Select Branch (Optional) --</option>';
+                        data.branches.forEach(b => {
+                            branchSelect.innerHTML += `<option value="${b.id}">${b.branch_name}</option>`;
+                        });
+                    } else {
+                        branchSelect.innerHTML = '<option value="">No branches available</option>';
+                    }
+                })
+                .catch(() => {
+                    branchSelect.innerHTML = '<option value="">Error loading branches</option>';
+                });
+        });
     });
 </script>
 {% endblock %}

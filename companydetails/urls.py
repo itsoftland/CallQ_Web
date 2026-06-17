@@ -24,6 +24,7 @@ urlpatterns = [
     path('branches/', views.branch_list, name='branch_list'),
     path('branches/create/', views.branch_create, name='branch_create'),
     path('branches/<int:pk>/edit/', views.branch_edit, name='branch_edit'),
+    path('branches/<int:pk>/delete/', views.branch_delete, name='branch_delete'),
     path('customer/validate/<int:pk>/', views.validate_license_view, name='validate_license'),
     path('customer/ajax-authenticate/<int:pk>/', views.ajax_authenticate_customer, name='ajax_authenticate_customer'),
     path('customer/<int:pk>/delete/', views.customer_delete, name='customer_delete'),

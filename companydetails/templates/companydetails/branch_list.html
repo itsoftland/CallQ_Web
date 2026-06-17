@@ -34,9 +34,6 @@
             <thead class="bg-light border-bottom">
                 <tr>
                     <th class="ps-4 py-3 text-secondary text-uppercase small fw-bold">Branch Name</th>
-                    {% if is_dealer_view %}
-                    <th class="py-3 text-secondary text-uppercase small fw-bold">Company</th>
-                    {% endif %}
                     <th class="py-3 text-secondary text-uppercase small fw-bold">City</th>
                     <th class="py-3 text-secondary text-uppercase small fw-bold">Address</th>
                     <th class="py-3 text-secondary text-uppercase small fw-bold">Status</th>
@@ -58,14 +55,6 @@
                             </div>
                         </div>
                     </td>
-                    {% if is_dealer_view %}
-                    <td class="py-3">
-                        <div class="d-flex align-items-center">
-                            <i class="fas fa-building text-secondary me-2 small"></i>
-                            <span class="fw-medium text-dark">{{ branch.company.company_name }}</span>
-                        </div>
-                    </td>
-                    {% endif %}
                     <td class="py-3">
                         <span class="fw-medium text-dark">{{ branch.city|default:"-" }}</span>
                     </td>
@@ -76,9 +65,15 @@
                         <span class="badge bg-success text-white px-3 py-2 rounded-pill fw-medium">Active</span>
                     </td>
                     <td class="pe-4 py-3 text-end">
-                        <a href="{% url 'branch_edit' branch.pk %}" class="btn btn-sm btn-outline-primary" title="Edit">
-                            <i class="fas fa-edit"></i>
+                        <a href="{% url 'branch_edit' branch.pk %}" class="btn btn-sm btn-link text-secondary p-1" title="Edit">
+                            <i class="fas fa-pen"></i>
                         </a>
+                        {% if branch.company.branches.count > 1 %}
+                        <button type="button" class="btn btn-sm btn-link text-danger p-1" title="Delete"
+                            onclick="confirmDelete('{{ branch.pk }}', '{{ branch.branch_name|escapejs }}')">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                        {% endif %}
                     </td>
                 </tr>
                 {% empty %}
@@ -105,7 +100,40 @@
     {% endwith %}
 </div>
 
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg rounded-4">
+            <div class="modal-header border-0 pb-0">
+                <h5 class="modal-title fw-bold">Delete Branch</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body py-4">
+                <p class="text-secondary mb-0">
+                    Are you sure you want to delete branch
+                    <span id="deleteBranchName" class="fw-bold text-dark"></span>?
+                    This cannot be undone.
+                </p>
+            </div>
+            <div class="modal-footer border-0 pt-0">
+                <button type="button" class="btn btn-light rounded-3 px-4" data-bs-dismiss="modal">Cancel</button>
+                <form id="deleteForm" method="POST">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-danger rounded-3 px-4">Delete</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
+    function confirmDelete(branchId, branchName) {
+        document.getElementById('deleteBranchName').textContent = branchName;
+        const url = "{% url 'branch_delete' pk=0 %}".replace('0', branchId);
+        document.getElementById('deleteForm').action = url;
+        new bootstrap.Modal(document.getElementById('deleteModal')).show();
+    }
+
     // Server-side search: update URL on input (debounced)
     (function() {
         var searchInput = document.getElementById('searchInput');

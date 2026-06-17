@@ -91,6 +91,9 @@ class Branch(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    class Meta:
+        unique_together = ("company", "branch_name")
+
     def __str__(self):
         return f"{self.company.company_name} - {self.branch_name}"
 

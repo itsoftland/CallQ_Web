@@ -246,23 +246,30 @@ class LicenseValidator:
     }
 
     @staticmethod
+    def _license_company(company):
+        """
+        Dealer-created child companies inherit their parent dealer's license.
+        Returns the company whose product_to_date and device limits apply.
+        """
+        if company and getattr(company, 'is_dealer_created', False) and company.parent_company:
+            return company.parent_company
+        return company
+
+    @staticmethod
     def check_license_expiry(company):
         """
         Check whether the given Company's license has expired.
 
-        Args:
-            company: companydetails.models.Company instance.
+        Dealer-created child companies inherit their parent dealer's license,
+        so the parent's product_to_date is used automatically.
 
         Returns:
             (is_expired: bool, expiry_date: date | None)
-            - is_expired is True when product_to_date is set AND < today.
-            - When product_to_date is None (no license recorded) is_expired is
-              also True so that missing-license scenarios are blocked.
         """
         from datetime import date as _date
+        company = LicenseValidator._license_company(company)
         expiry = company.product_to_date
         if expiry is None:
-            # No license date on record -> treat as expired / missing license
             return True, None
         return (_date.today() > expiry), expiry
 
@@ -272,28 +279,33 @@ class LicenseValidator:
         Check whether the company has reached its licensed device limit for
         the given device_type.
 
-        Args:
-            company:        companydetails.models.Company instance.
-            device_type:    One of 'BROKER', 'TOKEN_DISPENSER', 'KEYPAD',
-                            'TV', 'LED', 'Config Apk'
-                            (matches Device.DeviceType values).
-            exclude_serial: Optional serial_number to exclude from the count.
-                            Use this when an existing device is re-registering
-                            so its own record is not counted against the limit.
+        Dealer-created child companies share the parent dealer's device quota.
+        The limit is read from the parent, and the count covers the parent +
+        all its child companies so the pool is never double-counted.
 
         Returns:
             (is_over_limit: bool, current_count: int, max_allowed: int)
         """
         from configdetails.models import Device
+        from django.db.models import Q as _Q
+
+        license_company = LicenseValidator._license_company(company)
 
         limit_field = LicenseValidator.DEVICE_TYPE_LIMIT_MAP.get(device_type)
         if limit_field is None:
-            # Unknown device type -> do not block (conservative: let it through)
             return False, 0, 0
 
-        max_allowed = getattr(company, limit_field, 0) or 0
+        max_allowed = getattr(license_company, limit_field, 0) or 0
 
-        qs = Device.objects.filter(company=company, device_type=device_type)
+        if license_company != company:
+            # Count across the dealer + all their child companies
+            qs = Device.objects.filter(
+                _Q(company=license_company) | _Q(company__parent_company=license_company),
+                device_type=device_type,
+            )
+        else:
+            qs = Device.objects.filter(company=company, device_type=device_type)
+
         if exclude_serial:
             qs = qs.exclude(serial_number=exclude_serial)
         current_count = qs.count()

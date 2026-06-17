@@ -913,14 +913,16 @@ def customer_registration(request):
                     )
 
                     # Always create at least one default branch so devices/users can be assigned
-                    Branch.objects.create(
+                    Branch.objects.get_or_create(
                         company=company,
                         branch_name=f"{company_name} - Main" if is_multiple else "Main Branch",
-                        address=address,
-                        city=city,
-                        district=district or '',
-                        state=state,
-                        zip_code=zip_code
+                        defaults={
+                            'address': address,
+                            'city': city,
+                            'district': district or '',
+                            'state': state,
+                            'zip_code': zip_code,
+                        }
                     )
 
                     log_activity(request.user, "Dealer Customer Registered", f"Registered customer {company_name} (ID: {customer_id})")
@@ -935,37 +937,44 @@ def customer_registration(request):
             # SUPER_ADMIN or ADMIN - create regular customer in Company table
             branch_cfg = request.POST.get('branch_configuration', 'SINGLE')
             company_type = request.POST.get('company_type', 'CUSTOMER')
-            
+
             try:
                 ads_enabled = request.POST.get('ads_enabled') == '1'
-                company = Company.objects.create(
-                    company_name=request.POST.get('company_name'),
-                    company_type=company_type,
-                    company_email=company_email,
-                    contact_person=request.POST.get('contact_person'),
-                    contact_number=request.POST.get('contact_number'),
-                    address=request.POST.get('address'),
-                    city=request.POST.get('city'),
-                    state=request.POST.get('state'),
-                    zip_code=request.POST.get('zip_code'),
-                    district=request.POST.get('district'),
-                    country=request.POST.get('country', 'India'),
-                    gst_number=request.POST.get('gst_number'),
-                    number_of_licence=request.POST.get('number_of_licence') or 1,
-                    is_dealer_created=False,
-                    branch_configuration=branch_cfg,
-                    ads_enabled=ads_enabled
-                )
-                # Always create at least one default branch so devices/users can be assigned
-                Branch.objects.create(
-                    company=company,
-                    branch_name=f"{company.company_name} - Main" if branch_cfg == 'MULTIPLE' else (company.city if company.city else company.company_name),
-                    address=company.address,
-                    city=company.city,
-                    district=company.district or '',
-                    state=company.state,
-                    zip_code=company.zip_code
-                )
+                with transaction.atomic():
+                    company = Company.objects.create(
+                        company_name=request.POST.get('company_name'),
+                        company_type=company_type,
+                        company_email=company_email,
+                        contact_person=request.POST.get('contact_person'),
+                        contact_number=request.POST.get('contact_number'),
+                        address=request.POST.get('address'),
+                        city=request.POST.get('city'),
+                        state=request.POST.get('state'),
+                        zip_code=request.POST.get('zip_code'),
+                        district=request.POST.get('district'),
+                        country=request.POST.get('country', 'India'),
+                        gst_number=request.POST.get('gst_number'),
+                        number_of_licence=request.POST.get('number_of_licence') or 1,
+                        is_dealer_created=False,
+                        branch_configuration=branch_cfg,
+                        ads_enabled=ads_enabled
+                    )
+                    # Always create at least one default branch so devices/users can be assigned
+                    default_branch_name = (
+                        f"{company.company_name} - Main" if branch_cfg == 'MULTIPLE'
+                        else (company.city if company.city else company.company_name)
+                    )
+                    Branch.objects.get_or_create(
+                        company=company,
+                        branch_name=default_branch_name,
+                        defaults={
+                            'address': company.address,
+                            'city': company.city,
+                            'district': company.district or '',
+                            'state': company.state,
+                            'zip_code': company.zip_code,
+                        }
+                    )
 
                 log_activity(request.user, f"{company.get_company_type_display()} Created", f"Created {company.company_name} (Requires API validation)")
                 messages.success(request, f'{company.get_company_type_display()} "{company.company_name}" created successfully.')
@@ -982,16 +991,11 @@ def customer_registration(request):
 def branch_list(request):
     user = request.user
     search_query = request.GET.get('search', '').strip()
-    is_dealer_view = False
 
     if user.role == 'DEALER_ADMIN':
-        is_dealer_view = True
+        # Show only the dealer's own branches — not branches of dealer-created child companies
         if user.company_relation:
-            dealer = user.company_relation
-            branches = Branch.objects.filter(
-                Q(company=dealer) |
-                Q(company__parent_company=dealer)
-            )
+            branches = Branch.objects.filter(company=user.company_relation)
         else:
             branches = Branch.objects.none()
     else:
@@ -1017,7 +1021,6 @@ def branch_list(request):
 
     return render(request, 'companydetails/branch_list.html', {
         'branches': branches_page,
-        'is_dealer_view': is_dealer_view,
         'search_query': search_query,
     })
 
@@ -1084,6 +1087,60 @@ def branch_edit(request, pk):
         branch.save()
         return redirect('branch_list')
     return render(request, 'companydetails/branch_form.html', {'branch': branch})
+
+@login_required
+@user_passes_test(company_required)
+def branch_delete(request, pk):
+    if request.method != 'POST':
+        return redirect('branch_list')
+
+    user = request.user
+
+    # Permission: same ownership check as branch_edit
+    if user.role == 'DEALER_ADMIN':
+        if not user.company_relation:
+            return redirect('branch_list')
+        dealer = user.company_relation
+        branch = get_object_or_404(Branch, pk=pk)
+        is_owned = branch.company == dealer
+        is_child = branch.company and branch.company.parent_company == dealer
+        if not (is_owned or is_child):
+            messages.error(request, "Permission denied.")
+            return redirect('branch_list')
+    else:
+        branch = get_object_or_404(Branch, pk=pk, company=user.company_relation)
+
+    # Block: cannot delete the last branch of a company
+    sibling_count = Branch.objects.filter(company=branch.company).count()
+    if sibling_count <= 1:
+        messages.error(request, f"Cannot delete \"{branch.branch_name}\": it is the only branch for this company.")
+        return redirect('branch_list')
+
+    # Block: branch still has devices assigned
+    device_count = branch.devices.count()
+    if device_count:
+        messages.error(
+            request,
+            f"Cannot delete \"{branch.branch_name}\": {device_count} device(s) are still assigned to it. "
+            "Unassign or move them first."
+        )
+        return redirect('branch_list')
+
+    # Block: branch still has users assigned
+    user_count = branch.users.count()
+    if user_count:
+        messages.error(
+            request,
+            f"Cannot delete \"{branch.branch_name}\": {user_count} user(s) are still assigned to it. "
+            "Reassign them first."
+        )
+        return redirect('branch_list')
+
+    branch_name = branch.branch_name
+    branch.delete()
+    log_activity(user, "Branch Deleted", f"Deleted branch '{branch_name}'")
+    messages.success(request, f"Branch \"{branch_name}\" deleted successfully.")
+    return redirect('branch_list')
 
 @login_required
 @user_passes_test(dealer_required)

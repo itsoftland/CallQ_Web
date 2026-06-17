@@ -4428,6 +4428,8 @@ def map_device_to_customer(request):
             Q(company=company) | Q(company__parent_company=company)
         ).filter(id__in=device_ids)
 
+        branch_id = request.POST.get('branch_id') or None
+
         if customer_target.startswith('dc_'):
             # Assigning to a DealerCustomer
             dc_id = customer_target[3:]
@@ -4435,7 +4437,7 @@ def map_device_to_customer(request):
             count = owned_devices.update(
                 company=company,
                 dealer_customer=dealer_customer,
-                branch=None,
+                branch_id=branch_id,
             )
             messages.success(request, f"{count} device(s) assigned to {dealer_customer.company_name}.")
         elif customer_target.startswith('co_'):
@@ -4447,7 +4449,7 @@ def map_device_to_customer(request):
             count = owned_devices.update(
                 company=child_company,
                 dealer_customer=None,
-                branch=None,
+                branch_id=branch_id,
             )
             messages.success(request, f"{count} device(s) assigned to {child_company.company_name}.")
         else:
@@ -4456,8 +4458,24 @@ def map_device_to_customer(request):
         return redirect('map_device_to_customer')
 
     # GET: Prepare configuration form
-    dealer_customers = DealerCustomer.objects.filter(dealer=company, is_active=True)
-    child_companies = Company.objects.filter(parent_company=company, is_dealer_created=True)
+    # Build a lookup of child Company by email so we can:
+    # (a) attach linked_company_id to each DealerCustomer for branch AJAX
+    # (b) exclude child Companies that already appear as a DealerCustomer entry
+    child_company_by_email = {
+        c.company_email: c
+        for c in Company.objects.filter(parent_company=company, is_dealer_created=True)
+    }
+    dealer_customers = list(DealerCustomer.objects.filter(dealer=company, is_active=True))
+    dc_emails = set()
+    for dc in dealer_customers:
+        linked = child_company_by_email.get(dc.company_email)
+        dc.linked_company_id = linked.id if linked else ''
+        dc_emails.add(dc.company_email)
+
+    child_companies = Company.objects.filter(
+        parent_company=company, is_dealer_created=True
+    ).exclude(company_email__in=dc_emails)
+
     devices = Device.objects.filter(
         Q(company=company) | Q(company__parent_company=company)
     ).select_related('dealer_customer', 'company', 'branch').order_by('dealer_customer', 'serial_number')
