@@ -125,18 +125,19 @@ def prepare_relations(request, selected_cid=None, selected_bid=None):
         companies = Company.objects.filter(state__in=user.assigned_state) if user.assigned_state else Company.objects.none()
     elif user.role == 'DEALER_ADMIN':
         if user.company_relation:
-            # Dealer sees their DealerCustomer records in the dropdown
             from companydetails.models import DealerCustomer
             dealer_customers = list(DealerCustomer.objects.filter(dealer=user.company_relation))
-            # Add attributes for template compatibility
             for dc in dealer_customers:
                 dc.company_type = 'CUSTOMER'
-                dc.is_dealer_customer = True  # Flag to identify in save logic
-            
-            # Fix: Add the dealer itself as the first option
-            # This is crucial because the JS filters for 'DEALER' type for DEALER_ADMIN
-            # and currently backend forces creation under the Dealer's company anyway.
-            companies = [user.company_relation] + dealer_customers
+                dc.is_dealer_customer = True
+
+            # Include dealer-created child Company records so they appear in the dropdown
+            child_companies = list(Company.objects.filter(
+                parent_company=user.company_relation,
+                is_dealer_created=True
+            ))
+
+            companies = [user.company_relation] + dealer_customers + child_companies
         else:
             companies = []
     elif user.role == 'COMPANY_ADMIN':
@@ -250,25 +251,42 @@ def user_create(request):
         
         # Logic fix: Dealer Admins creates users linked to their company, even for EMPLOYEE/PRODUCTION roles
         if request.user.role == 'DEALER_ADMIN':
-             # Check if selected company is a DealerCustomer
              from companydetails.models import DealerCustomer
-             dc = DealerCustomer.objects.filter(id=company_id, dealer=request.user.company_relation).first()
-             
-             if dc:
-                 user.dealer_customer_relation = dc
-                 # Fix: Link to the Customer Company if it exists (company_id match)
-                 customer_company = Company.objects.filter(company_id=dc.customer_id).first()
-                 if customer_company:
-                     user.company_relation = customer_company
-                     user.role = 'COMPANY_ADMIN' # Role for customer admin
-                 else:
-                     # Fallback to Dealer if no company exists (Contact only)
-                     user.company_relation = request.user.company_relation
-                     user.role = 'COMPANY_ADMIN' # Keep consistent role
+
+             # Priority 1: submitted id matches a dealer-created child Company.
+             # Check Company BEFORE DealerCustomer so that any coincidental ID
+             # collision between the two tables never takes the wrong branch.
+             child_company = Company.objects.filter(
+                 id=company_id,
+                 parent_company=request.user.company_relation,
+                 is_dealer_created=True
+             ).first()
+
+             if child_company:
+                 user.company_relation = child_company
+
              else:
-                 user.company_relation = request.user.company_relation
-             
-             if branch_id: user.branch_relation_id = branch_id 
+                 # Priority 2: submitted id matches a DealerCustomer contact record
+                 dc = DealerCustomer.objects.filter(
+                     id=company_id,
+                     dealer=request.user.company_relation
+                 ).first()
+
+                 if dc:
+                     user.dealer_customer_relation = dc
+                     # Find the linked Company — try company_id field first, then email
+                     customer_company = Company.objects.filter(company_id=dc.customer_id).first()
+                     if not customer_company:
+                         customer_company = Company.objects.filter(
+                             parent_company=request.user.company_relation,
+                             is_dealer_created=True,
+                             company_email=dc.company_email
+                         ).first()
+                     user.company_relation = customer_company if customer_company else request.user.company_relation
+                 else:
+                     user.company_relation = request.user.company_relation
+
+             if branch_id: user.branch_relation_id = branch_id
         elif request.user.role == 'COMPANY_ADMIN':
             user.company_relation = request.user.company_relation
         elif role in ['SUPER_ADMIN', 'ADMIN', 'EMPLOYEE']:
@@ -438,19 +456,31 @@ def user_edit(request, pk):
             user_to_edit.assigned_state = []
             if request.user.role == 'DEALER_ADMIN':
                 from companydetails.models import DealerCustomer
-                dc = DealerCustomer.objects.filter(id=company_id, dealer=request.user.company_relation).first()
-                if dc:
-                    user_to_edit.dealer_customer_relation = dc
-                    # Fix: Link to the Customer Company if it exists
-                    customer_company = Company.objects.filter(company_id=dc.customer_id).first()
-                    if customer_company:
-                        user_to_edit.company_relation = customer_company
-                    else:
-                        user_to_edit.company_relation = request.user.company_relation
-                    user_to_edit.role = 'COMPANY_ADMIN'
-                else:
+                # Priority 1: submitted id is a dealer-created child Company
+                child_company = Company.objects.filter(
+                    id=company_id,
+                    parent_company=request.user.company_relation,
+                    is_dealer_created=True
+                ).first()
+                if child_company:
+                    user_to_edit.company_relation = child_company
                     user_to_edit.dealer_customer_relation = None
-                    user_to_edit.company_relation = request.user.company_relation
+                else:
+                    # Priority 2: submitted id is a DealerCustomer contact record
+                    dc = DealerCustomer.objects.filter(id=company_id, dealer=request.user.company_relation).first()
+                    if dc:
+                        user_to_edit.dealer_customer_relation = dc
+                        customer_company = Company.objects.filter(company_id=dc.customer_id).first()
+                        if not customer_company:
+                            customer_company = Company.objects.filter(
+                                parent_company=request.user.company_relation,
+                                is_dealer_created=True,
+                                company_email=dc.company_email
+                            ).first()
+                        user_to_edit.company_relation = customer_company if customer_company else request.user.company_relation
+                    else:
+                        # company_id did not match any DC or child Company — preserve existing relations
+                        pass
             else:
                 # Preserve existing company — the form locks it when already set.
                 # When currently unassigned (e.g. DEALER_ADMIN created without a company),
@@ -1169,9 +1199,14 @@ def android_config_login(request):
     # --- License expiry check ---
     # Block company-bound users from logging in if their license has expired.
     # SUPER_ADMIN / ADMIN / PRODUCTION_ADMIN are system-level and are exempt.
+    # Dealer-created companies have no product_to_date of their own; their
+    # license is inherited from the parent dealer, so validate against that.
     if user.role not in ["SUPER_ADMIN", "ADMIN", "PRODUCTION_ADMIN"] and user.company_relation:
         from callq_core.services import LicenseValidator
-        is_expired, _ = LicenseValidator.check_license_expiry(user.company_relation)
+        company_for_license = user.company_relation
+        if company_for_license.is_dealer_created and company_for_license.parent_company:
+            company_for_license = company_for_license.parent_company
+        is_expired, _ = LicenseValidator.check_license_expiry(company_for_license)
         if is_expired:
             return DRFResponse({
                 "status": "error",
@@ -1270,14 +1305,21 @@ def android_config_login(request):
     }
 
     # Restrict Route to only the logged in user's company locations
-    route_c_ids = [user.company_relation.id] if user.company_relation else []
+    route_c_ids = []
     route_dc_ids = []
+    if user.dealer_customer_relation:
+        # DC-linked user (e.g. COMPANY_ADMIN created for a DealerCustomer):
+        # route must use the DC's own city, not the dealer's city
+        route_dc_ids.append(user.dealer_customer_relation.id)
+    elif user.company_relation:
+        route_c_ids.append(user.company_relation.id)
     if user.role == "DEALER_CUSTOMER":
         user_dc = DealerCustomer.objects.filter(company_email=user.email).first()
         if not user_dc and user.company_relation:
             user_dc = DealerCustomer.objects.filter(dealer=user.company_relation).first()
         if user_dc:
-            route_dc_ids.append(user_dc.id)
+            route_dc_ids = [user_dc.id]
+            route_c_ids = []
     customers_data = []
     company_ids = []
     dealer_customer_ids = []
@@ -1304,7 +1346,11 @@ def android_config_login(request):
             company_ids.append(company.id)
 
     elif user.role == "COMPANY_ADMIN":
-        if user.company_relation:
+        if user.dealer_customer_relation:
+            # DC-linked company admin: serialize the DealerCustomer, not the dealer
+            customers_data.append(serialize_dealer_customer_as_customer(user.dealer_customer_relation))
+            dealer_customer_ids.append(user.dealer_customer_relation.id)
+        elif user.company_relation:
             customers_data.append(serialize_company_full(user.company_relation))
             company_ids.append(user.company_relation.id)
 

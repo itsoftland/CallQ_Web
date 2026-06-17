@@ -97,10 +97,19 @@
                         {% endif %}
                     </td>
                     <td class="py-3">
-                        {% if u.company_relation %}
+                        {% if u.dealer_customer_relation %}
+                        <span class="text-dark">
+                            <i class="fas fa-building text-muted me-1"></i>
+                            {{ u.dealer_customer_relation.company_name }}
+                            <br><small class="text-muted">via {{ u.dealer_customer_relation.dealer.company_name }}</small>
+                        </span>
+                        {% elif u.company_relation %}
                         <span class="text-dark">
                             <i class="fas fa-building text-muted me-1"></i>
                             {{ u.company_relation.company_name }}
+                            {% if u.company_relation.is_dealer_created and u.company_relation.parent_company %}
+                            <br><small class="text-muted">via {{ u.company_relation.parent_company.company_name }}</small>
+                            {% endif %}
                         </span>
                         {% elif u.branch_relation and u.branch_relation.company %}
                         <span class="text-dark">

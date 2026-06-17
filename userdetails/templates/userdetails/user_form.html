@@ -167,7 +167,10 @@
                                 <select name="company" class="form-select rounded-3" id="id_company">
                                     <option value="">None</option>
                                     {% for c in companies %}
-                                    <option value="{{ c.id }}" data-type="{{ c.company_type }}" {% if form_data.company == c.id or c.is_selected %}selected{% endif %}>{{ c.company_name }}</option>
+                                    <option value="{{ c.id }}"
+                                        data-type="{{ c.company_type }}"
+                                        data-kind="{% if c.is_dealer_customer %}dc{% else %}company{% endif %}"
+                                        {% if form_data.company == c.id or c.is_selected %}selected{% endif %}>{{ c.company_name }}</option>
                                     {% endfor %}
                                 </select>
                             </div>
