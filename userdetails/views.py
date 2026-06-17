@@ -1062,6 +1062,38 @@ def trigger_password_reset(request):
         return redirect('profile')
 
 
+def _build_android_route(company_ids=None, dealer_customer_ids=None, states=None):
+    """
+    Build Route entries for the android login using only the Company and
+    DealerCustomer tables — branches are intentionally excluded so each
+    entry reflects only the registered company address.
+    """
+    from companydetails.models import DealerCustomer as _DC
+
+    locations = set()
+
+    if company_ids:
+        qs = Company.objects.filter(id__in=company_ids)
+        if states:
+            qs = qs.filter(state__in=states)
+        for c in qs.values('state', 'district', 'city').distinct():
+            if c['city']:
+                locations.add((c['state'] or '', c['district'] or '', c['city']))
+
+    if dealer_customer_ids:
+        qs = _DC.objects.filter(id__in=dealer_customer_ids)
+        if states:
+            qs = qs.filter(state__in=states)
+        for dc in qs.values('state', 'district', 'city').distinct():
+            if dc['city']:
+                locations.add((dc['state'] or '', dc['district'] or '', dc['city']))
+
+    return [
+        {"state": s, "district": d, "city": c}
+        for s, d, c in sorted(locations)
+    ]
+
+
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def android_config_login(request):
@@ -1306,7 +1338,7 @@ def android_config_login(request):
     return DRFResponse({
         "status": "success",
         "response": "Login Approved",
-        "Route": get_flattened_used_locations(company_ids=route_c_ids, dealer_customer_ids=route_dc_ids, states=route_states),
+        "Route": _build_android_route(company_ids=route_c_ids, dealer_customer_ids=route_dc_ids, states=route_states),
         "user_info": user_info,
         "customers": customers_data
     })
