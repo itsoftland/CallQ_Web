@@ -1420,19 +1420,30 @@ def getDeviceByCustomer(request):
     # Find the target entity
     company = None
     dealer_customer = None
-    
+
     # Check Company
     if clean_id.isdigit():
         company = Company.objects.filter(id=clean_id).first()
     if not company:
         company = Company.objects.filter(company_id=clean_id).first()
-    
+
     # Check DealerCustomer
     if not company:
         if clean_id.isdigit():
             dealer_customer = DealerCustomer.objects.filter(id=clean_id).first()
         if not dealer_customer:
             dealer_customer = DealerCustomer.objects.filter(customer_id=clean_id).first()
+    elif company.is_dealer_created and company.parent_company:
+        # The Company is dealer-created — its customer_id doubles as the DealerCustomer's
+        # customer_id. Resolve the matching DC so devices assigned via BOTH paths are fetched:
+        #   Path A: device.dealer_customer = dc, device.company = dealer  (assigned via DC)
+        #   Path B: device.company = child_company, device.dealer_customer = None (assigned via Company)
+        dealer_customer = DealerCustomer.objects.filter(customer_id=clean_id).first()
+        if not dealer_customer:
+            dealer_customer = DealerCustomer.objects.filter(
+                dealer=company.parent_company,
+                company_email=company.company_email
+            ).first()
 
     if not company and not dealer_customer:
         return DRFResponse({
@@ -1449,7 +1460,13 @@ def getDeviceByCustomer(request):
         'group_dispensers', 'group_keypads', 'group_leds', 'group_brokers', 'group_tvs',
     )
 
-    if dealer_customer:
+    if dealer_customer and company and company.is_dealer_created:
+        # Dealer-created customer: cover both assignment paths with a single query
+        all_devices = _device_qs_base.filter(
+            Q(dealer_customer=dealer_customer) |
+            Q(company=company, dealer_customer__isnull=True)
+        ).distinct()
+    elif dealer_customer:
         all_devices = _device_qs_base.filter(dealer_customer=dealer_customer)
     elif company.company_type == Company.CompanyType.DEALER:
         # Dealer-based device aggregation: own devices + all child customer devices
