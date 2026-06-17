@@ -164,7 +164,12 @@
                         </td>
                         <td>{{ device.model_name|default:"-" }}</td>
                         <td>
-                            {% if device.company %}
+                            {% if device.dealer_customer %}
+                            <div class="d-flex align-items-center">
+                                <i class="fas fa-user-tag text-secondary me-2 small"></i>
+                                <span>{{ device.dealer_customer.company_name }}</span>
+                            </div>
+                            {% elif device.company %}
                             <div class="d-flex align-items-center">
                                 <i class="fas fa-building text-secondary me-2 small"></i>
                                 <span>{{ device.company.company_name }}</span>

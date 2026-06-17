@@ -3024,8 +3024,16 @@ def device_list(request):
             devices = Device.objects.none()
             branches = []
     elif user.role == "COMPANY_ADMIN":
-        devices = Device.objects.filter(company=user.company_relation)
-        branches = Branch.objects.filter(company=user.company_relation)
+        if user.dealer_customer_relation:
+            # DC-linked admin: only devices mapped to their DealerCustomer
+            devices = Device.objects.filter(dealer_customer=user.dealer_customer_relation)
+            branches = []
+        elif user.company_relation:
+            devices = Device.objects.filter(company=user.company_relation)
+            branches = Branch.objects.filter(company=user.company_relation)
+        else:
+            devices = Device.objects.none()
+            branches = []
     elif user.role == "BRANCH_ADMIN":
         devices = Device.objects.filter(branch=user.branch_relation)
         branches = [user.branch_relation]
@@ -4408,39 +4416,56 @@ def map_device_to_customer(request):
     from companydetails.models import DealerCustomer
 
     if request.method == 'POST':
-        dealer_customer_id = request.POST.get('dealer_customer_id')
+        customer_target = request.POST.get('customer_target', '')
         device_ids = request.POST.getlist('device_ids')
-        
-        if dealer_customer_id and device_ids:
-            dealer_customer = get_object_or_404(DealerCustomer, id=dealer_customer_id)
-            
-            # Verify ownership
-            if dealer_customer.dealer != company:
-                messages.error(request, "Invalid Customer.")
-                return redirect('map_device_to_customer')
-                
-            # Update devices
-            # Ensure we only update devices owned by this dealer
-            count = Device.objects.filter(
-                id__in=device_ids, 
-                company=company
-            ).update(dealer_customer=dealer_customer, branch=None) # Reset branch when assigning to customer
-            
-            messages.success(request, f"{count} devices assigned to {dealer_customer.company_name} successfully.")
-        else:
+
+        if not customer_target or not device_ids:
             messages.error(request, "Please select a customer and at least one device.")
-            
+            return redirect('map_device_to_customer')
+
+        # Devices the dealer is allowed to reassign
+        owned_devices = Device.objects.filter(
+            Q(company=company) | Q(company__parent_company=company)
+        ).filter(id__in=device_ids)
+
+        if customer_target.startswith('dc_'):
+            # Assigning to a DealerCustomer
+            dc_id = customer_target[3:]
+            dealer_customer = get_object_or_404(DealerCustomer, id=dc_id, dealer=company)
+            count = owned_devices.update(
+                company=company,
+                dealer_customer=dealer_customer,
+                branch=None,
+            )
+            messages.success(request, f"{count} device(s) assigned to {dealer_customer.company_name}.")
+        elif customer_target.startswith('co_'):
+            # Assigning to a dealer-created child Company
+            co_id = customer_target[3:]
+            child_company = get_object_or_404(
+                Company, id=co_id, parent_company=company, is_dealer_created=True
+            )
+            count = owned_devices.update(
+                company=child_company,
+                dealer_customer=None,
+                branch=None,
+            )
+            messages.success(request, f"{count} device(s) assigned to {child_company.company_name}.")
+        else:
+            messages.error(request, "Invalid customer selection.")
+
         return redirect('map_device_to_customer')
-    
+
     # GET: Prepare configuration form
     dealer_customers = DealerCustomer.objects.filter(dealer=company, is_active=True)
+    child_companies = Company.objects.filter(parent_company=company, is_dealer_created=True)
     devices = Device.objects.filter(
         Q(company=company) | Q(company__parent_company=company)
-    ).order_by('dealer_customer', 'serial_number')
-        
+    ).select_related('dealer_customer', 'company', 'branch').order_by('dealer_customer', 'serial_number')
+
     context = {
         'devices': devices,
-        'dealer_customers': dealer_customers
+        'dealer_customers': dealer_customers,
+        'child_companies': child_companies,
     }
     return render(request, 'configdetails/map_device_to_customer.html', context)
 
@@ -4456,9 +4481,21 @@ def unmap_device(request):
             
             # Verify permission
             if request.user.role == "DEALER_ADMIN" and request.user.company_relation:
-                if device.company == request.user.company_relation:
-                    customer_name = device.dealer_customer.company_name if device.dealer_customer else "None"
+                dealer = request.user.company_relation
+                is_dealer_device = device.company == dealer
+                is_child_device = (
+                    device.company and
+                    device.company.is_dealer_created and
+                    device.company.parent_company == dealer
+                )
+                if is_dealer_device or is_child_device:
+                    customer_name = device.dealer_customer.company_name if device.dealer_customer else (
+                        device.company.company_name if is_child_device else "None"
+                    )
                     device.dealer_customer = None
+                    # Move child-company device back to dealer on unmap
+                    if is_child_device:
+                        device.company = dealer
                     device.save()
                     messages.success(request, f"Device {device.serial_number} unmapped from {customer_name}")
                     log_activity(request.user, "Device Unmapped", f"Device {device.serial_number} unmapped")
