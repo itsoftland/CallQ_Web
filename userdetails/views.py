@@ -1246,14 +1246,6 @@ def android_config_login(request):
             user_dc = DealerCustomer.objects.filter(dealer=user.company_relation).first()
         if user_dc:
             route_dc_ids.append(user_dc.id)
-    elif user.role == "DEALER_ADMIN":
-        if device and device.dealer_customer and device.dealer_customer.dealer == user.company_relation:
-            route_c_ids = []
-            route_dc_ids = [device.dealer_customer.id]
-        elif device and device.company and device.company.is_dealer_created and device.company.parent_company == user.company_relation:
-            route_c_ids = [device.company.id]
-            route_dc_ids = []
-
     customers_data = []
     company_ids = []
     dealer_customer_ids = []
