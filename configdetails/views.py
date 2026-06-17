@@ -677,15 +677,24 @@ def get_embedded_config(request):
     
     if not company:
         dealer_customer = DealerCustomer.objects.filter(customer_id=customer_id).first()
-        if dealer_customer:
-            company = dealer_customer.dealer
 
     if not company and not dealer_customer:
         return JsonResponse({"error": "Invalid customer_id"}, status=404)
 
     # Get all non-TV devices for this customer
     if dealer_customer:
-        devices = Device.objects.filter(dealer_customer=dealer_customer, is_active=True).exclude(device_type='TV')
+        device_filter = Q(dealer_customer=dealer_customer)
+
+        # Also include devices linked to a dealer-created Company for this customer (matched by email)
+        linked_company = Company.objects.filter(
+            parent_company=dealer_customer.dealer,
+            is_dealer_created=True,
+            company_email=dealer_customer.company_email
+        ).first()
+        if linked_company:
+            device_filter |= Q(company=linked_company, dealer_customer__isnull=True)
+
+        devices = Device.objects.filter(device_filter, is_active=True).exclude(device_type='TV').distinct()
     else:
         devices = Device.objects.filter(company=company, is_active=True).exclude(device_type='TV')
 

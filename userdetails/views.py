@@ -1191,8 +1191,13 @@ def android_config_login(request):
     if user.role not in ["SUPER_ADMIN", "ADMIN"]:
         is_owner = (device.company == user.company_relation)
         is_sub_customer = (device.dealer_customer and device.dealer_customer.dealer == user.company_relation)
-        
-        if not (is_owner or is_sub_customer):
+        is_dealer_child = (
+            device.company and
+            device.company.is_dealer_created and
+            device.company.parent_company == user.company_relation
+        )
+
+        if not (is_owner or is_sub_customer or is_dealer_child):
              return DRFResponse({
                 "status": "error",
                 "error": "Device mapped to another customer",
@@ -1245,6 +1250,9 @@ def android_config_login(request):
         if device and device.dealer_customer and device.dealer_customer.dealer == user.company_relation:
             route_c_ids = []
             route_dc_ids = [device.dealer_customer.id]
+        elif device and device.company and device.company.is_dealer_created and device.company.parent_company == user.company_relation:
+            route_c_ids = [device.company.id]
+            route_dc_ids = []
 
     customers_data = []
     company_ids = []
@@ -1281,6 +1289,9 @@ def android_config_login(request):
             if device and device.dealer_customer and device.dealer_customer.dealer == user.company_relation:
                 customers_data.append(serialize_dealer_customer_as_customer(device.dealer_customer))
                 dealer_customer_ids.append(device.dealer_customer.id)
+            elif device and device.company and device.company.is_dealer_created and device.company.parent_company == user.company_relation:
+                customers_data.append(serialize_company_full(device.company))
+                company_ids.append(device.company.id)
             else:
                 customers_data.append(serialize_company_full(user.company_relation))
                 company_ids.append(user.company_relation.id)
