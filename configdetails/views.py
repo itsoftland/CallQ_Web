@@ -10789,3 +10789,120 @@ def get_dept_string_api(request):
 
     dept_string = ','.join(parts)
     return JsonResponse({'dept_string': dept_string})
+
+
+# ============================================================================
+# Android Token Report API
+# ============================================================================
+
+@api_view(['GET', 'POST'])
+@permission_classes([AllowAny])
+def android_token_report_api(request):
+    """
+    Return parsed token log records for a given company and date.
+
+    Accepts GET params or JSON body:
+        company_id  — the company ID string
+        date        — date in YYYY-MM-DD format
+
+    Response:
+        {
+            "status": "success",
+            "date": "2026-06-18",
+            "company_id": "001",
+            "summary": {
+                "total": 120,
+                "valid": 110,
+                "invalid": 10,
+                "duplicates": 3
+            },
+            "tokens": [
+                {
+                    "id": 1,
+                    "message_type": "NORMAL",
+                    "token_number": "001",
+                    "keypad_serial": "AeCAL0K001",
+                    "keypad_index": "1",
+                    "counter_name": "Counter A",
+                    "received_at": "2026-06-18T10:00:00",
+                    "displayed_at": "2026-06-18T10:00:05",
+                    "is_valid": true,
+                    "is_duplicate": false,
+                    "mac_address": "AA:BB:CC:DD:EE:FF",
+                    "status": "displayed",
+                    "raw_payload": "$0PABAeCAL0K0001lo-0011*"
+                }
+            ]
+        }
+    """
+    from .models import MQTTTokenLog
+    from datetime import date as date_type
+
+    if request.method == 'POST':
+        company_id = request.data.get('company_id', '').strip()
+        date_str   = request.data.get('date', '').strip()
+    else:
+        company_id = request.GET.get('company_id', '').strip()
+        date_str   = request.GET.get('date', '').strip()
+
+    if not company_id:
+        return Response({'error': 'company_id is required'}, status=400)
+    if not date_str:
+        return Response({'error': 'date is required (YYYY-MM-DD)'}, status=400)
+
+    try:
+        report_date = date_type.fromisoformat(date_str)
+    except ValueError:
+        return Response({'error': 'Invalid date format — use YYYY-MM-DD'}, status=400)
+
+    # Build the set of customer_id variants the way the rest of the system does
+    scoped_ids = {company_id}
+    try:
+        n = int(company_id)
+        scoped_ids |= {str(n), str(n).zfill(3), str(n).zfill(4)}
+    except (ValueError, TypeError):
+        pass
+
+    qs = (
+        MQTTTokenLog.objects
+        .filter(customer_id__in=list(scoped_ids), received_at__date=report_date)
+        .select_related('counter')
+        .order_by('received_at')
+    )
+
+    total_count   = qs.count()
+    valid_count   = qs.filter(is_valid=True).count()
+    invalid_count = qs.filter(is_valid=False).count()
+    dup_count     = qs.filter(is_duplicate=True).count()
+
+    tokens = []
+    for log in qs:
+        counter_name = log.counter_name or (log.counter.counter_name if log.counter else '')
+        tokens.append({
+            'id':            log.id,
+            'message_type':  log.message_type,
+            'token_number':  log.token_number,
+            'keypad_serial': log.keypad_serial,
+            'keypad_index':  log.keypad_index,
+            'counter_name':  counter_name,
+            'received_at':   log.received_at.isoformat() if log.received_at else None,
+            'displayed_at':  log.displayed_at.isoformat() if log.displayed_at else None,
+            'is_valid':      log.is_valid,
+            'is_duplicate':  log.is_duplicate,
+            'mac_address':   log.mac_address,
+            'status':        log.status,
+            'raw_payload':   log.raw_payload,
+        })
+
+    return Response({
+        'status':     'success',
+        'date':       date_str,
+        'company_id': company_id,
+        'summary': {
+            'total':      total_count,
+            'valid':      valid_count,
+            'invalid':    invalid_count,
+            'duplicates': dup_count,
+        },
+        'tokens': tokens,
+    })
