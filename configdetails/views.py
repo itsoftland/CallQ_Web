@@ -1826,18 +1826,31 @@ def _get_tv_flag_config(request, device, company, dealer_customer, is_dealer_cus
             if c.get('dispenser_sn') in tv_wired_dispenser_sns
         ]
 
-    # Deduplicate counters that appear across multiple keypads: merge keypad_index arrays
-    # into one entry per unique counter so the TV doesn't receive redundant rows.
+    # Deduplicate counters that appear across multiple keypads (shared dispenser).
+    # When the same counter surfaces via multiple keypad slots, prefer the entry
+    # whose keypad_index matches dispenser_button_index — that gives each counter
+    # a unique, stable TV slot instead of a merged index array.
     _merged = {}
     for c in mapped_counters_list:
         key = c.get('counter_config_id')
+        dbi = str(c.get('dispenser_button_index', ''))
+        kp_idx_list = c.get('keypad_index', [])
+        kp_idx = kp_idx_list[0] if isinstance(kp_idx_list, list) and kp_idx_list else str(kp_idx_list)
+        is_aligned = bool(dbi and kp_idx and dbi == str(kp_idx))
         if key not in _merged:
             _merged[key] = dict(c)
-        else:
-            existing_ki = _merged[key]['keypad_index']
-            for idx in c.get('keypad_index', []):
-                if idx not in existing_ki:
-                    existing_ki.append(idx)
+        elif is_aligned:
+            # Prefer the entry whose keypad slot matches the dispenser button position.
+            _merged[key] = dict(c)
+
+    # Sync button_index to the unique keypad slot when aligned.
+    for c in _merged.values():
+        dbi = str(c.get('dispenser_button_index', ''))
+        kp_idx_list = c.get('keypad_index', [])
+        kp_idx = kp_idx_list[0] if isinstance(kp_idx_list, list) and kp_idx_list else None
+        if dbi and kp_idx and dbi == str(kp_idx):
+            c['button_index'] = _parse_pos(kp_idx)
+
     mapped_counters_list = list(_merged.values())
 
     # Sort the counters by button_index to ensure correct TV UI ordering
