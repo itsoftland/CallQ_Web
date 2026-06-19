@@ -4201,28 +4201,33 @@ def mapping_view(request):
             if pool_mode:
                 _apply_pool_mode_to_keypads(group)
 
-            # ─── Multi-keypad: store DispenserKeypadMapping rows ───────────────
-            # The wizard submits disp_keypad_map[] as "dispenser_id:keypad_id"
-            # strings for every (dispenser, keypad) pair selected.
-            # Format: dispenser_id:keypad_id   (e.g. "42:17", "42:18", "43:19")
+            # ─── Per-button keypad mapping: store DispenserKeypadMapping rows ─
+            # The wizard submits disp_keypad_map[] as "dispId:btnSlot:kpId"
+            # where btnSlot is the 1-based physical button number on the dispenser.
+            # Format: dispenser_id:button_slot:keypad_id  (e.g. "42:1:17", "42:2:18")
+            # Legacy 2-part format "dispId:kpId" is also accepted as a fallback.
             disp_keypad_pairs = [
                 p for p in request.POST.getlist('disp_keypad_map[]') if p
             ]
             if disp_keypad_pairs:
-                # Build lookup: dispenser_id → its group button index char
-                gdm_index_map = {
-                    gdm.dispenser_id: gdm.dispenser_button_index
-                    for gdm in GroupDispenserMapping.objects.filter(group=group)
-                }
                 for pair in disp_keypad_pairs:
                     try:
-                        d_id_str, kp_id_str = pair.split(':', 1)
-                        d_id = int(d_id_str)
-                        kp_id = int(kp_id_str)
+                        parts = pair.split(':', 2)
+                        if len(parts) == 3:
+                            d_id = int(parts[0])
+                            btn_slot = int(parts[1])
+                            kp_id = int(parts[2])
+                            btn_char = get_button_index_char(btn_slot)
+                        elif len(parts) == 2:
+                            d_id = int(parts[0])
+                            kp_id = int(parts[1])
+                            gdm = GroupDispenserMapping.objects.filter(
+                                group=group, dispenser_id=d_id
+                            ).first()
+                            btn_char = gdm.dispenser_button_index if gdm else chr(BUTTON_INDEX_START)
+                        else:
+                            continue
                     except (ValueError, AttributeError):
-                        continue
-                    btn_char = gdm_index_map.get(d_id)
-                    if not btn_char:
                         continue
                     try:
                         dispenser_obj = Device.objects.get(id=d_id, device_type=Device.DeviceType.TOKEN_DISPENSER)

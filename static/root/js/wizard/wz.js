@@ -27,8 +27,8 @@ let state = {
   gName: '',
   counts: {TOKEN_DISPENSER:0, KEYPAD:0, LED:0, BROKER:0, TV:0},
   pool: {TOKEN_DISPENSER:[], KEYPAD:[], LED:[], BROKER:[], TV:[]},
-  asn: {included:{}, dispToKeypad:{}, keypadToLed:{}, keypadToBroker:{}, brokerToTv:{}},
-  // dispToKeypad: { dispId: [kpId1, kpId2, ...] }  — multi-keypad per dispenser
+  asn: {included:{}, dispBtnToKeypad:{}, keypadToLed:{}, keypadToBroker:{}, brokerToTv:{}},
+  // dispBtnToKeypad: { dispId: { '1': kpId, '2': kpId, ... } } — per-button keypad assignment
   poolMode: false,
   cur: 0,
   loading: false,
@@ -36,11 +36,16 @@ let state = {
 
 /* ── Derived ── */
 function inclDisp() { return (state.pool.TOKEN_DISPENSER||[]).filter(d=>state.asn.included[d.id]); }
+function numButtons(disp) {
+  const m = (disp.tokenType||'').match(/^(\d+)_BUTTON$/);
+  return m ? parseInt(m[1]) : 1;
+}
 function kpDevs() {
   const ids = [];
   inclDisp().forEach(d => {
-    const arr = state.asn.dispToKeypad[d.id] || [];
-    arr.forEach(kId => { if (!ids.includes(kId)) ids.push(kId); });
+    Object.values(state.asn.dispBtnToKeypad[d.id] || {}).forEach(kId => {
+      if (kId && !ids.includes(kId)) ids.push(kId);
+    });
   });
   return ids.map(id=>(state.pool.KEYPAD||[]).find(d=>d.id===id)).filter(Boolean);
 }
@@ -70,7 +75,20 @@ function buildSteps() {
 /* ── Validation ── */
 function stageOk(id) {
   const inc = inclDisp(), kp = kpDevs(), brk = brkDevs();
-  if(id==='disp_keypad')   return inc.length>=1 && inc.every(d=>{ const arr=state.asn.dispToKeypad[d.id]; return arr&&arr.length>0; });
+  if(id==='disp_keypad') {
+    if (!inc.length) return false;
+    const used = [];
+    for (const d of inc) {
+      const nBtns = numButtons(d);
+      const btnMap = state.asn.dispBtnToKeypad[d.id] || {};
+      for (let b = 1; b <= nBtns; b++) {
+        const kId = btnMap[String(b)];
+        if (!kId || used.includes(kId)) return false;
+        used.push(kId);
+      }
+    }
+    return true;
+  }
   if(id==='keypad_led')    return kp.length>=1  && kp.every(k=>state.asn.keypadToLed[k.id]);
   if(id==='keypad_broker') return kp.length>=1  && kp.every(k=>state.asn.keypadToBroker[k.id]);
   if(id==='broker_tv')     return brk.length>=1 && brk.every(b=>state.asn.brokerToTv[b.id]);
@@ -156,10 +174,10 @@ function deviceSelectHtml(fieldId, srcId, targetType, currentVal) {
 /* ── Render: Map Stage ── */
 function renderMapStage(step) {
   const fromT=TYPE[step.from], toT=TYPE[step.to];
-  const fieldMap = {disp_keypad:'dispToKeypad',keypad_led:'keypadToLed',keypad_broker:'keypadToBroker',broker_tv:'brokerToTv'};
+  const fieldMap = {keypad_led:'keypadToLed',keypad_broker:'keypadToBroker',broker_tv:'brokerToTv'};
   const field = fieldMap[step.id];
   const guidance = {
-    disp_keypad:`Choose which <b>token dispensers</b> belong to this group, then link each to the <b>keypad</b> it drives.`,
+    disp_keypad:`Choose which <b>token dispensers</b> belong to this group, then assign each <b>button</b> on the dispenser to the <b>keypad</b> it drives.`,
     keypad_led:`Tell each <b>keypad</b> which <b>LED board</b> shows its called token number.`,
     keypad_broker:`Connect each <b>keypad</b> to the <b>broker</b> that routes its calls.`,
     broker_tv:`Point each <b>broker</b> at the <b>TV display</b> that shows its live queue.`,
@@ -171,27 +189,52 @@ function renderMapStage(step) {
     const all=state.pool.TOKEN_DISPENSER||[];
     const allKp=state.pool.KEYPAD||[];
     const inc=all.filter(d=>state.asn.included[d.id]);
-    total=inc.length; done=inc.filter(d=>{ const a=state.asn.dispToKeypad[d.id]; return a&&a.length>0; }).length;
+    // Collect all globally assigned keypad IDs so we can exclude them from other slots
+    const globalUsed = {};
+    inc.forEach(d => {
+      Object.entries(state.asn.dispBtnToKeypad[d.id]||{}).forEach(([slot,kId])=>{
+        if(kId) globalUsed[kId] = {dispId:d.id, slot};
+      });
+    });
+    total=inc.length;
+    done=inc.filter(d=>{
+      const nBtns=numButtons(d);
+      const btnMap=state.asn.dispBtnToKeypad[d.id]||{};
+      return Object.values(btnMap).filter(Boolean).length>=nBtns;
+    }).length;
     rows=all.map(d=>{
       const on=!!state.asn.included[d.id];
-      const selIds=state.asn.dispToKeypad[d.id]||[];
+      const btnMap=state.asn.dispBtnToKeypad[d.id]||{};
+      const nBtns=numButtons(d);
       let linkHtml;
       if(on){
-        const kpChecks=allKp.map(k=>{
-          const chk=selIds.includes(k.id)?'checked':'';
-          return `<label style="display:flex;align-items:center;gap:7px;padding:7px 10px;border-radius:9px;cursor:pointer;font-size:13px;font-weight:600;background:${chk?'var(--cq-primary-light)':'var(--bg-2)'};border:1.5px solid ${chk?'var(--cq-primary)':'var(--border)'};transition:all .15s">
-            <input type="checkbox" style="display:none" ${chk} onchange="wzToggleKeypad('${d.id}','${k.id}',this.checked)">
-            ${ico(toT.icon)}<span>${k.name}</span><span style="color:var(--ink-4);font-size:11px">${k.code}</span>
-          </label>`;
-        }).join('');
-        const badge=selIds.length>0?`<span class="statchip ok" style="margin-left:4px">${selIds.length} selected</span>`:'';
-        linkHtml=`<span class="lk">${ico('fa-arrow-right-long')}</span><div class="tgt-wrap"><div class="tgt-label">${ico(toT.icon)} Routes to keypads ${badge}</div><div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:6px">${kpChecks||'<span style="color:var(--ink-4);font-size:12px">No keypads available</span>'}</div></div>`;
+        const filled=Object.values(btnMap).filter(Boolean).length;
+        const badge=filled>0?`<span class="statchip ok" style="margin-left:4px">${filled}/${nBtns} mapped</span>`:'';
+        const btnRows=[];
+        for(let b=1;b<=nBtns;b++){
+          const curKpId=btnMap[String(b)]||'';
+          // Exclude keypads used by OTHER slots (any disp or any other button of this disp)
+          const availKps=allKp.filter(k=>{
+            const u=globalUsed[k.id];
+            return !u || (u.dispId===d.id && u.slot===String(b));
+          });
+          const opts=availKps.map(k=>`<option value="${k.id}"${k.id===curKpId?' selected':''}>${k.name} · ${k.code}</option>`).join('');
+          const filled1=!!curKpId;
+          btnRows.push(`<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:9px;background:${filled1?'var(--cq-primary-light)':'var(--bg-2)'};border:1.5px solid ${filled1?'var(--cq-primary)':'var(--border)'}">
+            <span style="font-size:11.5px;font-weight:700;color:var(--ink-3);white-space:nowrap;min-width:54px">Button ${b}</span>
+            <span style="color:var(--ink-4)">${ico('fa-arrow-right-long')}</span>
+            <select class="select" style="height:36px;font-size:13px;min-width:180px" onchange="wzSetBtnKeypad('${d.id}',${b},this.value)">
+              <option value="">-- Select Keypad --</option>${opts}
+            </select>
+          </div>`);
+        }
+        linkHtml=`<span class="lk">${ico('fa-arrow-right-long')}</span><div class="tgt-wrap"><div class="tgt-label">${ico(toT.icon)} Routes to keypads ${badge}</div><div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">${btnRows.join('')}</div></div>`;
       } else {
         linkHtml=`<span style="font-size:12.5px;color:var(--ink-4)">Not part of this group</span>`;
       }
       return `<div class="mapcard${on?' on':''}" id="mc-${d.id}">
         <div class="mrow">
-          <div class="srcchip"><div class="sico" style="background:${fromT.bg};color:${fromT.color}">${ico(fromT.icon)}</div><div style="min-width:0"><div class="snm">${d.name}</div><div class="scode">${d.code} · ${d.model}</div></div></div>
+          <div class="srcchip"><div class="sico" style="background:${fromT.bg};color:${fromT.color}">${ico(fromT.icon)}</div><div style="min-width:0"><div class="snm">${d.name}</div><div class="scode">${d.code} · ${d.model}${d.tokenType?` · ${d.tokenType.replace('_',' ')}`:''}</div></div></div>
           <div class="mlink">${linkHtml}</div>
           <div class="incl-toggle"><span class="it-lbl">${on?'Included':'Include'}</span>
             <div class="switch ${on?'on':''}" onclick="wzToggle('${d.id}')" id="sw-${d.id}"><div class="knob"></div></div>
@@ -304,38 +347,36 @@ function wzCountSet(type, val) {
 
 function wzSetBr(id) {
   state.brId=id; state.pool={TOKEN_DISPENSER:[],KEYPAD:[],LED:[],BROKER:[],TV:[]};
-  state.asn={included:{},dispToKeypad:{},keypadToLed:{},keypadToBroker:{},brokerToTv:{}};
+  state.asn={included:{},dispBtnToKeypad:{},keypadToLed:{},keypadToBroker:{},brokerToTv:{}};
   loadDevices();
 }
 function wzSetDc(id) {
   state.dcId=id; state.pool={TOKEN_DISPENSER:[],KEYPAD:[],LED:[],BROKER:[],TV:[]};
-  state.asn={included:{},dispToKeypad:{},keypadToLed:{},keypadToBroker:{},brokerToTv:{}};
+  state.asn={included:{},dispBtnToKeypad:{},keypadToLed:{},keypadToBroker:{},brokerToTv:{}};
   loadDevices();
 }
 function wzSetName(v) { state.gName=v; updateFooter(); }
 
 function wzToggle(devId) {
   state.asn.included[devId]=!state.asn.included[devId];
-  if(!state.asn.included[devId]) delete state.asn.dispToKeypad[devId];
+  if(!state.asn.included[devId]) delete state.asn.dispBtnToKeypad[devId];
   wzRender();
 }
 
-function wzToggleKeypad(dispId, kpId, checked) {
-  if(!state.asn.dispToKeypad[dispId]) state.asn.dispToKeypad[dispId]=[];
-  const arr=state.asn.dispToKeypad[dispId];
-  if(checked){ if(!arr.includes(kpId)) arr.push(kpId); }
-  else { state.asn.dispToKeypad[dispId]=arr.filter(id=>id!==kpId); }
-  updateFooter();
-  const mc=document.getElementById('mc-'+dispId);
-  if(mc) mc.classList.toggle('on', state.asn.dispToKeypad[dispId].length>0);
-  // re-render to refresh badges
+function wzSetBtnKeypad(dispId, btnSlot, kpId) {
+  if (!state.asn.dispBtnToKeypad[dispId]) state.asn.dispBtnToKeypad[dispId] = {};
+  if (kpId) {
+    state.asn.dispBtnToKeypad[dispId][String(btnSlot)] = kpId;
+  } else {
+    delete state.asn.dispBtnToKeypad[dispId][String(btnSlot)];
+  }
   wzRender();
 }
 
 function wzMap(fieldId, srcId, targetType, val) {
-  const fieldMap={disp_keypad:'dispToKeypad',keypad_led:'keypadToLed',keypad_broker:'keypadToBroker',broker_tv:'brokerToTv'};
+  const fieldMap={keypad_led:'keypadToLed',keypad_broker:'keypadToBroker',broker_tv:'brokerToTv'};
   const steps=buildSteps(); const step=steps[Math.min(state.cur,steps.length-1)];
-  const field=fieldMap[step.id]||'dispToKeypad';
+  const field=fieldMap[step.id];
   state.asn[field][srcId]=val;
   updateFooter();
   // update mapcard highlight
@@ -362,7 +403,7 @@ function loadDevices() {
       const g={TOKEN_DISPENSER:[],KEYPAD:[],LED:[],BROKER:[],TV:[]};
       (data.devices||[]).forEach(d=>{
         if(!g[d.device_type])g[d.device_type]=[];
-        g[d.device_type].push({id:String(d.id),name:d.get_display_identifier,code:d.serial_number,model:d.device_model||'CQ Device',inGroup:!!d.in_group});
+        g[d.device_type].push({id:String(d.id),name:d.get_display_identifier,code:d.serial_number,model:d.device_model||'CQ Device',inGroup:!!d.in_group,tokenType:d.token_type||null});
       });
       state.pool=g;
     })
@@ -375,9 +416,9 @@ function wzFinish() {
   const inc=inclDisp(), kp=kpDevs(), brk=brkDevs();
   const dispIds=inc.map(d=>d.id);
 
-  // Collect all unique keypad IDs across all dispenser→keypad arrays
+  // Collect all unique keypad IDs across all dispenser→button→keypad assignments
   const keypIdSet=new Set();
-  dispIds.forEach(dId=>{ (state.asn.dispToKeypad[dId]||[]).forEach(kId=>keypIdSet.add(kId)); });
+  dispIds.forEach(dId=>{ Object.values(state.asn.dispBtnToKeypad[dId]||{}).forEach(kId=>{if(kId)keypIdSet.add(kId);}); });
   const keypIds=[...keypIdSet];
 
   const lIds=state.counts.LED>0?[...new Set(keypIds.map(id=>state.asn.keypadToLed[id]).filter(Boolean))]:[];
@@ -397,9 +438,11 @@ function wzFinish() {
   lIds.forEach(id=>h('leds[]',id));
   brIds.forEach(id=>h('brokers[]',id));
   tIds.forEach(id=>h('tvs[]',id));
-  // Send dispenser→keypad pairs for multi-keypad mapping storage
+  // Send dispenser→button→keypad triples for per-button mapping storage
   dispIds.forEach(dId=>{
-    (state.asn.dispToKeypad[dId]||[]).forEach(kId=>h('disp_keypad_map[]',`${dId}:${kId}`));
+    Object.entries(state.asn.dispBtnToKeypad[dId]||{}).forEach(([btnSlot,kId])=>{
+      if(kId) h('disp_keypad_map[]',`${dId}:${btnSlot}:${kId}`);
+    });
   });
   document.body.appendChild(form); form.submit();
 }
