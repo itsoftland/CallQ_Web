@@ -1554,7 +1554,7 @@ def _get_tv_flag_config(request, device, company, dealer_customer, is_dealer_cus
         Build counter dicts for a given dispenser, attaching:
           - keypad_index            : ASCII slot of the keypad on this TV (e.g. '1', '2')
           - dispenser_index         : ASCII slot of the dispenser on this TV (TVDispenserMapping.button_index)
-          - button_index            : same as dispenser_index
+          - button_index            : 1-based physical button position on the dispenser (from GCBM/CTDM order)
           - dispenser_button_number : 1-based physical button position on the dispenser
                                      (derived from GCBM order by button_index)
         Source: GroupCounterButtonMapping scoped to the dispenser's current group.
@@ -1613,7 +1613,7 @@ def _get_tv_flag_config(request, device, company, dealer_customer, is_dealer_cus
                         'counter_id':              c.counter_name,
                         'default_code':            c.counter_prefix_code,
                         'keypad_index':            [keypad_index] if keypad_index else [],
-                        'button_index':            _parse_pos(dispenser_index),
+                        'button_index':            _parse_pos(dispenser_button_number_char),
                         'dispenser_button_index':  dispenser_button_number_char,
                         'name':                    c.counter_display_name,
                         'code':                    c.counter_prefix_code,
@@ -1635,7 +1635,7 @@ def _get_tv_flag_config(request, device, company, dealer_customer, is_dealer_cus
                         'counter_id':              c.counter_name,
                         'default_code':            c.counter_prefix_code,
                         'keypad_index':            [keypad_index] if keypad_index else [],
-                        'button_index':            _parse_pos(dispenser_index),
+                        'button_index':            _parse_pos(dispenser_button_number_char),
                         'dispenser_button_index':  dispenser_button_number_char,
                         'name':                    c.counter_display_name,
                         'code':                    c.counter_prefix_code,
@@ -3787,9 +3787,36 @@ def _create_tv_slot_mappings(group, new_dispenser_ids=None, new_tv_ids=None, new
     # ---------------------------------------------------------------
     if keypads_list:
         from django.db.models import Q
+
+        # ── Build per-dispenser GCBM index list ─────────────────────────────
+        # dispenser_id → [button_index chars in ascending order]
+        # Position N-1 in this list = physical button N on the dispenser.
+        # We use this to derive the GROUP-WIDE keypad_index for each keypad
+        # so it aligns with the counter's dispenser_button_index on the TV.
+        gcbm_by_dispenser = {}
+        for _gcbm in GroupCounterButtonMapping.objects.filter(group=group).order_by('button_index'):
+            gcbm_by_dispenser.setdefault(_gcbm.dispenser_id, []).append(_gcbm.button_index)
+
+        # Fetch DKM records once — reused for keypad_target_index AND dkm_lookup.
+        dkm_qs = list(
+            DispenserKeypadMapping.objects.filter(group=group).select_related('dispenser')
+        )
+
+        # Build: keypad_id → correct keypad_index (the GCBM button_index of the
+        # counter driven by the same dispenser button that drives this keypad).
+        # This ensures keypad_index == dispenser_button_index in the TV filter
+        # (line ~1791) so each keypad displays the right counter.
+        keypad_target_index = {}
+        for _dkm in dkm_qs:
+            # DKM.dispenser_button_index is an ASCII char: '1'→btn1, '2'→btn2 …
+            phys_btn = ord(_dkm.dispenser_button_index) - 0x30  # '1'→1, '2'→2
+            gcbm_indices = gcbm_by_dispenser.get(_dkm.dispenser_id, [])
+            if 1 <= phys_btn <= len(gcbm_indices):
+                keypad_target_index[_dkm.keypad_id] = gcbm_indices[phys_btn - 1]
+
         # 1. Assign stable keypad_index once per keypad in the group
         existing_indices = set(k.keypad_index for k in keypads_list if k.keypad_index)
-        
+
         # If no keypads in this group have indices yet, check existing group mappings in DB
         if not existing_indices:
             existing_indices = set(
@@ -3800,19 +3827,19 @@ def _create_tv_slot_mappings(group, new_dispenser_ids=None, new_tv_ids=None, new
 
         for keypad in keypads_list:
             if not keypad.keypad_index:
-                new_idx = get_next_available_index(existing_indices)
+                # Prefer the GCBM-aligned index so the TV counter filter matches.
+                preferred = keypad_target_index.get(keypad.id)
+                if preferred and preferred not in existing_indices:
+                    new_idx = preferred
+                else:
+                    new_idx = get_next_available_index(existing_indices)
                 keypad.keypad_index = new_idx
                 keypad.save(update_fields=['keypad_index'])
                 existing_indices.add(new_idx)
 
-        # Build a lookup: keypad_id → dispenser
-        # Priority: DispenserKeypadMapping (explicit multi-keypad assignment)
+        # Build a lookup: keypad_id → dispenser (reuse DKM records already fetched)
         # Fallback: positional assignment (legacy / single-keypad behaviour)
-        dkm_lookup = {
-            dkm.keypad_id: dkm.dispenser
-            for dkm in DispenserKeypadMapping.objects.filter(group=group)
-                                                      .select_related('dispenser')
-        }
+        dkm_lookup = {dkm.keypad_id: dkm.dispenser for dkm in dkm_qs}
 
         # 2. Map every keypad in this group to every TV in the group using its stable index
         for tv in tvs_list:
