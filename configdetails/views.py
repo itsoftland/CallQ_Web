@@ -1740,6 +1740,15 @@ def _get_tv_flag_config(request, device, company, dealer_customer, is_dealer_cus
             .select_related('keypad', 'dispenser')
             .order_by('keypad_index')
         )
+
+        # Count how many keypad slots on this TV share the same dispenser.
+        # When count > 1, each keypad is responsible for exactly one counter
+        # (the one whose dispenser button index matches the keypad's slot index).
+        _dispenser_keypad_counts = {}
+        for _kpm in tv_keypad_mappings:
+            if _kpm.dispenser_id:
+                _dispenser_keypad_counts[_kpm.dispenser_id] = _dispenser_keypad_counts.get(_kpm.dispenser_id, 0) + 1
+
         for kp_mapping in tv_keypad_mappings:
             kp = kp_mapping.keypad
             kp_cfg = _get_device_config_json(kp)
@@ -1771,6 +1780,16 @@ def _get_tv_flag_config(request, device, company, dealer_customer, is_dealer_cus
                 dispenser, _ = _resolve_dispenser_for_keypad(kp, kp_mapping.dispenser)
                 kp_counters = _build_counters_for_dispenser(dispenser, kp_mapping.keypad_index)
                 dispenser_sn_for_entry = format_tv_serial_number(dispenser.serial_number) if dispenser else None
+
+                # When multiple keypads share the same dispenser, restrict each
+                # keypad to only the counter whose dispenser button index matches
+                # this keypad's slot index (keypad "2" → dispenser button "2").
+                if dispenser and _dispenser_keypad_counts.get(dispenser.id, 1) > 1:
+                    kp_idx_str = str(kp_mapping.keypad_index or '')
+                    kp_counters = [
+                        c for c in kp_counters
+                        if str(c.get('dispenser_button_index', '')) == kp_idx_str
+                    ]
 
             mapped_counters_list.extend(kp_counters)
 
