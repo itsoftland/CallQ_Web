@@ -8860,11 +8860,11 @@ def register_device_api(request):
 # Token Report API
 # ---------------------------------------------------------------------------
 
-# Mapping of payload[3] to human-readable message type
+# Mapping of payload[4] (4th position excluding '$') to human-readable message type
 _MQTT_TYPE_MAP = {
-    'A': 'NORMAL',
+    '-': 'NORMAL',
+    'A': 'SKIP',
     'B': 'TRANSFER',
-    'E': 'SKIP',
     'C': 'SPECIAL',
     'D': 'VIP',
 }
@@ -8899,9 +8899,9 @@ def _parse_mqtt_payload(payload):
     """
     Parse an MQTT payload string.
 
-    Format: $0PA<TYPE><...><KEYPAD_SERIAL(11)><DISP_IDX><KP_IDX>-<TOKEN(4)>[BTN_ID]*
-    Verified positions (example: $0PA-AeCAL0K0001lo-0007*):
-      [3]     → message type char     (A/B/C/D/E  or start of CLR)
+    Format: $0XX<TYPE><...><KEYPAD_SERIAL(11)><DISP_IDX><KP_IDX>-<TOKEN(4)>[BTN_ID]*
+    Verified positions (example: $0MD-AbCAL0K000412-0044*):
+      [4]     → message type char     (-/A/B/C/D  or start of CLR)
       [5:16]  → keypad serial encoded (11 chars, e.g. 'AeCAL0K0001')
                 year-as-letter prefix; use _unformat_serial() to get the DB serial
       [16]    → dispenser slot index  (1 ASCII char, e.g. 'l')
@@ -8920,11 +8920,11 @@ def _parse_mqtt_payload(payload):
         'token_number':      '',
         'button_string_id':  '',
     }
-    if not payload or len(payload) < 4:
+    if not payload or len(payload) < 5:
         return result
 
-    # CLR is a 3-char type starting at index 3
-    if len(payload) >= 6 and payload[3:6] == 'CLR':
+    # CLR is a 3-char type starting at index 4 (4th position excluding '$')
+    if len(payload) >= 7 and payload[4:7] == 'CLR':
         result['message_type_char'] = 'CLR'
         result['message_type']      = 'CLEAR'
         if len(payload) > 15:
@@ -8935,7 +8935,7 @@ def _parse_mqtt_payload(payload):
             result['keypad_index'] = payload[17]
         return result
 
-    type_char = payload[3]
+    type_char = payload[4]
     result['message_type_char'] = type_char
     result['message_type']      = _MQTT_TYPE_MAP.get(type_char, 'UNKNOWN')
 
