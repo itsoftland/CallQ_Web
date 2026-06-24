@@ -9254,12 +9254,20 @@ def token_report_list(request):
         qs = qs.filter(message_type=filter_type)
     if filter_date_from:
         try:
-            qs = qs.filter(received_at__date__gte=date.fromisoformat(filter_date_from))
+            from django.utils import timezone as _tz
+            import datetime as _dt
+            _local_tz = _tz.get_current_timezone()
+            _d = date.fromisoformat(filter_date_from)
+            qs = qs.filter(received_at__gte=_tz.make_aware(_dt.datetime.combine(_d, _dt.time.min), _local_tz))
         except ValueError:
             pass
     if filter_date_to:
         try:
-            qs = qs.filter(received_at__date__lte=date.fromisoformat(filter_date_to))
+            from django.utils import timezone as _tz
+            import datetime as _dt
+            _local_tz = _tz.get_current_timezone()
+            _d = date.fromisoformat(filter_date_to)
+            qs = qs.filter(received_at__lte=_tz.make_aware(_dt.datetime.combine(_d, _dt.time.max), _local_tz))
         except ValueError:
             pass
 
@@ -10924,9 +10932,21 @@ def android_token_report_api(request):
     except (ValueError, TypeError):
         pass
 
+    # Use an explicit UTC-aware range instead of __date so MySQL works correctly
+    # even when its timezone tables are not loaded (CONVERT_TZ returns NULL otherwise).
+    from django.utils import timezone as _tz
+    import datetime as _dt
+    _local_tz = _tz.get_current_timezone()
+    day_start = _tz.make_aware(_dt.datetime.combine(report_date, _dt.time.min), _local_tz)
+    day_end   = _tz.make_aware(_dt.datetime.combine(report_date, _dt.time.max), _local_tz)
+
     qs = (
         MQTTTokenLog.objects
-        .filter(customer_id__in=list(scoped_ids), received_at__date=report_date)
+        .filter(
+            customer_id__in=list(scoped_ids),
+            received_at__gte=day_start,
+            received_at__lte=day_end,
+        )
         .select_related('counter')
         .order_by('received_at')
     )
