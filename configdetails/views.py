@@ -4271,6 +4271,26 @@ def mapping_view(request):
                         continue
             # ──────────────────────────────────────────────────────────────────
 
+            # ─── Pool mode: keypad → counter mappings ─────────────────────────
+            # The wizard submits keypad_counter_map[] as "kpId:counterId"
+            if pool_mode:
+                kp_counter_pairs = [
+                    p for p in request.POST.getlist('keypad_counter_map[]') if p
+                ]
+                for pair in kp_counter_pairs:
+                    try:
+                        kp_id, c_id = pair.split(':', 1)
+                        keypad_obj = Device.objects.get(id=int(kp_id), device_type=Device.DeviceType.KEYPAD)
+                        counter_obj = CounterConfig.objects.get(id=int(c_id))
+                        KeypadCounterMapping.objects.get_or_create(
+                            group=group,
+                            keypad=keypad_obj,
+                            defaults={'counter': counter_obj},
+                        )
+                    except (ValueError, Device.DoesNotExist, CounterConfig.DoesNotExist):
+                        continue
+            # ──────────────────────────────────────────────────────────────────
+
             # session_mapping_ids: IDs of ButtonMapping rows already saved by the
             # wizard during Steps 2-5.  When present, the user has explicitly
             # configured every button — skip auto-generation to avoid duplicates.
@@ -4438,7 +4458,7 @@ def mapping_view(request):
         cls=_DJE,
     )
     context['branches_json'] = _json.dumps(
-        [{'id': b.id, 'name': b.branch_name} for b in _branches_list],
+        [{'id': b.id, 'name': b.branch_name, 'company_id': b.company_id} for b in _branches_list],
         cls=_DJE,
     )
     context['dealer_customers_json'] = _json.dumps(

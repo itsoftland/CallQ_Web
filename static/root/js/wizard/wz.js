@@ -16,6 +16,7 @@ const TYPE = {
   LED:     {label:'LED Display',plural:'LEDs',short:'LED',icon:'fa-lightbulb',color:'var(--t-led)',bg:'var(--t-led-bg)'},
   BROKER:  {label:'Broker',plural:'Brokers',short:'Broker',icon:'fa-server',color:'var(--t-broker)',bg:'var(--t-broker-bg)'},
   TV:      {label:'TV Display',plural:'TVs',short:'TV',icon:'fa-tv',color:'var(--t-tv)',bg:'var(--t-tv-bg)'},
+  COUNTER: {label:'Counter',plural:'Counters',short:'Counter',icon:'fa-hashtag',color:'#6366F1',bg:'#EEF2FF'},
 };
 const TYPE_ORDER = ['TOKEN_DISPENSER','KEYPAD','LED','BROKER','TV'];
 
@@ -26,9 +27,10 @@ let state = {
   dcId: '',
   gName: '',
   counts: {TOKEN_DISPENSER:0, KEYPAD:0, LED:0, BROKER:0, TV:0},
-  pool: {TOKEN_DISPENSER:[], KEYPAD:[], LED:[], BROKER:[], TV:[]},
-  asn: {included:{}, dispBtnToKeypad:{}, keypadToLed:{}, keypadToBroker:{}, brokerToTv:{}},
-  // dispBtnToKeypad: { dispId: { '1': kpId, '2': kpId, ... } } — per-button keypad assignment
+  pool: {TOKEN_DISPENSER:[], KEYPAD:[], LED:[], BROKER:[], TV:[], COUNTER:[]},
+  asn: {included:{}, dispBtnToKeypad:{}, dispBtnKeypadsPool:{}, keypadToLed:{}, keypadToBroker:{}, brokerToTv:{}, keypadToCounter:{}},
+  // dispBtnToKeypad: { dispId: { '1': kpId, '2': kpId, ... } } — per-button keypad assignment (normal mode)
+  // dispBtnKeypadsPool: { dispId: { '1': { '1': kpId, '2': kpId, ... }, '2': { ... } } } — pool mode: multiple keypads per button
   poolMode: false,
   cur: 0,
   loading: false,
@@ -42,11 +44,22 @@ function numButtons(disp) {
 }
 function kpDevs() {
   const ids = [];
-  inclDisp().forEach(d => {
-    Object.values(state.asn.dispBtnToKeypad[d.id] || {}).forEach(kId => {
-      if (kId && !ids.includes(kId)) ids.push(kId);
+  if (state.poolMode) {
+    inclDisp().forEach(d => {
+      const poolMap = state.asn.dispBtnKeypadsPool[d.id] || {};
+      Object.values(poolMap).forEach(slotMap => {
+        Object.values(slotMap).forEach(kId => {
+          if (kId && !ids.includes(kId)) ids.push(kId);
+        });
+      });
     });
-  });
+  } else {
+    inclDisp().forEach(d => {
+      Object.values(state.asn.dispBtnToKeypad[d.id] || {}).forEach(kId => {
+        if (kId && !ids.includes(kId)) ids.push(kId);
+      });
+    });
+  }
   return ids.map(id=>(state.pool.KEYPAD||[]).find(d=>d.id===id)).filter(Boolean);
 }
 function brkDevs()  {
@@ -62,6 +75,8 @@ function buildSteps() {
   const steps = [{id:'config',label:'Configure',kind:'config'}];
   if (c.TOKEN_DISPENSER>0 && c.KEYPAD>0)
     steps.push({id:'disp_keypad',label:'Dispensers → Keypads',kind:'map',from:'TOKEN_DISPENSER',to:'KEYPAD'});
+  if (state.poolMode && c.KEYPAD>0)
+    steps.push({id:'keypad_counter',label:'Keypads → Counters',kind:'map',from:'KEYPAD',to:'COUNTER'});
   if (c.KEYPAD>0 && c.LED>0)
     steps.push({id:'keypad_led',label:'Keypads → LEDs',kind:'map',from:'KEYPAD',to:'LED'});
   if (c.KEYPAD>0 && c.BROKER>0)
@@ -77,6 +92,23 @@ function stageOk(id) {
   const inc = inclDisp(), kp = kpDevs(), brk = brkDevs();
   if(id==='disp_keypad') {
     if (!inc.length) return false;
+    if (state.poolMode) {
+      const used = [];
+      for (const d of inc) {
+        const nBtns = numButtons(d);
+        const poolMap = state.asn.dispBtnKeypadsPool[d.id] || {};
+        for (let b = 1; b <= nBtns; b++) {
+          const slotMap = poolMap[String(b)] || {};
+          const assigned = Object.values(slotMap).filter(Boolean);
+          if (!assigned.length) return false;
+          for (const kId of assigned) {
+            if (used.includes(kId)) return false;
+            used.push(kId);
+          }
+        }
+      }
+      return true;
+    }
     const used = [];
     for (const d of inc) {
       const nBtns = numButtons(d);
@@ -89,6 +121,7 @@ function stageOk(id) {
     }
     return true;
   }
+  if(id==='keypad_counter') return kp.length>=1 && kp.every(k=>state.asn.keypadToCounter[k.id]);
   if(id==='keypad_led')    return kp.length>=1  && kp.every(k=>state.asn.keypadToLed[k.id]);
   if(id==='keypad_broker') return kp.length>=1  && kp.every(k=>state.asn.keypadToBroker[k.id]);
   if(id==='broker_tv')     return brk.length>=1 && brk.every(b=>state.asn.brokerToTv[b.id]);
@@ -174,10 +207,11 @@ function deviceSelectHtml(fieldId, srcId, targetType, currentVal) {
 /* ── Render: Map Stage ── */
 function renderMapStage(step) {
   const fromT=TYPE[step.from], toT=TYPE[step.to];
-  const fieldMap = {keypad_led:'keypadToLed',keypad_broker:'keypadToBroker',broker_tv:'brokerToTv'};
+  const fieldMap = {keypad_counter:'keypadToCounter',keypad_led:'keypadToLed',keypad_broker:'keypadToBroker',broker_tv:'brokerToTv'};
   const field = fieldMap[step.id];
   const guidance = {
     disp_keypad:`Choose which <b>token dispensers</b> belong to this group, then assign each <b>button</b> on the dispenser to the <b>keypad</b> it drives.`,
+    keypad_counter:`Map each <b>keypad</b> directly to the <b>counter</b> it serves — pool mode bypasses the dispenser chain.`,
     keypad_led:`Tell each <b>keypad</b> which <b>LED board</b> shows its called token number.`,
     keypad_broker:`Connect each <b>keypad</b> to the <b>broker</b> that routes its calls.`,
     broker_tv:`Point each <b>broker</b> at the <b>TV display</b> that shows its live queue.`,
@@ -189,46 +223,110 @@ function renderMapStage(step) {
     const all=state.pool.TOKEN_DISPENSER||[];
     const allKp=state.pool.KEYPAD||[];
     const inc=all.filter(d=>state.asn.included[d.id]);
-    // Collect all globally assigned keypad IDs so we can exclude them from other slots
+    const nPoolKp=state.counts.KEYPAD;
+
+    // Collect all globally assigned keypad IDs for exclusion from other slots
     const globalUsed = {};
-    inc.forEach(d => {
-      Object.entries(state.asn.dispBtnToKeypad[d.id]||{}).forEach(([slot,kId])=>{
-        if(kId) globalUsed[kId] = {dispId:d.id, slot};
+    if (state.poolMode) {
+      inc.forEach(d => {
+        const poolMap = state.asn.dispBtnKeypadsPool[d.id] || {};
+        Object.entries(poolMap).forEach(([slot, slotMap]) => {
+          Object.entries(slotMap).forEach(([pidx, kId]) => {
+            if (kId) globalUsed[kId] = {dispId:d.id, slot, pidx};
+          });
+        });
       });
-    });
+    } else {
+      inc.forEach(d => {
+        Object.entries(state.asn.dispBtnToKeypad[d.id]||{}).forEach(([slot,kId])=>{
+          if(kId) globalUsed[kId] = {dispId:d.id, slot};
+        });
+      });
+    }
+
     total=inc.length;
-    done=inc.filter(d=>{
-      const nBtns=numButtons(d);
-      const btnMap=state.asn.dispBtnToKeypad[d.id]||{};
-      return Object.values(btnMap).filter(Boolean).length>=nBtns;
-    }).length;
+    if (state.poolMode) {
+      done=inc.filter(d=>{
+        const nBtns=numButtons(d);
+        const poolMap=state.asn.dispBtnKeypadsPool[d.id]||{};
+        for(let b=1;b<=nBtns;b++){
+          const assigned=Object.values(poolMap[String(b)]||{}).filter(Boolean);
+          if(!assigned.length) return false;
+        }
+        return true;
+      }).length;
+    } else {
+      done=inc.filter(d=>{
+        const nBtns=numButtons(d);
+        const btnMap=state.asn.dispBtnToKeypad[d.id]||{};
+        return Object.values(btnMap).filter(Boolean).length>=nBtns;
+      }).length;
+    }
+
     rows=all.map(d=>{
       const on=!!state.asn.included[d.id];
-      const btnMap=state.asn.dispBtnToKeypad[d.id]||{};
       const nBtns=numButtons(d);
       let linkHtml;
       if(on){
-        const filled=Object.values(btnMap).filter(Boolean).length;
-        const badge=filled>0?`<span class="statchip ok" style="margin-left:4px">${filled}/${nBtns} mapped</span>`:'';
         const btnRows=[];
-        for(let b=1;b<=nBtns;b++){
-          const curKpId=btnMap[String(b)]||'';
-          // Exclude keypads used by OTHER slots (any disp or any other button of this disp)
-          const availKps=allKp.filter(k=>{
-            const u=globalUsed[k.id];
-            return !u || (u.dispId===d.id && u.slot===String(b));
-          });
-          const opts=availKps.map(k=>`<option value="${k.id}"${k.id===curKpId?' selected':''}>${k.name} · ${k.code}</option>`).join('');
-          const filled1=!!curKpId;
-          btnRows.push(`<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:9px;background:${filled1?'var(--cq-primary-light)':'var(--bg-2)'};border:1.5px solid ${filled1?'var(--cq-primary)':'var(--border)'}">
-            <span style="font-size:11.5px;font-weight:700;color:var(--ink-3);white-space:nowrap;min-width:54px">Button ${b}</span>
-            <span style="color:var(--ink-4)">${ico('fa-arrow-right-long')}</span>
-            <select class="select" style="height:36px;font-size:13px;min-width:180px" onchange="wzSetBtnKeypad('${d.id}',${b},this.value)">
-              <option value="">-- Select Keypad --</option>${opts}
-            </select>
-          </div>`);
+        if (state.poolMode) {
+          const poolMap=state.asn.dispBtnKeypadsPool[d.id]||{};
+          let totalFilled=0, totalSlots=nBtns;
+          for(let b=1;b<=nBtns;b++){
+            const slotMap=poolMap[String(b)]||{};
+            const assignedInBtn=Object.values(slotMap).filter(Boolean);
+            if(assignedInBtn.length) totalFilled++;
+            const poolDropdowns=[];
+            for(let p=1;p<=nPoolKp;p++){
+              const curKpId=slotMap[String(p)]||'';
+              const availKps=allKp.filter(k=>{
+                const u=globalUsed[k.id];
+                return !u || (u.dispId===d.id && u.slot===String(b) && u.pidx===String(p));
+              });
+              const opts=availKps.map(k=>`<option value="${k.id}"${k.id===curKpId?' selected':''}>${k.name} · ${k.code}</option>`).join('');
+              const isFilled=!!curKpId;
+              poolDropdowns.push(`<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:7px;background:${isFilled?'var(--cq-primary-light)':'var(--bg-2)'};border:1px solid ${isFilled?'var(--cq-primary)':'var(--border)'}">
+                <span style="font-size:11px;font-weight:600;color:var(--ink-3);white-space:nowrap;min-width:62px">Keypad ${p}</span>
+                <select class="select" style="height:32px;font-size:12.5px;min-width:170px" onchange="wzSetBtnKeypadsPool('${d.id}',${b},${p},this.value)">
+                  <option value="">-- Select Keypad --</option>${opts}
+                </select>
+              </div>`);
+            }
+            const btnFilled=assignedInBtn.length;
+            const btnBadge=btnFilled>0?`<span class="statchip ok" style="font-size:10px;margin-left:4px">${btnFilled}/${nPoolKp}</span>`:'';
+            btnRows.push(`<div style="padding:10px 12px;border-radius:10px;background:var(--bg-2);border:1.5px solid ${btnFilled?'var(--cq-primary)':'var(--border)'}">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                <span style="font-size:11.5px;font-weight:700;color:var(--ink-2)">Button ${b}</span>
+                <span style="color:var(--ink-4);font-size:11px">${ico('fa-arrow-right-long')}</span>
+                <span style="font-size:11.5px;color:var(--ink-3)">Pool keypads</span>${btnBadge}
+              </div>
+              <div style="display:flex;flex-direction:column;gap:5px">${poolDropdowns.join('')}</div>
+            </div>`);
+          }
+          const badge=totalFilled>0?`<span class="statchip ok" style="margin-left:4px">${totalFilled}/${totalSlots} mapped</span>`:'';
+          linkHtml=`<span class="lk">${ico('fa-arrow-right-long')}</span><div class="tgt-wrap"><div class="tgt-label">${ico(toT.icon)} Routes to keypads ${badge}</div><div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">${btnRows.join('')}</div></div>`;
+        } else {
+          const btnMap=state.asn.dispBtnToKeypad[d.id]||{};
+          const filled=Object.values(btnMap).filter(Boolean).length;
+          const badge=filled>0?`<span class="statchip ok" style="margin-left:4px">${filled}/${nBtns} mapped</span>`:'';
+          for(let b=1;b<=nBtns;b++){
+            const curKpId=btnMap[String(b)]||'';
+            const availKps=allKp.filter(k=>{
+              const u=globalUsed[k.id];
+              return !u || (u.dispId===d.id && u.slot===String(b));
+            });
+            const opts=availKps.map(k=>`<option value="${k.id}"${k.id===curKpId?' selected':''}>${k.name} · ${k.code}</option>`).join('');
+            const filled1=!!curKpId;
+            btnRows.push(`<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:9px;background:${filled1?'var(--cq-primary-light)':'var(--bg-2)'};border:1.5px solid ${filled1?'var(--cq-primary)':'var(--border)'}">
+              <span style="font-size:11.5px;font-weight:700;color:var(--ink-3);white-space:nowrap;min-width:54px">Button ${b}</span>
+              <span style="color:var(--ink-4)">${ico('fa-arrow-right-long')}</span>
+              <select class="select" style="height:36px;font-size:13px;min-width:180px" onchange="wzSetBtnKeypad('${d.id}',${b},this.value)">
+                <option value="">-- Select Keypad --</option>${opts}
+              </select>
+            </div>`);
+          }
+          linkHtml=`<span class="lk">${ico('fa-arrow-right-long')}</span><div class="tgt-wrap"><div class="tgt-label">${ico(toT.icon)} Routes to keypads ${badge}</div><div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">${btnRows.join('')}</div></div>`;
         }
-        linkHtml=`<span class="lk">${ico('fa-arrow-right-long')}</span><div class="tgt-wrap"><div class="tgt-label">${ico(toT.icon)} Routes to keypads ${badge}</div><div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">${btnRows.join('')}</div></div>`;
       } else {
         linkHtml=`<span style="font-size:12.5px;color:var(--ink-4)">Not part of this group</span>`;
       }
@@ -346,20 +444,23 @@ function wzCountSet(type, val) {
 }
 
 function wzSetBr(id) {
-  state.brId=id; state.pool={TOKEN_DISPENSER:[],KEYPAD:[],LED:[],BROKER:[],TV:[]};
-  state.asn={included:{},dispBtnToKeypad:{},keypadToLed:{},keypadToBroker:{},brokerToTv:{}};
+  state.brId=id; state.pool={TOKEN_DISPENSER:[],KEYPAD:[],LED:[],BROKER:[],TV:[],COUNTER:[]};
+  state.asn={included:{},dispBtnToKeypad:{},dispBtnKeypadsPool:{},keypadToLed:{},keypadToBroker:{},brokerToTv:{},keypadToCounter:{}};
   loadDevices();
 }
 function wzSetDc(id) {
-  state.dcId=id; state.pool={TOKEN_DISPENSER:[],KEYPAD:[],LED:[],BROKER:[],TV:[]};
-  state.asn={included:{},dispBtnToKeypad:{},keypadToLed:{},keypadToBroker:{},brokerToTv:{}};
+  state.dcId=id; state.pool={TOKEN_DISPENSER:[],KEYPAD:[],LED:[],BROKER:[],TV:[],COUNTER:[]};
+  state.asn={included:{},dispBtnToKeypad:{},dispBtnKeypadsPool:{},keypadToLed:{},keypadToBroker:{},brokerToTv:{},keypadToCounter:{}};
   loadDevices();
 }
 function wzSetName(v) { state.gName=v; updateFooter(); }
 
 function wzToggle(devId) {
   state.asn.included[devId]=!state.asn.included[devId];
-  if(!state.asn.included[devId]) delete state.asn.dispBtnToKeypad[devId];
+  if(!state.asn.included[devId]) {
+    delete state.asn.dispBtnToKeypad[devId];
+    delete state.asn.dispBtnKeypadsPool[devId];
+  }
   wzRender();
 }
 
@@ -373,8 +474,19 @@ function wzSetBtnKeypad(dispId, btnSlot, kpId) {
   wzRender();
 }
 
+function wzSetBtnKeypadsPool(dispId, btnSlot, poolIdx, kpId) {
+  if (!state.asn.dispBtnKeypadsPool[dispId]) state.asn.dispBtnKeypadsPool[dispId] = {};
+  if (!state.asn.dispBtnKeypadsPool[dispId][String(btnSlot)]) state.asn.dispBtnKeypadsPool[dispId][String(btnSlot)] = {};
+  if (kpId) {
+    state.asn.dispBtnKeypadsPool[dispId][String(btnSlot)][String(poolIdx)] = kpId;
+  } else {
+    delete state.asn.dispBtnKeypadsPool[dispId][String(btnSlot)][String(poolIdx)];
+  }
+  wzRender();
+}
+
 function wzMap(fieldId, srcId, targetType, val) {
-  const fieldMap={keypad_led:'keypadToLed',keypad_broker:'keypadToBroker',broker_tv:'brokerToTv'};
+  const fieldMap={keypad_counter:'keypadToCounter',keypad_led:'keypadToLed',keypad_broker:'keypadToBroker',broker_tv:'brokerToTv'};
   const steps=buildSteps(); const step=steps[Math.min(state.cur,steps.length-1)];
   const field=fieldMap[step.id];
   state.asn[field][srcId]=val;
@@ -400,7 +512,7 @@ function loadDevices() {
   fetch(url)
     .then(r=>r.json())
     .then(data=>{
-      const g={TOKEN_DISPENSER:[],KEYPAD:[],LED:[],BROKER:[],TV:[]};
+      const g={TOKEN_DISPENSER:[],KEYPAD:[],LED:[],BROKER:[],TV:[],COUNTER:state.pool.COUNTER||[]};
       (data.devices||[]).forEach(d=>{
         if(!g[d.device_type])g[d.device_type]=[];
         g[d.device_type].push({id:String(d.id),name:d.get_display_identifier,code:d.serial_number,model:d.device_model||'CQ Device',inGroup:!!d.in_group,tokenType:d.token_type||null});
@@ -408,7 +520,25 @@ function loadDevices() {
       state.pool=g;
     })
     .catch(()=>{})
-    .finally(()=>{state.loading=false; wzRender();});
+    .finally(()=>{state.loading=false; wzRender(); loadCounters();});
+}
+
+function loadCounters() {
+  // Derive company_id from the selected branch (injected into branches_json)
+  const branch=(WZ.branches||[]).find(b=>String(b.id)===state.brId);
+  const companyId=branch&&branch.company_id?branch.company_id:null;
+  const url=companyId?`/CallQ/config/api/counters/?company_id=${companyId}`:'/CallQ/config/api/counters/';
+  fetch(url)
+    .then(r=>r.json())
+    .then(data=>{
+      state.pool.COUNTER=(data.counters||[]).map(c=>({
+        id:String(c.id),
+        name:c.counter_name,
+        code:c.counter_name,
+      }));
+      wzRender();
+    })
+    .catch(()=>{});
 }
 
 /* ── Finish & Submit ── */
@@ -418,7 +548,14 @@ function wzFinish() {
 
   // Collect all unique keypad IDs across all dispenser→button→keypad assignments
   const keypIdSet=new Set();
-  dispIds.forEach(dId=>{ Object.values(state.asn.dispBtnToKeypad[dId]||{}).forEach(kId=>{if(kId)keypIdSet.add(kId);}); });
+  if (state.poolMode) {
+    dispIds.forEach(dId=>{
+      const poolMap=state.asn.dispBtnKeypadsPool[dId]||{};
+      Object.values(poolMap).forEach(slotMap=>{ Object.values(slotMap).forEach(kId=>{if(kId)keypIdSet.add(kId);}); });
+    });
+  } else {
+    dispIds.forEach(dId=>{ Object.values(state.asn.dispBtnToKeypad[dId]||{}).forEach(kId=>{if(kId)keypIdSet.add(kId);}); });
+  }
   const keypIds=[...keypIdSet];
 
   const lIds=state.counts.LED>0?[...new Set(keypIds.map(id=>state.asn.keypadToLed[id]).filter(Boolean))]:[];
@@ -435,15 +572,28 @@ function wzFinish() {
   h('qty_led',state.counts.LED); h('qty_broker',state.counts.BROKER); h('qty_tv',state.counts.TV);
   dispIds.forEach(id=>h('dispensers[]',id));
   keypIds.forEach(id=>h('keypads[]',id));
+  // Pool mode: keypad → counter mappings
+  if (state.poolMode) {
+    keypIds.forEach(kId=>{ const cId=state.asn.keypadToCounter[kId]; if(cId) h('keypad_counter_map[]',`${kId}:${cId}`); });
+  }
   lIds.forEach(id=>h('leds[]',id));
   brIds.forEach(id=>h('brokers[]',id));
   tIds.forEach(id=>h('tvs[]',id));
   // Send dispenser→button→keypad triples for per-button mapping storage
-  dispIds.forEach(dId=>{
-    Object.entries(state.asn.dispBtnToKeypad[dId]||{}).forEach(([btnSlot,kId])=>{
-      if(kId) h('disp_keypad_map[]',`${dId}:${btnSlot}:${kId}`);
+  if (state.poolMode) {
+    dispIds.forEach(dId=>{
+      const poolMap=state.asn.dispBtnKeypadsPool[dId]||{};
+      Object.entries(poolMap).forEach(([btnSlot,slotMap])=>{
+        Object.values(slotMap).forEach(kId=>{ if(kId) h('disp_keypad_map[]',`${dId}:${btnSlot}:${kId}`); });
+      });
     });
-  });
+  } else {
+    dispIds.forEach(dId=>{
+      Object.entries(state.asn.dispBtnToKeypad[dId]||{}).forEach(([btnSlot,kId])=>{
+        if(kId) h('disp_keypad_map[]',`${dId}:${btnSlot}:${kId}`);
+      });
+    });
+  }
   document.body.appendChild(form); form.submit();
 }
 
