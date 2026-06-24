@@ -8867,6 +8867,7 @@ _MQTT_TYPE_MAP = {
     'B': 'TRANSFER',
     'C': 'SPECIAL',
     'D': 'VIP',
+    '1': 'CLEAR',
 }
 
 
@@ -10859,13 +10860,13 @@ def get_dept_string_api(request):
 # Android Token Report API
 # ============================================================================
 
-@api_view(['GET', 'POST'])
+@api_view(['POST'])
 @permission_classes([AllowAny])
 def android_token_report_api(request):
     """
     Return parsed token log records for a given company and date.
 
-    Accepts GET params or JSON body:
+    JSON body:
         company_id  — the company ID string
         date        — date in YYYY-MM-DD format
 
@@ -10902,12 +10903,8 @@ def android_token_report_api(request):
     from .models import MQTTTokenLog
     from datetime import date as date_type
 
-    if request.method == 'POST':
-        company_id = request.data.get('company_id', '').strip()
-        date_str   = request.data.get('date', '').strip()
-    else:
-        company_id = request.GET.get('company_id', '').strip()
-        date_str   = request.GET.get('date', '').strip()
+    company_id = request.data.get('company_id', '').strip()
+    date_str   = request.data.get('date', '').strip()
 
     if not company_id:
         return Response({'error': 'company_id is required'}, status=400)
