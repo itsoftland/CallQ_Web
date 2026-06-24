@@ -13,6 +13,7 @@ window.__WZ = {
   csrfToken:       "{{ csrf_token }}",
   saveUrl:         "{% url 'mapping_view' %}",
   listUrl:         "{% url 'mapping_list' %}",
+  counters:        {{ counters_json|safe }},
 };
 </script>
 

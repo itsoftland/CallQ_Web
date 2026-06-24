@@ -4467,6 +4467,28 @@ def mapping_view(request):
         cls=_DJE,
     )
 
+    # Counters for pool-mode keypad→counter wizard step
+    from django.db.models import Q as _QC
+    _counters_qs = CounterConfig.objects.filter(status=True)
+    if user.role in ('SUPER_ADMIN', 'ADMIN'):
+        if user.role == 'ADMIN' and user.assigned_state:
+            _counters_qs = _counters_qs.filter(company__state__in=user.assigned_state)
+    elif user.role == 'DEALER_ADMIN' and user.company_relation:
+        _counters_qs = _counters_qs.filter(
+            _QC(company=user.company_relation) |
+            _QC(company__parent_company=user.company_relation)
+        )
+    elif user.role == 'BRANCH_ADMIN' and user.branch_relation:
+        _counters_qs = _counters_qs.filter(company=user.branch_relation.company)
+    elif user.company_relation:
+        _counters_qs = _counters_qs.filter(company=user.company_relation)
+    else:
+        _counters_qs = CounterConfig.objects.none()
+    context['counters_json'] = _json.dumps(
+        [{'id': c.id, 'name': c.counter_name} for c in _counters_qs.order_by('counter_name')],
+        cls=_DJE,
+    )
+
     # Pagination - 8 rows per page
     page = request.GET.get('page', 1)
     paginator = Paginator(list(devices), 8)

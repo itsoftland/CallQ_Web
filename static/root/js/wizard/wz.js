@@ -444,12 +444,15 @@ function wzCountSet(type, val) {
 }
 
 function wzSetBr(id) {
-  state.brId=id; state.pool={TOKEN_DISPENSER:[],KEYPAD:[],LED:[],BROKER:[],TV:[],COUNTER:[]};
+  state.brId=id;
+  // Counters are company-level; preserve them across branch changes
+  state.pool={TOKEN_DISPENSER:[],KEYPAD:[],LED:[],BROKER:[],TV:[],COUNTER:state.pool.COUNTER||[]};
   state.asn={included:{},dispBtnToKeypad:{},dispBtnKeypadsPool:{},keypadToLed:{},keypadToBroker:{},brokerToTv:{},keypadToCounter:{}};
   loadDevices();
 }
 function wzSetDc(id) {
-  state.dcId=id; state.pool={TOKEN_DISPENSER:[],KEYPAD:[],LED:[],BROKER:[],TV:[],COUNTER:[]};
+  state.dcId=id;
+  state.pool={TOKEN_DISPENSER:[],KEYPAD:[],LED:[],BROKER:[],TV:[],COUNTER:state.pool.COUNTER||[]};
   state.asn={included:{},dispBtnToKeypad:{},dispBtnKeypadsPool:{},keypadToLed:{},keypadToBroker:{},brokerToTv:{},keypadToCounter:{}};
   loadDevices();
 }
@@ -520,25 +523,7 @@ function loadDevices() {
       state.pool=g;
     })
     .catch(()=>{})
-    .finally(()=>{state.loading=false; wzRender(); loadCounters();});
-}
-
-function loadCounters() {
-  // Derive company_id from the selected branch (injected into branches_json)
-  const branch=(WZ.branches||[]).find(b=>String(b.id)===state.brId);
-  const companyId=branch&&branch.company_id?branch.company_id:null;
-  const url=companyId?`/CallQ/config/api/counters/?company_id=${companyId}`:'/CallQ/config/api/counters/';
-  fetch(url)
-    .then(r=>r.json())
-    .then(data=>{
-      state.pool.COUNTER=(data.counters||[]).map(c=>({
-        id:String(c.id),
-        name:c.counter_name,
-        code:c.counter_name,
-      }));
-      wzRender();
-    })
-    .catch(()=>{});
+    .finally(()=>{state.loading=false; wzRender();});
 }
 
 /* ── Finish & Submit ── */
@@ -601,6 +586,8 @@ function wzFinish() {
 document.addEventListener('DOMContentLoaded', function() {
   WZ = window.__WZ || {};
   if(WZ.branches&&WZ.branches[0]) state.brId=String(WZ.branches[0].id);
+  // Seed counters from server-rendered context (avoids a separate async fetch)
+  state.pool.COUNTER = (WZ.counters||[]).map(c=>({id:String(c.id),name:c.name,code:c.name}));
   wzRender();
   if(state.brId||state.dcId) loadDevices();
 });
