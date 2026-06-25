@@ -127,15 +127,17 @@ def prepare_relations(request, selected_cid=None, selected_bid=None):
         if user.company_relation:
             from companydetails.models import DealerCustomer
             dealer_customers = list(DealerCustomer.objects.filter(dealer=user.company_relation))
+            dc_emails = set()
             for dc in dealer_customers:
                 dc.company_type = 'CUSTOMER'
                 dc.is_dealer_customer = True
+                dc_emails.add(dc.company_email)
 
-            # Include dealer-created child Company records so they appear in the dropdown
+            # Only include child Companies that are NOT already represented by a DealerCustomer entry
             child_companies = list(Company.objects.filter(
                 parent_company=user.company_relation,
-                is_dealer_created=True
-            ))
+                is_dealer_created=True,
+            ).exclude(company_email__in=dc_emails))
 
             companies = [user.company_relation] + dealer_customers + child_companies
         else:
