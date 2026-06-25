@@ -6810,7 +6810,14 @@ def get_counters_api(request):
             allowed = allowed & _Q(company_id=requested_company_id)
         qs = qs.filter(allowed)
     elif user.company_relation:
-        qs = qs.filter(company=user.company_relation)
+        if user.dealer_customer_relation:
+            # Dealer-created customer: include parent dealer's counters alongside own company counters
+            qs = qs.filter(
+                _Q(company=user.company_relation) |
+                _Q(company=user.dealer_customer_relation.dealer)
+            )
+        else:
+            qs = qs.filter(company=user.company_relation)
     else:
         qs = qs.none()
 
@@ -8314,7 +8321,15 @@ def counter_list(request):
                 _Q(company__parent_company=user.company_relation)
             )
         elif user.company_relation:
-            qs = qs.filter(company=user.company_relation)
+            if user.dealer_customer_relation:
+                # Dealer-created customer: include parent dealer's counters so devices
+                # can use counters configured by the dealer.
+                qs = qs.filter(
+                    _Q(company=user.company_relation) |
+                    _Q(company=user.dealer_customer_relation.dealer)
+                )
+            else:
+                qs = qs.filter(company=user.company_relation)
         else:
             qs = qs.none()
         counters = qs.order_by('counter_name')
@@ -10325,6 +10340,7 @@ def get_android_mapped_counters(request):
         return Response({'error': 'customer_id is required'}, status=400)
 
     company = None
+    dealer_customer = None  # tracked separately so the counter query can use it
     if str(customer_id).isdigit():
         company = Company.objects.filter(id=customer_id).first()
 
@@ -10334,7 +10350,6 @@ def get_android_mapped_counters(request):
     if not company:
         dealer_customer = DealerCustomer.objects.filter(customer_id=customer_id).first()
         if dealer_customer:
-            # Prefer the linked child Company (counters are stored there, not on the dealer)
             linked_company = Company.objects.filter(
                 company_email=dealer_customer.company_email,
                 parent_company=dealer_customer.dealer,
@@ -10345,7 +10360,17 @@ def get_android_mapped_counters(request):
     if not company:
         return Response({'error': 'Invalid customer_id'}, status=404)
 
-    counters = CounterConfig.objects.filter(company=company, status=True)
+    # Dealer counters are created under the dealer's company.
+    # When resolving for a DealerCustomer, include both the dealer's counters and
+    # any counters stored on the linked child company (if company IS the child company).
+    if dealer_customer:
+        from django.db.models import Q as _dc_Q
+        counters = CounterConfig.objects.filter(
+            _dc_Q(company=dealer_customer.dealer) | _dc_Q(company=company),
+            status=True,
+        ).distinct()
+    else:
+        counters = CounterConfig.objects.filter(company=company, status=True)
 
     mapped_counters = []
     for counter in counters:
