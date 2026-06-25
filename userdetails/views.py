@@ -1383,6 +1383,12 @@ def android_config_login(request):
     if user.role == "ADMIN" and user.assigned_state:
         route_states = user.assigned_state
 
+    # SUPER_ADMIN and ADMIN: derive Route from all companies in the customer list,
+    # not from the (empty) company_relation of the admin user themselves.
+    if user.role in ("SUPER_ADMIN", "ADMIN"):
+        route_c_ids = company_ids
+        route_dc_ids = dealer_customer_ids
+
     return DRFResponse({
         "status": "success",
         "response": "Login Approved",
