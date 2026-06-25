@@ -838,10 +838,20 @@ def get_embedded_config(request):
             final_keypads = []
             for i in range(1, keypad_count + 1):
                 # UI sends keypad_sl_no_1, keypad_sl_no_2...
-                # Note: In previous UI, first one might have been keypad_sl_no. 
+                # Note: In previous UI, first one might have been keypad_sl_no.
                 # We will standardize to keypad_sl_no_{i} in UI updates.
                 k_val = config.get(f'keypad_sl_no_{i}') or config.get(f'keypad_sl_no' if i==1 else '') or '0'
                 final_keypads.append(k_val)
+
+            # Transfer Mode or Pool Mode: the keypad includes itself as the first
+            # entry in the peer list so the firmware knows its own position in the
+            # network.  Deduplicate before prepending to avoid double entries when
+            # the UI already included this device's serial in the linked list.
+            if transfer == '1' or pool_mode == '1':
+                current_sn = device.serial_number
+                final_keypads = [sn for sn in final_keypads if sn != current_sn]
+                final_keypads = [current_sn] + final_keypads
+                keypad_count = len(final_keypads)
 
             remaining_bit_flag = '1'  # Hardcoded constant — not configurable via UI
 
