@@ -3066,8 +3066,14 @@ def device_list(request):
             devices = Device.objects.none()
             branches = []
     elif user.role == "COMPANY_ADMIN":
-        if user.dealer_customer_relation:
-            # DC-linked admin: only devices mapped to their DealerCustomer
+        if user.dealer_customer_relation and user.company_relation:
+            # DC-linked admin that also has a child company: show devices from both paths
+            devices = Device.objects.filter(
+                Q(dealer_customer=user.dealer_customer_relation) |
+                Q(company=user.company_relation)
+            )
+            branches = Branch.objects.filter(company=user.company_relation)
+        elif user.dealer_customer_relation:
             devices = Device.objects.filter(dealer_customer=user.dealer_customer_relation)
             branches = []
         elif user.company_relation:
@@ -10328,7 +10334,13 @@ def get_android_mapped_counters(request):
     if not company:
         dealer_customer = DealerCustomer.objects.filter(customer_id=customer_id).first()
         if dealer_customer:
-            company = dealer_customer.dealer
+            # Prefer the linked child Company (counters are stored there, not on the dealer)
+            linked_company = Company.objects.filter(
+                company_email=dealer_customer.company_email,
+                parent_company=dealer_customer.dealer,
+                is_dealer_created=True,
+            ).first()
+            company = linked_company if linked_company else dealer_customer.dealer
 
     if not company:
         return Response({'error': 'Invalid customer_id'}, status=404)
