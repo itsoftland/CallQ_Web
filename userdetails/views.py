@@ -1359,11 +1359,17 @@ def android_config_login(request):
     elif user.role == "DEALER_ADMIN":
         if user.company_relation:
             # All DealerCustomer records belonging to this dealer
+            seen_customer_ids = set()
             for dc in DealerCustomer.objects.filter(dealer=user.company_relation):
                 customers_data.append(serialize_dealer_customer_as_customer(dc))
                 dealer_customer_ids.append(dc.id)
-            # All dealer-created Company records parented to this dealer
-            for dc_company in Company.objects.filter(is_dealer_created=True, parent_company=user.company_relation):
+                seen_customer_ids.add(dc.customer_id)
+            # All dealer-created Company records parented to this dealer,
+            # excluding those already represented by a DealerCustomer record
+            # (they share the same company_id / customer_id value).
+            for dc_company in Company.objects.filter(
+                is_dealer_created=True, parent_company=user.company_relation
+            ).exclude(company_id__in=seen_customer_ids):
                 entry = serialize_company_full(dc_company)
                 entry['type'] = 'CUSTOMER'
                 customers_data.append(entry)
