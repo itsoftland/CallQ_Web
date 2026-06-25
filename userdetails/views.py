@@ -1358,15 +1358,16 @@ def android_config_login(request):
 
     elif user.role == "DEALER_ADMIN":
         if user.company_relation:
-            if device and device.dealer_customer and device.dealer_customer.dealer == user.company_relation:
-                customers_data.append(serialize_dealer_customer_as_customer(device.dealer_customer))
-                dealer_customer_ids.append(device.dealer_customer.id)
-            elif device and device.company and device.company.is_dealer_created and device.company.parent_company == user.company_relation:
-                customers_data.append(serialize_company_full(device.company))
-                company_ids.append(device.company.id)
-            else:
-                customers_data.append(serialize_company_full(user.company_relation))
-                company_ids.append(user.company_relation.id)
+            # All DealerCustomer records belonging to this dealer
+            for dc in DealerCustomer.objects.filter(dealer=user.company_relation):
+                customers_data.append(serialize_dealer_customer_as_customer(dc))
+                dealer_customer_ids.append(dc.id)
+            # All dealer-created Company records parented to this dealer
+            for dc_company in Company.objects.filter(is_dealer_created=True, parent_company=user.company_relation):
+                entry = serialize_company_full(dc_company)
+                entry['type'] = 'CUSTOMER'
+                customers_data.append(entry)
+                company_ids.append(dc_company.id)
 
     elif user.role == "DEALER_CUSTOMER":
         # Specific dealer customer
@@ -1383,9 +1384,9 @@ def android_config_login(request):
     if user.role == "ADMIN" and user.assigned_state:
         route_states = user.assigned_state
 
-    # SUPER_ADMIN and ADMIN: derive Route from all companies in the customer list,
-    # not from the (empty) company_relation of the admin user themselves.
-    if user.role in ("SUPER_ADMIN", "ADMIN"):
+    # SUPER_ADMIN, ADMIN, DEALER_ADMIN: derive Route from all companies in the
+    # customer list, not from the admin user's own company_relation.
+    if user.role in ("SUPER_ADMIN", "ADMIN", "DEALER_ADMIN"):
         route_c_ids = company_ids
         route_dc_ids = dealer_customer_ids
 
