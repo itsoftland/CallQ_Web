@@ -8969,6 +8969,32 @@ def _unformat_serial(sn):
     return sn
 
 
+def _decode_dispensed_time(raw_payload):
+    """
+    Decode the dispensed time encoded at positions [2] and [3] of the raw payload.
+    Hour  (index 2): A–X → 0–23
+    Minute (index 3): A–Z → 0–25 | a–z → 26–51 | 1–8 → 52–59
+    Returns 'HH:MM' string or '' if characters are unrecognisable.
+    """
+    if not raw_payload or len(raw_payload) < 4:
+        return ''
+    h_char = raw_payload[2]
+    m_char = raw_payload[3]
+    if 'A' <= h_char <= 'X':
+        hour = ord(h_char) - ord('A')
+    else:
+        return ''
+    if 'A' <= m_char <= 'Z':
+        minute = ord(m_char) - ord('A')
+    elif 'a' <= m_char <= 'z':
+        minute = ord(m_char) - ord('a') + 26
+    elif '1' <= m_char <= '8':
+        minute = int(m_char) + 51
+    else:
+        return ''
+    return f"{hour:02d}:{minute:02d}"
+
+
 def _parse_mqtt_payload(payload):
     """
     Parse an MQTT payload string.
@@ -9381,8 +9407,31 @@ def token_report_list(request):
     except EmptyPage:
         reports = paginator.page(paginator.num_pages)
 
+    # --- Annotate dispensed time + build grouped structure ---
+    from collections import defaultdict
+    page_records = list(reports)
+    for rec in page_records:
+        rec.dispensed_time = _decode_dispensed_time(rec.raw_payload)
+
+    groups_map = defaultdict(list)
+    for rec in page_records:
+        key = (rec.counter_name or '', rec.token_number or '')
+        groups_map[key].append(rec)
+
+    seen_keys = set()
+    grouped_reports = []
+    for rec in page_records:
+        key = (rec.counter_name or '', rec.token_number or '')
+        if key not in seen_keys:
+            seen_keys.add(key)
+            grouped_reports.append({
+                'records': groups_map[key],
+                'count':   len(groups_map[key]),
+            })
+
     context = {
         'reports':            reports,
+        'grouped_reports':    grouped_reports,
         'total_count':        total_count,
         'valid_count':        valid_count,
         'invalid_count':      invalid_count,

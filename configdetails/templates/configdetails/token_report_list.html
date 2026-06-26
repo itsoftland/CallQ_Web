@@ -204,6 +204,56 @@
     }
     .chip-mac { background:#F5F3FF; color:#5B21B6; font-family:'SFMono-Regular',Consolas,monospace; }
 
+    /* ── Dispensed time ─────────────────────────────────────── */
+    .dispensed-time {
+        font-family: 'SFMono-Regular', Consolas, monospace;
+        font-size: .8rem;
+        font-weight: 600;
+        color: #0369A1;
+        background: #E0F2FE;
+        border-radius: 4px;
+        padding: 2px 7px;
+        display: inline-block;
+        white-space: nowrap;
+    }
+    .dispensed-null { color: var(--text-muted); font-style: italic; font-size: .75rem; }
+
+    /* ── Group (collapsed multi-occurrence) rows ─────────────── */
+    .group-header-row {
+        cursor: pointer;
+        background: #F0F9FF !important;
+        border-left: 3px solid #0EA5E9;
+    }
+    .group-header-row:hover { background: #E0F2FE !important; }
+    .group-summary {
+        display: flex;
+        align-items: center;
+        gap: .5rem;
+        flex-wrap: wrap;
+        padding: 2px 0;
+    }
+    .group-chevron {
+        font-size: .7rem;
+        color: #0369A1;
+        transition: transform .15s;
+        display: inline-block;
+        width: 12px;
+    }
+    .group-chevron.open { transform: rotate(90deg); }
+    .occurrence-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: .25rem;
+        background: #0EA5E9;
+        color: #fff;
+        font-size: .68rem;
+        font-weight: 700;
+        padding: 2px 8px;
+        border-radius: 9999px;
+    }
+    .group-child-row { background: #F8FBFF; }
+    .group-child-row td:first-child { border-left: 3px solid #BAE6FD; }
+
     /* ── Raw payload tooltip toggle ──────────────────────────── */
     .raw-toggle {
         cursor: pointer;
@@ -364,25 +414,56 @@
                 <thead>
                     <tr>
                         <th style="width:3%;">#</th>
-                        <th style="width:10%;">Type</th>
-                        <th style="width:7%;">Token</th>
-                        <th style="width:15%;">Keypad</th>
-                        <th style="width:14%;">Counter</th>
-                        <th style="width:14%;">Received</th>
-                        <th style="width:14%;">Displayed</th>
+                        <th style="width:9%;">Type</th>
+                        <th style="width:6%;">Token</th>
+                        <th style="width:12%;">Keypad</th>
+                        <th style="width:12%;">Counter</th>
+                        <th style="width:7%;">Dispensed</th>
+                        <th style="width:12%;">Received</th>
+                        <th style="width:12%;">Displayed</th>
                         <th style="width:10%;">Status</th>
-                        <th style="width:13%;">MAC Address</th>
+                        <th style="width:12%;">MAC Address</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {% for report in reports %}
-                    <tr>
-                        <!-- Row # -->
-                        <td class="text-muted" style="font-size:.72rem;">
-                            {{ forloop.counter0|add:reports.start_index }}
+                    {% for group in grouped_reports %}
+                    {% if group.count > 1 %}
+                    {# ── Collapsed group header row ── #}
+                    <tr class="group-header-row" onclick="toggleGroup('grp{{ forloop.counter }}')">
+                        <td colspan="10">
+                            <div class="group-summary">
+                                <span class="group-chevron" id="chev-grp{{ forloop.counter }}">&#9654;</span>
+                                <span class="type-badge type-{{ group.records.0.message_type }}">
+                                    {% if group.records.0.message_type == "NORMAL" %}<i class="fas fa-ticket-alt"></i>
+                                    {% elif group.records.0.message_type == "TRANSFER" %}<i class="fas fa-exchange-alt"></i>
+                                    {% elif group.records.0.message_type == "SKIP" %}<i class="fas fa-forward"></i>
+                                    {% elif group.records.0.message_type == "SPECIAL" %}<i class="fas fa-star"></i>
+                                    {% elif group.records.0.message_type == "VIP" %}<i class="fas fa-crown"></i>
+                                    {% elif group.records.0.message_type == "CLEAR" %}<i class="fas fa-eraser"></i>
+                                    {% else %}<i class="fas fa-question"></i>{% endif %}
+                                    {{ group.records.0.message_type }}
+                                </span>
+                                Token&nbsp;<span class="token-pill">{{ group.records.0.token_number }}</span>
+                                &mdash;
+                                {% if group.records.0.counter_name %}
+                                    <strong>{{ group.records.0.counter_name }}</strong>
+                                {% else %}
+                                    <em class="counter-null">not mapped</em>
+                                {% endif %}
+                                <span class="occurrence-badge ms-1">
+                                    <i class="fas fa-layer-group" style="font-size:.6rem;"></i>
+                                    {{ group.count }} occurrences
+                                </span>
+                                <span class="text-muted" style="font-size:.7rem; margin-left:.5rem;">
+                                    Latest: {{ group.records.0.received_at|date:"d M Y H:i:s" }}
+                                </span>
+                            </div>
                         </td>
-
-                        <!-- Message Type -->
+                    </tr>
+                    {# ── Individual rows for this group (hidden until expanded) ── #}
+                    {% for report in group.records %}
+                    <tr class="group-child-row" data-group="grp{{ forloop.parentloop.counter }}" style="display:none;">
+                        <td class="text-muted" style="font-size:.72rem;">{{ forloop.counter }}</td>
                         <td>
                             <span class="type-badge type-{{ report.message_type }}">
                                 {% if report.message_type == "NORMAL" %}<i class="fas fa-ticket-alt"></i>
@@ -395,8 +476,6 @@
                                 {{ report.message_type }}
                             </span>
                         </td>
-
-                        <!-- Token Number -->
                         <td>
                             {% if report.token_number %}
                                 <span class="token-pill">{{ report.token_number }}</span>
@@ -404,27 +483,20 @@
                                 <span class="token-pill empty">—</span>
                             {% endif %}
                         </td>
-
-                        <!-- Keypad Serial + Index -->
                         <td>
                             {% if report.keypad_serial %}
                                 <span class="kp-serial">{{ report.keypad_serial }}</span>
                                 {% if report.keypad_index %}
-                                <div class="kp-index">
-                                    <i class="fas fa-hashtag" style="font-size:.6rem;"></i> idx {{ report.keypad_index }}
-                                </div>
+                                <div class="kp-index"><i class="fas fa-hashtag" style="font-size:.6rem;"></i> idx {{ report.keypad_index }}</div>
                                 {% endif %}
-                                <!-- Raw payload toggle -->
                                 <div class="mt-1">
-                                    <span class="raw-toggle" onclick="toggleRaw(this)">show raw</span>
+                                    <span class="raw-toggle" onclick="event.stopPropagation(); toggleRaw(this)">show raw</span>
                                     <div class="raw-payload-text">{{ report.raw_payload }}</div>
                                 </div>
                             {% else %}
                                 <span class="counter-null">unknown</span>
                             {% endif %}
                         </td>
-
-                        <!-- Counter -->
                         <td>
                             {% if report.counter_name %}
                                 <span class="counter-name">{{ report.counter_name }}</span>
@@ -434,14 +506,17 @@
                                 <span class="counter-null">— not mapped —</span>
                             {% endif %}
                         </td>
-
-                        <!-- Received -->
+                        <td>
+                            {% if report.dispensed_time %}
+                                <span class="dispensed-time"><i class="fas fa-clock" style="font-size:.65rem; margin-right:3px;"></i>{{ report.dispensed_time }}</span>
+                            {% else %}
+                                <span class="dispensed-null">—</span>
+                            {% endif %}
+                        </td>
                         <td>
                             <div class="time-primary">{{ report.received_at|date:"d M Y" }}</div>
                             <div class="time-secondary">{{ report.received_at|time:"H:i:s" }}</div>
                         </td>
-
-                        <!-- Displayed -->
                         <td>
                             {% if report.displayed_at %}
                                 <div class="time-primary">{{ report.displayed_at|date:"d M Y" }}</div>
@@ -450,39 +525,105 @@
                                 <span class="time-null">— not set —</span>
                             {% endif %}
                         </td>
-
-                        <!-- Status flags -->
                         <td>
                             <div class="d-flex flex-column gap-1">
-                                {% if report.is_valid %}
-                                    <span class="status-flag flag-valid">
-                                        <i class="fas fa-check" style="font-size:.6rem;"></i> Valid
-                                    </span>
-                                {% else %}
-                                    <span class="status-flag flag-invalid">
-                                        <i class="fas fa-times" style="font-size:.6rem;"></i> Invalid
-                                    </span>
-                                {% endif %}
-                                {% if report.is_duplicate %}
-                                    <span class="status-flag flag-dup">
-                                        <i class="fas fa-copy" style="font-size:.6rem;"></i> Duplicate
-                                    </span>
-                                {% endif %}
+                                {% if report.is_valid %}<span class="status-flag flag-valid"><i class="fas fa-check" style="font-size:.6rem;"></i> Valid</span>
+                                {% else %}<span class="status-flag flag-invalid"><i class="fas fa-times" style="font-size:.6rem;"></i> Invalid</span>{% endif %}
+                                {% if report.is_duplicate %}<span class="status-flag flag-dup"><i class="fas fa-copy" style="font-size:.6rem;"></i> Duplicate</span>{% endif %}
                             </div>
                         </td>
-
-                        <!-- MAC -->
                         <td>
                             {% if report.mac_address %}
-                                <span class="chip chip-mac">
-                                    <i class="fas fa-wifi" style="font-size:.6rem;"></i>
-                                    {{ report.mac_address }}
-                                </span>
+                                <span class="chip chip-mac"><i class="fas fa-wifi" style="font-size:.6rem;"></i> {{ report.mac_address }}</span>
                             {% else %}
                                 <span class="time-null">—</span>
                             {% endif %}
                         </td>
                     </tr>
+                    {% endfor %}
+                    {% else %}
+                    {# ── Single-record row (no grouping needed) ── #}
+                    {% with report=group.records.0 %}
+                    <tr>
+                        <td class="text-muted" style="font-size:.72rem;">{{ forloop.counter }}</td>
+                        <td>
+                            <span class="type-badge type-{{ report.message_type }}">
+                                {% if report.message_type == "NORMAL" %}<i class="fas fa-ticket-alt"></i>
+                                {% elif report.message_type == "TRANSFER" %}<i class="fas fa-exchange-alt"></i>
+                                {% elif report.message_type == "SKIP" %}<i class="fas fa-forward"></i>
+                                {% elif report.message_type == "SPECIAL" %}<i class="fas fa-star"></i>
+                                {% elif report.message_type == "VIP" %}<i class="fas fa-crown"></i>
+                                {% elif report.message_type == "CLEAR" %}<i class="fas fa-eraser"></i>
+                                {% else %}<i class="fas fa-question"></i>{% endif %}
+                                {{ report.message_type }}
+                            </span>
+                        </td>
+                        <td>
+                            {% if report.token_number %}
+                                <span class="token-pill">{{ report.token_number }}</span>
+                            {% else %}
+                                <span class="token-pill empty">—</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if report.keypad_serial %}
+                                <span class="kp-serial">{{ report.keypad_serial }}</span>
+                                {% if report.keypad_index %}
+                                <div class="kp-index"><i class="fas fa-hashtag" style="font-size:.6rem;"></i> idx {{ report.keypad_index }}</div>
+                                {% endif %}
+                                <div class="mt-1">
+                                    <span class="raw-toggle" onclick="toggleRaw(this)">show raw</span>
+                                    <div class="raw-payload-text">{{ report.raw_payload }}</div>
+                                </div>
+                            {% else %}
+                                <span class="counter-null">unknown</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if report.counter_name %}
+                                <span class="counter-name">{{ report.counter_name }}</span>
+                            {% elif report.counter %}
+                                <span class="counter-name">{{ report.counter.counter_name }}</span>
+                            {% else %}
+                                <span class="counter-null">— not mapped —</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if report.dispensed_time %}
+                                <span class="dispensed-time"><i class="fas fa-clock" style="font-size:.65rem; margin-right:3px;"></i>{{ report.dispensed_time }}</span>
+                            {% else %}
+                                <span class="dispensed-null">—</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="time-primary">{{ report.received_at|date:"d M Y" }}</div>
+                            <div class="time-secondary">{{ report.received_at|time:"H:i:s" }}</div>
+                        </td>
+                        <td>
+                            {% if report.displayed_at %}
+                                <div class="time-primary">{{ report.displayed_at|date:"d M Y" }}</div>
+                                <div class="time-secondary">{{ report.displayed_at|time:"H:i:s" }}</div>
+                            {% else %}
+                                <span class="time-null">— not set —</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="d-flex flex-column gap-1">
+                                {% if report.is_valid %}<span class="status-flag flag-valid"><i class="fas fa-check" style="font-size:.6rem;"></i> Valid</span>
+                                {% else %}<span class="status-flag flag-invalid"><i class="fas fa-times" style="font-size:.6rem;"></i> Invalid</span>{% endif %}
+                                {% if report.is_duplicate %}<span class="status-flag flag-dup"><i class="fas fa-copy" style="font-size:.6rem;"></i> Duplicate</span>{% endif %}
+                            </div>
+                        </td>
+                        <td>
+                            {% if report.mac_address %}
+                                <span class="chip chip-mac"><i class="fas fa-wifi" style="font-size:.6rem;"></i> {{ report.mac_address }}</span>
+                            {% else %}
+                                <span class="time-null">—</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endwith %}
+                    {% endif %}
                     {% endfor %}
                 </tbody>
             </table>
@@ -549,6 +690,17 @@ function toggleRaw(el) {
     const visible = box.style.display === 'block';
     box.style.display = visible ? 'none' : 'block';
     el.textContent = visible ? 'show raw' : 'hide raw';
+}
+
+function toggleGroup(gid) {
+    const children = document.querySelectorAll(`[data-group="${gid}"]`);
+    const chev = document.getElementById('chev-' + gid);
+    const isHidden = children.length > 0 && children[0].style.display === 'none';
+    children.forEach(r => { r.style.display = isHidden ? '' : 'none'; });
+    if (chev) {
+        chev.innerHTML = isHidden ? '&#9660;' : '&#9654;';
+        chev.classList.toggle('open', isHidden);
+    }
 }
 </script>
 {% endblock %}
