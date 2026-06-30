@@ -7,7 +7,7 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.http import HttpResponse, HttpResponseForbidden, FileResponse, JsonResponse
 from django.contrib import messages
-from .models import Device, DeviceConfig, TVConfig, Mapping, Counter, TVCounter, TVAd, LedConfig, EmbeddedProfile, ProductionBatch, ProductionSerialNumber, ButtonMapping, CounterConfig, TVCounterMapping, CounterTokenDispenserMapping, ExternalDeviceCounterLog, GroupMapping, GroupDispenserMapping, GroupCounterButtonMapping, TVDispenserMapping, TVKeypadMapping, DispenserKeypadMapping, KeypadCounterMapping, get_button_index_char, BUTTON_INDEX_SEQUENCE
+from .models import Device, DeviceConfig, TVConfig, Mapping, Counter, TVCounter, TVAd, LedConfig, EmbeddedProfile, ProductionBatch, ProductionSerialNumber, ButtonMapping, CounterConfig, TVCounterMapping, CounterTokenDispenserMapping, ExternalDeviceCounterLog, GroupMapping, GroupDispenserMapping, GroupCounterButtonMapping, TVDispenserMapping, TVKeypadMapping, DispenserKeypadMapping, KeypadCounterMapping, CustomerCounterMapping, get_button_index_char, BUTTON_INDEX_SEQUENCE
 from django.db import transaction
 from .serializers.config_serializers import DeviceSerializer, DeviceConfigSerializer, TVConfigSerializer, MappingSerializer, EmbeddedProfileSerializer, CounterConfigSerializer, TVCounterMappingSerializer, CounterTokenDispenserMappingSerializer, ExternalDeviceCounterLogSerializer, TVDispenserMappingSerializer, TVKeypadMappingSerializer
 from companydetails.models import Company, Branch
@@ -1385,7 +1385,21 @@ def _get_embedded_branch_config(request, device, company, dealer_customer, is_de
             'message': 'Device is not assigned to any branch. Please contact admin.'
         }, status=400)
         
-    branch_devices = Device.objects.filter(company=company, branch=device.branch).select_related('config')
+    if is_dealer_customer:
+        # Only fetch devices belonging to this specific dealer customer (dc_ mapping path).
+        # Also include devices mapped to their linked child Company (co_ mapping path).
+        from companydetails.models import Company as _Company
+        _linked_company = _Company.objects.filter(
+            parent_company=dealer_customer.dealer,
+            is_dealer_created=True,
+            company_email=dealer_customer.company_email,
+        ).first()
+        _dc_filter = Q(dealer_customer=dealer_customer, branch=device.branch)
+        if _linked_company:
+            _dc_filter |= Q(company=_linked_company, dealer_customer__isnull=True, branch=device.branch)
+        branch_devices = Device.objects.filter(_dc_filter).select_related('config')
+    else:
+        branch_devices = Device.objects.filter(company=company, branch=device.branch).select_related('config')
     
     inactive_devices = []
     for dev in branch_devices:
@@ -1429,7 +1443,10 @@ def _get_embedded_branch_config(request, device, company, dealer_customer, is_de
             'is_expired': dev.is_expired
         }
         
-    button_mappings = ButtonMapping.objects.filter(branch=device.branch)
+    if is_dealer_customer:
+        button_mappings = ButtonMapping.objects.filter(dealer_customer=dealer_customer)
+    else:
+        button_mappings = ButtonMapping.objects.filter(branch=device.branch)
     button_mappings_data = [
         {
             'source_id': m.source_device.id,
@@ -3067,11 +3084,13 @@ def device_list(request):
             branches = []
     elif user.role == "COMPANY_ADMIN":
         if user.dealer_customer_relation and user.company_relation:
-            # DC-linked admin that also has a child company: show devices from both paths
-            devices = Device.objects.filter(
-                Q(dealer_customer=user.dealer_customer_relation) |
-                Q(company=user.company_relation)
-            )
+            # Dealer-created customer: show dc_-path devices (dealer_customer FK) and
+            # co_-path devices (child company FK), but never expose the parent dealer's
+            # own unassigned devices when company_relation fell back to the dealer.
+            _dc_q = Q(dealer_customer=user.dealer_customer_relation)
+            if user.company_relation.is_dealer_created:
+                _dc_q |= Q(company=user.company_relation, dealer_customer__isnull=True)
+            devices = Device.objects.filter(_dc_q)
             branches = Branch.objects.filter(company=user.company_relation)
         elif user.dealer_customer_relation:
             devices = Device.objects.filter(dealer_customer=user.dealer_customer_relation)
@@ -3099,6 +3118,18 @@ def device_list(request):
         else:
             devices = Device.objects.none()
             branches = []
+    elif user.role == "DEALER_CUSTOMER":
+        # Dealer-created customer login: same dual-path logic as COMPANY_ADMIN+dc.
+        _dc_q = Q()
+        _has_filter = False
+        if user.dealer_customer_relation:
+            _dc_q |= Q(dealer_customer=user.dealer_customer_relation)
+            _has_filter = True
+        if user.company_relation and user.company_relation.is_dealer_created:
+            _dc_q |= Q(company=user.company_relation, dealer_customer__isnull=True)
+            _has_filter = True
+        devices = Device.objects.filter(_dc_q) if _has_filter else Device.objects.none()
+        branches = Branch.objects.filter(company=user.company_relation) if user.company_relation else []
     elif user.role == "PRODUCTION_ADMIN":
         # Production Admin sees all devices for batch management
         devices = Device.objects.all()
@@ -8457,6 +8488,82 @@ def counter_delete(request, counter_id):
 
 
 # ============================================================================
+# Customer Counter Mapping Management (Dealer Admin only)
+# ============================================================================
+
+@login_required
+def customer_counter_mapping_manage(request, customer_pk):
+    """List and manage counter mappings for a specific dealer customer."""
+    from companydetails.models import DealerCustomer
+    user = request.user
+    if user.role != 'DEALER_ADMIN':
+        return HttpResponseForbidden()
+
+    dealer_company = getattr(user, 'company_relation', None)
+    dealer_customer = get_object_or_404(DealerCustomer, pk=customer_pk, dealer=dealer_company)
+
+    existing_mappings = CustomerCounterMapping.objects.filter(
+        dealer_customer=dealer_customer
+    ).select_related('counter')
+    mapped_counter_ids = set(m.counter_id for m in existing_mappings)
+
+    available_counters = CounterConfig.objects.filter(
+        company=dealer_company, status=True
+    ).exclude(id__in=mapped_counter_ids).order_by('counter_name')
+
+    return render(request, 'configdetails/customer_counter_mapping.html', {
+        'dealer_customer': dealer_customer,
+        'existing_mappings': existing_mappings,
+        'available_counters': available_counters,
+    })
+
+
+@login_required
+def customer_counter_mapping_add(request, customer_pk):
+    """Add a counter mapping for a dealer customer (POST only)."""
+    from companydetails.models import DealerCustomer
+    user = request.user
+    if user.role != 'DEALER_ADMIN' or request.method != 'POST':
+        return HttpResponseForbidden()
+
+    dealer_company = getattr(user, 'company_relation', None)
+    dealer_customer = get_object_or_404(DealerCustomer, pk=customer_pk, dealer=dealer_company)
+    counter_id = request.POST.get('counter_id')
+
+    counter = CounterConfig.objects.filter(id=counter_id, company=dealer_company).first()
+    if not counter:
+        messages.error(request, 'Counter not found.')
+        return redirect('customer_counter_mapping_manage', customer_pk=customer_pk)
+
+    _, created = CustomerCounterMapping.objects.get_or_create(
+        dealer_customer=dealer_customer, counter=counter
+    )
+    if created:
+        messages.success(request, f'Counter "{counter.counter_name}" mapped to {dealer_customer.company_name}.')
+    else:
+        messages.info(request, f'Counter "{counter.counter_name}" is already mapped.')
+
+    return redirect('customer_counter_mapping_manage', customer_pk=customer_pk)
+
+
+@login_required
+def customer_counter_mapping_remove(request, customer_pk, mapping_pk):
+    """Remove a counter mapping for a dealer customer (POST only)."""
+    from companydetails.models import DealerCustomer
+    user = request.user
+    if user.role != 'DEALER_ADMIN' or request.method != 'POST':
+        return HttpResponseForbidden()
+
+    dealer_company = getattr(user, 'company_relation', None)
+    dealer_customer = get_object_or_404(DealerCustomer, pk=customer_pk, dealer=dealer_company)
+    mapping = get_object_or_404(CustomerCounterMapping, pk=mapping_pk, dealer_customer=dealer_customer)
+    counter_name = mapping.counter.counter_name
+    mapping.delete()
+    messages.success(request, f'Counter "{counter_name}" removed from {dealer_customer.company_name}.')
+    return redirect('customer_counter_mapping_manage', customer_pk=customer_pk)
+
+
+# ============================================================================
 # Log Viewing Views
 # ============================================================================
 
@@ -10410,14 +10517,24 @@ def get_android_mapped_counters(request):
         return Response({'error': 'Invalid customer_id'}, status=404)
 
     # Dealer counters are created under the dealer's company.
-    # When resolving for a DealerCustomer, include both the dealer's counters and
-    # any counters stored on the linked child company (if company IS the child company).
+    # When the dealer has explicitly mapped counters to this customer via CustomerCounterMapping,
+    # return only those; otherwise fall back to all dealer counters.
     if dealer_customer:
         from django.db.models import Q as _dc_Q
-        counters = CounterConfig.objects.filter(
-            _dc_Q(company=dealer_customer.dealer) | _dc_Q(company=company),
-            status=True,
-        ).distinct()
+        explicit_counter_ids = list(
+            CustomerCounterMapping.objects.filter(dealer_customer=dealer_customer)
+            .values_list('counter_id', flat=True)
+        )
+        if explicit_counter_ids:
+            counters = CounterConfig.objects.filter(
+                id__in=explicit_counter_ids,
+                status=True,
+            )
+        else:
+            counters = CounterConfig.objects.filter(
+                _dc_Q(company=dealer_customer.dealer) | _dc_Q(company=company),
+                status=True,
+            ).distinct()
     else:
         counters = CounterConfig.objects.filter(company=company, status=True)
 

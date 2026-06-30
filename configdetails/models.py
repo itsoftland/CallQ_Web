@@ -1060,3 +1060,31 @@ class VipTokenCounter(models.Model):
             f"VIP [{self.counter.counter_name}] on {self.dispenser.serial_number} "
             f"— current: {self.current_token} (range {self.vip_from}–{self.vip_to})"
         )
+
+
+class CustomerCounterMapping(models.Model):
+    """
+    Explicit mapping of dealer-created customers to specific counters.
+    When mappings exist for a customer, the mapped-counters API returns only those counters.
+    If no mappings exist, the API falls back to returning all dealer counters.
+    """
+    dealer_customer = models.ForeignKey(
+        'companydetails.DealerCustomer',
+        on_delete=models.CASCADE,
+        related_name='counter_mappings',
+    )
+    counter = models.ForeignKey(
+        CounterConfig,
+        on_delete=models.CASCADE,
+        related_name='customer_mappings',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('dealer_customer', 'counter')
+        verbose_name = 'Customer Counter Mapping'
+        verbose_name_plural = 'Customer Counter Mappings'
+        ordering = ['counter__counter_name']
+
+    def __str__(self):
+        return f"{self.dealer_customer.company_name} → {self.counter.counter_name}"

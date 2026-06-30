@@ -71,6 +71,10 @@
                                 class="btn btn-sm btn-outline-primary" title="Edit">
                                 <i class="fas fa-edit"></i>
                             </a>
+                            <a href="{% url 'customer_counter_mapping_manage' customer_pk=customer.pk %}"
+                                class="btn btn-sm btn-outline-info" title="Manage Counters">
+                                <i class="fas fa-list-ol"></i>
+                            </a>
                             <form method="post" action="{% url 'dealer_customer_toggle_status' customer.pk %}"
                                 style="display: inline;">
                                 {% csrf_token %}

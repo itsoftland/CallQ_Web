@@ -336,15 +336,30 @@ def dashboard(request):
          # Company View
          if user.company_relation:
             company = user.company_relation
-            context['devices_count'] = Device.objects.filter(company=company).count()
-            context['tv_count'] = Device.objects.filter(company=company, device_type=Device.DeviceType.TV).count()
-            context['token_dispenser_count'] = Device.objects.filter(company=company, device_type=Device.DeviceType.TOKEN_DISPENSER).count()
-            context['keypad_count'] = Device.objects.filter(company=company, device_type=Device.DeviceType.KEYPAD).count()
-            context['broker_count'] = Device.objects.filter(company=company, device_type=Device.DeviceType.BROKER).count()
-            context['led_count'] = Device.objects.filter(company=company, device_type=Device.DeviceType.LED).count()
-            context['serial_apk_count'] = Device.objects.filter(company=company, device_type=Device.DeviceType.SERIAL_APK).count()
-            context['config_apk_count'] = Device.objects.filter(company=company, device_type=Device.DeviceType.CONFIG_APK).count()
-            # Today's token count
+            if user.dealer_customer_relation:
+                # Dealer-created customer: count both dc_-path and co_-path devices
+                # so the dashboard reflects the same set shown in the device list.
+                _dc_q = Q(dealer_customer=user.dealer_customer_relation)
+                if company.is_dealer_created:
+                    _dc_q |= Q(company=company, dealer_customer__isnull=True)
+                context['devices_count'] = Device.objects.filter(_dc_q).count()
+                context['tv_count'] = Device.objects.filter(_dc_q, device_type=Device.DeviceType.TV).count()
+                context['token_dispenser_count'] = Device.objects.filter(_dc_q, device_type=Device.DeviceType.TOKEN_DISPENSER).count()
+                context['keypad_count'] = Device.objects.filter(_dc_q, device_type=Device.DeviceType.KEYPAD).count()
+                context['broker_count'] = Device.objects.filter(_dc_q, device_type=Device.DeviceType.BROKER).count()
+                context['led_count'] = Device.objects.filter(_dc_q, device_type=Device.DeviceType.LED).count()
+                context['serial_apk_count'] = Device.objects.filter(_dc_q, device_type=Device.DeviceType.SERIAL_APK).count()
+                context['config_apk_count'] = Device.objects.filter(_dc_q, device_type=Device.DeviceType.CONFIG_APK).count()
+            else:
+                context['devices_count'] = Device.objects.filter(company=company).count()
+                context['tv_count'] = Device.objects.filter(company=company, device_type=Device.DeviceType.TV).count()
+                context['token_dispenser_count'] = Device.objects.filter(company=company, device_type=Device.DeviceType.TOKEN_DISPENSER).count()
+                context['keypad_count'] = Device.objects.filter(company=company, device_type=Device.DeviceType.KEYPAD).count()
+                context['broker_count'] = Device.objects.filter(company=company, device_type=Device.DeviceType.BROKER).count()
+                context['led_count'] = Device.objects.filter(company=company, device_type=Device.DeviceType.LED).count()
+                context['serial_apk_count'] = Device.objects.filter(company=company, device_type=Device.DeviceType.SERIAL_APK).count()
+                context['config_apk_count'] = Device.objects.filter(company=company, device_type=Device.DeviceType.CONFIG_APK).count()
+            # Today's token count (keyed by company_id; same regardless of dc path)
             from django.utils import timezone
             from configdetails.models import TokenReport
             today = timezone.now().date()
@@ -358,7 +373,20 @@ def dashboard(request):
             context['recent_activity'] = ActivityLog.objects.filter(
                 user__company_relation=company
             ).order_by('-timestamp')[:10]
-            
+
+    elif user.role == "DEALER_CUSTOMER":
+        # Dealer-created customer with explicit DEALER_CUSTOMER role.
+        if user.dealer_customer_relation:
+            _dc_q = Q(dealer_customer=user.dealer_customer_relation)
+            if user.company_relation and user.company_relation.is_dealer_created:
+                _dc_q |= Q(company=user.company_relation, dealer_customer__isnull=True)
+            context['devices_count'] = Device.objects.filter(_dc_q).count()
+            context['tv_count'] = Device.objects.filter(_dc_q, device_type=Device.DeviceType.TV).count()
+            context['token_dispenser_count'] = Device.objects.filter(_dc_q, device_type=Device.DeviceType.TOKEN_DISPENSER).count()
+            context['keypad_count'] = Device.objects.filter(_dc_q, device_type=Device.DeviceType.KEYPAD).count()
+            context['broker_count'] = Device.objects.filter(_dc_q, device_type=Device.DeviceType.BROKER).count()
+            context['led_count'] = Device.objects.filter(_dc_q, device_type=Device.DeviceType.LED).count()
+
     elif user.role == "BRANCH_ADMIN":
         # Branch View
         if user.branch_relation:

@@ -86,7 +86,7 @@
                 <i class="fas fa-code-branch"></i> <span class="nav-text">Branches</span>
             </a>
             <a href="{% url 'dealer_customer_list' %}"
-                class="{% if 'dealer_customer' in request.resolver_match.url_name %}active{% endif %}">
+                class="{% if 'dealer_customer' in request.resolver_match.url_name or 'customer_counter_mapping' in request.resolver_match.url_name %}active{% endif %}">
                 <i class="fas fa-user-tie"></i> <span class="nav-text">Customers</span>
             </a>
             <a href="{% url 'user_list' %}"
@@ -95,7 +95,7 @@
             </a>
             {# Scheduler and Config Profiles hidden from sidebar #}
             <a href="{% url 'counter_list' %}"
-                class="{% if 'counter' in request.resolver_match.url_name %}active{% endif %}">
+                class="{% if 'counter' in request.resolver_match.url_name and 'customer_counter_mapping' not in request.resolver_match.url_name %}active{% endif %}">
                 <i class="fas fa-list-ol"></i> <span class="nav-text">Counters</span>
             </a>
             <a href="{% url 'device_list' %}"

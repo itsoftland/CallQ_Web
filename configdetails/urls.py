@@ -105,6 +105,11 @@ urlpatterns = [
     path('counters/create/', views.counter_create, name='counter_create'),
     path('counters/<int:counter_id>/edit/', views.counter_edit, name='counter_edit'),
     path('counters/<int:counter_id>/delete/', views.counter_delete, name='counter_delete'),
+
+    # Customer Counter Mapping (Dealer Admin)
+    path('counters/customer/<int:customer_pk>/', views.customer_counter_mapping_manage, name='customer_counter_mapping_manage'),
+    path('counters/customer/<int:customer_pk>/add/', views.customer_counter_mapping_add, name='customer_counter_mapping_add'),
+    path('counters/customer/<int:customer_pk>/remove/<int:mapping_pk>/', views.customer_counter_mapping_remove, name='customer_counter_mapping_remove'),
     
     # Log Viewing
     path('logs/', views.log_list, name='log_list'),
