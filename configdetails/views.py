@@ -11242,3 +11242,192 @@ def android_token_report_api(request):
         },
         'tokens': tokens,
     })
+
+
+# ---------------------------------------------------------------------------
+# API: Update embedded device config fields
+# ---------------------------------------------------------------------------
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def update_embedded_device_config(request):
+    """
+    Push config field updates to one or more embedded (non-TV) devices.
+
+    Accepts a JSON body with **two usage modes**:
+
+    Mode A – single device
+    ----------------------
+    {
+        "serial_number": "SN001",        // required — device serial number
+        "customer_id":   "C001",         // optional — scope lookup to a customer
+        "config":  {                     // required — flat key/value pairs to patch
+            "header1": "City Hospital",
+            "day_wise_reset": "1"
+        }
+    }
+
+    Mode B – bulk update (list of devices)
+    ---------------------------------------
+    {
+        "customer_id": "C001",           // optional — applied to every device below
+        "devices": [
+            {
+                "serial_number": "SN001",
+                "config": { "header1": "Branch A" }
+            },
+            {
+                "serial_number": "SN002",
+                "config": { "header1": "Branch B", "logo_enable": "1" }
+            }
+        ]
+    }
+
+    Response (both modes):
+    ----------------------
+    {
+        "status": "success",
+        "updated": [
+            {
+                "serial_number": "SN001",
+                "device_type": "TOKEN_DISPENSER",
+                "config": { ...full updated config_json... }
+            }
+        ],
+        "errors": [
+            {
+                "serial_number": "SN_UNKNOWN",
+                "error": "Device not found"
+            }
+        ]
+    }
+
+    Only the keys present in `config` are changed; all other existing keys
+    in config_json are left untouched.  If no DeviceConfig record exists yet
+    for a device it is created automatically.
+    """
+    from companydetails.models import DealerCustomer as _DealerCustomer
+
+    API_NAME = 'update_embedded_device_config'
+    log_api_request(API_NAME, request)
+
+    data = request.data
+
+    # ── 1. Build the list of (serial_number, config_patch) pairs ─────────
+    devices_to_update = []  # list of {"serial_number": ..., "config": {...}}
+
+    if 'devices' in data:
+        # Mode B – bulk
+        if not isinstance(data['devices'], list):
+            err = 'Field "devices" must be a list'
+            log_api_response(API_NAME, 400, error=err)
+            return Response({'status': 'error', 'message': err}, status=400)
+        for entry in data['devices']:
+            sn = entry.get('serial_number')
+            cfg = entry.get('config')
+            if not sn or not isinstance(cfg, dict):
+                devices_to_update.append({'serial_number': sn or '(missing)', 'config': None, '_err': 'Each entry needs "serial_number" and "config" (dict)'})
+            else:
+                devices_to_update.append({'serial_number': sn, 'config': cfg})
+    else:
+        # Mode A – single
+        sn  = data.get('serial_number')
+        cfg = data.get('config')
+        if not sn:
+            err = 'Missing required field: serial_number'
+            log_api_response(API_NAME, 400, error=err)
+            return Response({'status': 'error', 'message': err}, status=400)
+        if not isinstance(cfg, dict) or not cfg:
+            err = 'Field "config" must be a non-empty dict of fields to update'
+            log_api_response(API_NAME, 400, error=err)
+            return Response({'status': 'error', 'message': err}, status=400)
+        devices_to_update.append({'serial_number': sn, 'config': cfg})
+
+    # ── 2. Resolve optional customer scope ────────────────────────────────
+    customer_id     = data.get('customer_id')
+    company         = None
+    dealer_customer = None
+
+    if customer_id:
+        if str(customer_id).isdigit():
+            company = Company.objects.filter(id=customer_id).first()
+        if not company:
+            company = Company.objects.filter(company_id=customer_id).first()
+        if not company:
+            dealer_customer = _DealerCustomer.objects.filter(customer_id=customer_id).first()
+
+    # ── 3. Process each device ────────────────────────────────────────────
+    updated = []
+    errors  = []
+
+    for entry in devices_to_update:
+        sn = entry['serial_number']
+
+        # Pre-validation errors set at build time (Mode B bad entries)
+        if entry.get('_err'):
+            errors.append({'serial_number': sn, 'error': entry['_err']})
+            continue
+
+        config_patch = entry['config']
+
+        # -- Device lookup (scoped to customer if provided) ----------------
+        device_qs = Device.objects.filter(
+            serial_number=sn,
+        ).exclude(device_type=Device.DeviceType.TV)
+
+        if dealer_customer:
+            device_qs = device_qs.filter(dealer_customer=dealer_customer)
+        elif company:
+            # Include devices directly on the company AND dealer-created children
+            from django.db.models import Q as _Q
+            linked_companies = list(
+                Company.objects.filter(
+                    parent_company=company,
+                    is_dealer_created=True,
+                ).values_list('id', flat=True)
+            )
+            device_qs = device_qs.filter(
+                _Q(company=company) |
+                _Q(company_id__in=linked_companies)
+            )
+
+        device = device_qs.first()
+
+        if not device:
+            errors.append({
+                'serial_number': sn,
+                'error': 'Device not found' + (f' for customer {customer_id}' if customer_id else ''),
+            })
+            continue
+
+        # -- Patch config_json -------------------------------------------
+        try:
+            with transaction.atomic():
+                device_config, _ = DeviceConfig.objects.get_or_create(device=device)
+                current_cfg = device_config.config_json or {}
+                current_cfg.update(config_patch)   # shallow merge — only patched keys change
+                device_config.config_json = current_cfg
+                device_config.save(update_fields=['config_json', 'updated_at'])
+
+            action_logger.info(
+                f'{API_NAME} | device={sn} | patched fields={list(config_patch.keys())}'
+            )
+            updated.append({
+                'serial_number': sn,
+                'device_type':   device.device_type,
+                'config':        device_config.config_json,
+            })
+        except Exception as exc:
+            errors.append({'serial_number': sn, 'error': str(exc)})
+
+    # ── 4. Build response -------------------------------------------------
+    http_status = 200
+    if not updated and errors:
+        http_status = 400  # every entry failed
+
+    response_data = {
+        'status':  'success' if updated else 'error',
+        'updated': updated,
+        'errors':  errors,
+    }
+    log_api_response(API_NAME, http_status, response_data=response_data)
+    return Response(response_data, status=http_status)

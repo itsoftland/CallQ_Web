@@ -78,6 +78,7 @@ urlpatterns = [
     # API for available serial numbers
     path('api/available-serial-numbers/', views.get_available_serial_numbers_api, name='get_available_serial_numbers_api'),
     path('api/embedded/get-config', views.get_embedded_config, name='get_embedded_config'),
+    path('api/embedded/update-config', views.update_embedded_device_config, name='update_embedded_device_config'),
     
     # Counter-Wise Configuration APIs
     path('api/counters/', views.get_counters_api, name='get_counters_api'),
